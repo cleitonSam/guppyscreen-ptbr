@@ -148,6 +148,17 @@ parar_tela() {
         killall -q -9 guppyscreen 2>/dev/null
         sleep 1
     fi
+    acender_luz
+}
+
+# A tela parada dormindo deixa a luz em 0 e a nova subia apagada (o toque
+# continuava valendo: em 10/11 o dono ligou o pre-aquecimento as cegas).
+acender_luz() {
+    for _d in /sys/class/backlight/*; do
+        if [ -w "$_d/brightness" ] && [ -r "$_d/max_brightness" ]; then
+            cat "$_d/max_brightness" > "$_d/brightness" 2>/dev/null
+        fi
+    done
 }
 
 iniciar_tela() {

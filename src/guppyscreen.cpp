@@ -271,11 +271,17 @@ void GuppyScreen::loop() {
   int saved_brightness = -1;
   Config *conf = Config::get_instance();
 
-  // Apply the user's configured brightness on startup. Fall back to whatever
-  // the device already has if no value is stored.
+  // Luz da tela ao ligar: o brilho salvo ou, sem nada salvo, o máximo.
+  // (10/11/2026) Antes só acendia se houvesse brilho salvo: quando a tela
+  // anterior foi parada dormindo (luz em 0), a nova subia apagada, o toque
+  // continuava valendo e o dono ligou o pré-aquecimento às cegas.
+  int brilho = KUtils::backlight_max();
   auto stored_b = conf->get_json("/display_brightness");
-  if (!stored_b.is_null()) {
-    KUtils::backlight_set(stored_b.template get<int>());
+  if (stored_b.is_number_integer() && stored_b.template get<int>() > 0) {
+    brilho = stored_b.template get<int>();
+  }
+  if (brilho > 0) {
+    KUtils::backlight_set(brilho);
   }
 
   // Cache sleep config; re-read only periodically so the hot loop doesn't
@@ -305,6 +311,9 @@ void GuppyScreen::loop() {
           // path from DSI panel power-down, and overlay the LVGL screen_saver
           // so the panel is black if the user wakes mid-DSI-refresh.
           saved_brightness = KUtils::backlight_get();
+          if (saved_brightness <= 0) {
+            saved_brightness = brilho;
+          }
           KUtils::backlight_set(0);
           {
             std::lock_guard<std::mutex> guard(lv_lock);
@@ -321,9 +330,7 @@ void GuppyScreen::loop() {
             lv_obj_add_flag(screen_saver, LV_OBJ_FLAG_HIDDEN);
             lv_obj_invalidate(lv_scr_act());
           }
-          if (saved_brightness > 0) {
-            KUtils::backlight_set(saved_brightness);
-          }
+          KUtils::backlight_set(saved_brightness > 0 ? saved_brightness : brilho);
           is_sleeping = false;
         }
       }
