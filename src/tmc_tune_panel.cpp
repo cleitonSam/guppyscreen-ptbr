@@ -51,7 +51,7 @@ AutoTmcContainer::AutoTmcContainer(const std::list<std::string> &motors,
   lv_dropdown_clear_options(motors_dd);
 
   size_t index = 0;
-  lv_dropdown_add_option(motors_dd, "Not Configured", index++);
+  lv_dropdown_add_option(motors_dd, "Não configurado", index++);
 
   for (auto &s : motors) {
     lv_dropdown_add_option(motors_dd, s.substr(s.find(' ') + 1).c_str(), index++);
@@ -120,7 +120,7 @@ AutoTmcContainer::AutoTmcContainer(const std::list<std::string> &motors,
     lv_obj_set_grid_dsc_array(cont, grid_main_col_dsc, grid_main_row_dsc);
     
     lv_obj_t *label = lv_label_create(cont);
-    lv_label_set_text(label, "Sensorless Threshold");
+    lv_label_set_text(label, "Limiar sensorless");
     lv_obj_set_grid_cell(label, LV_GRID_ALIGN_START, 0, 1, LV_GRID_ALIGN_CENTER, 3, 1); 
     lv_obj_set_grid_cell(spinbox_cont, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 3, 1);
   }
@@ -137,7 +137,7 @@ AutoTmcContainer::AutoTmcContainer(const std::list<std::string> &motors,
   lv_obj_set_grid_cell(motors_dd, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 1, 1);
 
   label = lv_label_create(cont);
-  lv_label_set_text(label, "Tuning Goal");
+  lv_label_set_text(label, "Objetivo do ajuste");
   lv_obj_set_grid_cell(label, LV_GRID_ALIGN_START, 0, 1, LV_GRID_ALIGN_CENTER, 2, 1);
   lv_obj_set_grid_cell(tuning_goal_dd, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 2, 1);
 
@@ -154,7 +154,7 @@ std::string AutoTmcContainer::get_config_macro() {
   char buf[128];
   lv_dropdown_get_selected_str(motors_dd, buf, sizeof(buf));
   std::string motor = std::string(buf);
-  if (motor == "Not Configured") {
+  if (motor == "Não configurado") {
     return fmt::format("_GUPPY_DELETE_CONFIG SECTION=\"autotune_tmc {}\"", name);
   }
 
@@ -174,13 +174,13 @@ TmcTunePanel::TmcTunePanel(KWebSocketClient &c)
   , cont(lv_obj_create(lv_scr_act()))
   , controls_cont(lv_obj_create(cont))
   , btns_cont(lv_obj_create(cont))
-  , save_btn(btns_cont, &sd_img, "Save/Restart", [](lv_event_t *e) {
+  , save_btn(btns_cont, &sd_img, "Salvar e\nreiniciar", [](lv_event_t *e) {
     TmcTunePanel *panel = (TmcTunePanel*)e->user_data;
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
       panel->save_config();
     }
   }, this)
-  , back_btn(btns_cont, &back, "Back", [](lv_event_t *e) {
+  , back_btn(btns_cont, &back, "Voltar", [](lv_event_t *e) {
     TmcTunePanel *panel = (TmcTunePanel*)e->user_data;
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
       panel->background();

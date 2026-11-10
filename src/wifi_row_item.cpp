@@ -52,7 +52,7 @@ WifiRowItem::WifiRowItem(lv_obj_t *parent,
 
   if (connected) {
     lv_obj_t *sub = lv_label_create(text_col);
-    lv_label_set_text(sub, "Connected");
+    lv_label_set_text(sub, "Conectado");
     lv_obj_set_style_text_font(sub, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(sub, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
   }

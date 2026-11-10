@@ -77,16 +77,16 @@ def plot_freq_response(lognames, calibration_data, shapers,
     fontP.set_size('xx-small')
 
     fig, ax = matplotlib.pyplot.subplots()
-    ax.set_xlabel('Frequency, Hz')
+    ax.set_xlabel('Frequência (Hz)')
     ax.set_xlim([0, max_freq])
-    ax.set_ylabel('Power spectral density')
+    ax.set_ylabel('Densidade espectral de potência')
 
     ax.plot(freqs, psd, label='X+Y+Z', color='purple')
     ax.plot(freqs, px, label='X', color='red')
     ax.plot(freqs, py, label='Y', color='green')
     ax.plot(freqs, pz, label='Z', color='blue')
 
-    title = "Frequency response and shapers (%s)" % (', '.join(lognames))
+    title = "Resposta em frequência e compensações (%s)" % (', '.join(lognames))
     ax.set_title("\n".join(wrap(title, MAX_TITLE_LENGTH)))
     ax.xaxis.set_minor_locator(matplotlib.ticker.MultipleLocator(5))
     ax.yaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator())
@@ -95,7 +95,7 @@ def plot_freq_response(lognames, calibration_data, shapers,
     ax.grid(which='minor', color='lightgrey')
 
     ax2 = ax.twinx()
-    ax2.set_ylabel('Shaper vibration reduction (ratio)')
+    ax2.set_ylabel('Redução de vibração (razão)')
     best_shaper_vals = None
     for shaper in shapers:
         # short label - the full numbers are shown in the on-screen console
@@ -107,10 +107,10 @@ def plot_freq_response(lognames, calibration_data, shapers,
             best_shaper_vals = shaper.vals
         ax2.plot(freqs, shaper.vals, label=label, linestyle=linestyle)
     ax.plot(freqs, psd * best_shaper_vals,
-            label='After\nshaper', color='cyan')
+            label='Com\ncompensação', color='cyan')
     # A hack to add a human-readable shaper recommendation to legend
     ax2.plot([], [], ' ',
-             label="Recommended shaper: %s" % (selected_shaper.upper()))
+             label="Recomendado: %s" % (selected_shaper.upper()))
 
     ax.legend(loc='upper left', prop=fontP)
     ax2.legend(loc='upper right', prop=fontP)

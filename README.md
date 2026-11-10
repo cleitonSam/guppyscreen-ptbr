@@ -1,3 +1,5 @@
+> **Versão em português do Brasil (cleitonSam/guppyscreen-ptbr).** Para instalar, atualizar ou voltar à tela original, leia o [LEIAME-PTBR.md](LEIAME-PTBR.md). Não use o comando de instalação abaixo: ele instala a tela original, em inglês.
+
 # OpenKE — perfect prints on the Ender-3 V3 KE
 
 **OpenKE turns a stock Creality Ender-3 V3 KE into a properly dialed-in Klipper printer** — a fast

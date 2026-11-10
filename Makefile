@@ -41,6 +41,17 @@ include $(LVGL_DIR)/lv_drivers/lv_drivers.mk
 
 CSRCS 			+= $(wildcard $(LVGL_DIR)/assets/*.c)
 CSRCS			+= $(wildcard $(LVGL_DIR)/lv_touch_calibration/*.c)
+# pt-BR: fontes com acentos, geradas por scripts/gerar-fontes-ptbr.sh (veja traducao/FONTES.md).
+# Substituem as Montserrat 8/10/12/14/16/20 embutidas no LVGL (chave GUPPY_FONTES_PTBR no lv_conf.h).
+CSRCS			+= $(wildcard $(LVGL_DIR)/fonts_ptbr/*.c)
+# Sem elas a compilação só falharia no fim ("undefined reference to lv_font_montserrat_XX").
+ifneq ($(GUPPY_FONTES_PTBR),0)
+ifeq ($(filter-out all default,$(or $(MAKECMDGOALS),default)),)
+ifneq ($(words $(wildcard $(LVGL_DIR)/fonts_ptbr/lv_font_montserrat_*.c)),6)
+$(error Faltam as fontes com acentos em fonts_ptbr/ (6 arquivos). Gere com "bash scripts/gerar-fontes-ptbr.sh" ou compile sem acentos com "make GUPPY_FONTES_PTBR=0")
+endif
+endif
+endif
 
 ASSET_DIR		= material
 ifdef GUPPY_SMALL_SCREEN
@@ -51,6 +62,11 @@ endif
 
 ifdef GUPPY_ROTATE
 DEFINES			+= -D GUPPY_ROTATE
+endif
+
+# make GUPPY_FONTES_PTBR=0 -> volta às fontes embutidas do LVGL, sem acentos (rode "make clean" antes).
+ifeq ($(GUPPY_FONTES_PTBR),0)
+DEFINES			+= -D GUPPY_FONTES_PTBR=0
 endif
 
 
@@ -118,6 +134,11 @@ $(BUILD_OBJ_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	@$(COMPILE_CC)  $(CFLAGS) -c $< -o $@
 	@echo "CC $<"
+
+# As fontes dependem das chaves do lv_conf.h que ligam e desligam cada uma. Sem esta
+# linha, um "make" sem "make clean" depois de mexer no lv_conf.h juntaria objetos
+# velhos e daria "multiple definition of lv_font_montserrat_XX".
+$(filter $(BUILD_OBJ_DIR)/$(LVGL_DIR_NAME)/src/font/lv_font_montserrat_%.o $(BUILD_OBJ_DIR)/fonts_ptbr/%.o,$(TARGET)): lv_conf.h
 
 $(BUILD_OBJ_DIR)/kd_graphic_mode.o: src/kd_graphic_mode.cpp
 	@mkdir -p $(dir $@)

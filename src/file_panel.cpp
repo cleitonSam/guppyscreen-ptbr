@@ -67,9 +67,9 @@ void FilePanel::refresh_view(json &j, const std::string &gcode_path) {
   if (!v.is_null()) {
     std::time_t timestamp = v.template get<std::time_t>();
     std::tm lt = *std::localtime(&timestamp);
-    time_stream << std::put_time(&lt, "%Y-%m-%d %H:%M");
+    time_stream << std::put_time(&lt, "%d/%m/%Y %H:%M");
   } else {
-    time_stream << "(unknown)";
+    time_stream << "(desconhecido)";
   }
 
   v = j["/result/estimated_time"_json_pointer];
@@ -83,9 +83,9 @@ void FilePanel::refresh_view(json &j, const std::string &gcode_path) {
     lv_label_set_text(fname_label, filename.string().c_str());
   }
 
-  std::string detail = fmt::format("Filament Weight: {} g\nPrint Time: {}\nSize: {} MB\nModified: {}",
-    fweight > 0 ? std::to_string(fweight) : "(unknown)",
-    eta > 0 ? KUtils::eta_string(eta) : "(unknown)",
+  std::string detail = fmt::format("Peso do filamento: {}\nTempo de impressão: {}\nTamanho: {} MB\nModificado em: {}",
+    fweight > 0 ? std::to_string(fweight) + " g" : "(desconhecido)",
+    eta > 0 ? KUtils::eta_string(eta) : "(desconhecido)",
     KUtils::bytes_to_mb(j["result"]["size"].template get<size_t>()),
     time_stream.str());
 
@@ -124,7 +124,7 @@ void FilePanel::show_loading(const std::string &gcode_path) {
   if (filename.string() != lv_label_get_text(fname_label)) {
     lv_label_set_text(fname_label, filename.string().c_str());
   }
-  lv_label_set_text(detail_label, "Loading...");
+  lv_label_set_text(detail_label, "Carregando...");
   // Keep the previous thumbnail visible while metadata loads — refresh_view will
   // replace it once the RPC completes, avoiding a blank flash between files.
 }
@@ -133,7 +133,7 @@ void FilePanel::show_no_metadata() {
   // fname_label already set by show_loading — only update the detail.
   // Hide the thumbnail so we don't show a stale image from a previous file.
   lv_obj_set_style_opa(thumbnail, LV_OPA_TRANSP, 0);
-  lv_label_set_text(detail_label, "No metadata available");
+  lv_label_set_text(detail_label, "Sem informações do arquivo");
 }
 
 

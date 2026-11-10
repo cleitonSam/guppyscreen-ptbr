@@ -9,6 +9,10 @@ BACKUP_DIR=/usr/data/guppyify-backup
 K1_GUPPY_DIR=/usr/data/guppyscreen
 FT2FONT_PATH=/usr/lib/python3.8/site-packages/matplotlib/ft2font.cpython-38-mipsel-linux-gnu.so
 ASSET_NAME="guppyscreen"
+# Versão em português do Brasil: o pacote da tela vem do GitHub do dono, para o
+# instalador completo não trocar a tela de volta para o inglês. O resto
+# (Moonraker, curl) continua vindo dos endereços fixos e conferidos do OpenKE.
+RELEASE_REPO="cleitonSam/guppyscreen-ptbr"
 
 # Static MIPS curl binary, used where the on-device wget can't complete a TLS
 # handshake with github.com's release-asset redirects (works fine against
@@ -1075,7 +1079,7 @@ rm -rf /root/.cache
 #   PINNED_RELEASE=nightly-ke-next bash installer.sh
 # which skips this lookup entirely - default (unset) behavior is unchanged.
 if [ -z "$PINNED_RELEASE" ]; then
-    if download_file "https://api.github.com/repos/coreflake1/guppyscreen/releases/latest" /tmp/latest_release.json; then
+    if download_file "https://api.github.com/repos/$RELEASE_REPO/releases/latest" /tmp/latest_release.json; then
         PINNED_RELEASE=$(jq -r '.tag_name // empty' /tmp/latest_release.json 2>/dev/null)
         rm -f /tmp/latest_release.json
     fi
@@ -1085,7 +1089,7 @@ if [ -z "$PINNED_RELEASE" ]; then
     fi
 fi
 printf "${green} Using OpenKE release: $PINNED_RELEASE ${white}\n"
-ASSET_URL="https://github.com/coreflake1/guppyscreen/releases/download/${PINNED_RELEASE}/$ASSET_NAME.tar.gz"
+ASSET_URL="https://github.com/$RELEASE_REPO/releases/download/${PINNED_RELEASE}/$ASSET_NAME.tar.gz"
 
 printf "${green} Downloading asset: $ASSET_NAME.tar.gz ${white}\n"
 

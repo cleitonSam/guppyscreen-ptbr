@@ -33,19 +33,19 @@ std::string validate_static_entry(const std::string &ip_s,
                                    const std::string &netmask_s,
                                    const std::string &gateway_s) {
   uint32_t ip, netmask, gateway;
-  if (!parse_ipv4(ip_s, ip)) return "Invalid IP address";
-  if (!parse_ipv4(netmask_s, netmask)) return "Invalid netmask";
+  if (!parse_ipv4(ip_s, ip)) return "Endereço IP inválido.";
+  if (!parse_ipv4(netmask_s, netmask)) return "Máscara de rede inválida.";
   uint32_t inv = ~netmask;
-  if ((inv & (inv + 1)) != 0) return "Netmask is not a valid contiguous mask";
-  if (!parse_ipv4(gateway_s, gateway)) return "Invalid gateway address";
+  if ((inv & (inv + 1)) != 0) return "Máscara de rede inválida. A mais comum é 255.255.255.0.";
+  if (!parse_ipv4(gateway_s, gateway)) return "Endereço do gateway inválido.";
 
   uint32_t network = ip & netmask;
   uint32_t broadcast = network | inv;
 
-  if ((gateway & netmask) != network) return fmt::format("Gateway {} is not within the {} subnet", gateway_s, netmask_s);
-  if (ip == gateway) return fmt::format("{} is the gateway address", ip_s);
-  if (ip == network) return fmt::format("{} is the network address", ip_s);
-  if (ip == broadcast) return fmt::format("{} is the broadcast address", ip_s);
+  if ((gateway & netmask) != network) return fmt::format("O gateway {} está fora da sub-rede (máscara {}).", gateway_s, netmask_s);
+  if (ip == gateway) return fmt::format("{} é o endereço do gateway. Escolha outro IP.", ip_s);
+  if (ip == network) return fmt::format("{} é o endereço da rede. Escolha outro IP.", ip_s);
+  if (ip == broadcast) return fmt::format("{} é o endereço de broadcast. Escolha outro IP.", ip_s);
   return "";
 }
 
@@ -170,7 +170,7 @@ StaticIpPanel::StaticIpPanel(std::mutex &l)
   , save_btn(lv_btn_create(cont))
   , spinner(lv_spinner_create(cont, 1000, 60))
   , kb(lv_keyboard_create(cont))
-  , back_btn(cont, &back, "Back", &StaticIpPanel::_handle_back_btn, this)
+  , back_btn(cont, &back, "Voltar", &StaticIpPanel::_handle_back_btn, this)
 {
   lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
   lv_obj_set_style_pad_all(cont, 8, 0);
@@ -182,7 +182,7 @@ StaticIpPanel::StaticIpPanel(std::mutex &l)
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(cont, 4, 0);
 
-  lv_label_set_text(title_label, "Static IP");
+  lv_label_set_text(title_label, "IP fixo");
   lv_obj_set_style_text_font(title_label, &lv_font_montserrat_14, 0);
 
   lv_obj_set_size(mode_cont, LV_PCT(100), LV_SIZE_CONTENT);
@@ -197,7 +197,7 @@ StaticIpPanel::StaticIpPanel(std::mutex &l)
   lv_obj_set_height(dhcp_mode_btn, 36);
   {
     lv_obj_t *l = lv_label_create(dhcp_mode_btn);
-    lv_label_set_text(l, "DHCP");
+    lv_label_set_text(l, "Automático (DHCP)");
     lv_obj_center(l);
   }
   lv_obj_add_event_cb(dhcp_mode_btn, &StaticIpPanel::_handle_mode_toggle, LV_EVENT_CLICKED, this);
@@ -221,7 +221,7 @@ StaticIpPanel::StaticIpPanel(std::mutex &l)
   lv_obj_set_style_border_color(revert_btn, lv_palette_main(LV_PALETTE_ORANGE), LV_PART_MAIN);
   {
     lv_obj_t *l = lv_label_create(revert_btn);
-    lv_label_set_text(l, "Revert to DHCP");
+    lv_label_set_text(l, "Voltar ao automático (DHCP)");
     lv_obj_set_style_text_color(l, lv_palette_main(LV_PALETTE_ORANGE), 0);
     lv_obj_set_style_text_font(l, &lv_font_montserrat_12, 0);
     lv_obj_center(l);
@@ -257,7 +257,7 @@ StaticIpPanel::StaticIpPanel(std::mutex &l)
   lv_obj_set_flex_flow(fields_cont, LV_FLEX_FLOW_COLUMN);
 
   make_octet_row(fields_cont, "IP", ip_octets);
-  make_octet_row(fields_cont, "Netmask", netmask_octets);
+  make_octet_row(fields_cont, "Máscara", netmask_octets);
   make_octet_row(fields_cont, "Gateway", gateway_octets);
   make_octet_row(fields_cont, "DNS", dns_octets);
 
@@ -278,7 +278,7 @@ StaticIpPanel::StaticIpPanel(std::mutex &l)
   lv_obj_set_size(save_btn, 140, 36);
   {
     lv_obj_t *l = lv_label_create(save_btn);
-    lv_label_set_text(l, LV_SYMBOL_OK "  Save");
+    lv_label_set_text(l, LV_SYMBOL_OK "  Salvar");
     lv_obj_center(l);
   }
   lv_obj_add_event_cb(save_btn, &StaticIpPanel::_handle_save_btn, LV_EVENT_CLICKED, this);
@@ -329,7 +329,7 @@ StaticIpPanel::~StaticIpPanel() {
 
 void StaticIpPanel::foreground(const std::string &new_ssid) {
   ssid = new_ssid;
-  lv_label_set_text(title_label, fmt::format("Static IP - {}", ssid).c_str());
+  lv_label_set_text(title_label, fmt::format("IP fixo da rede {}", ssid).c_str());
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
   lv_obj_move_foreground(cont);
   refresh_status();
@@ -411,7 +411,7 @@ void StaticIpPanel::run_backend_async(const std::string &args, const std::string
 }
 
 void StaticIpPanel::refresh_status() {
-  set_busy(true, "Loading current network state...");
+  set_busy(true, "Lendo a configuração atual da rede...");
   std::string cmd = fmt::format("python3 {} status", STATIC_IP_SCRIPT);
   std::string ssid_copy = ssid;
   std::thread([this, cmd, ssid_copy]() {
@@ -429,7 +429,7 @@ void StaticIpPanel::refresh_status() {
       set_manual_mode(false);
       update_revert_visibility();
       lv_obj_set_style_text_color(status_label, lv_palette_main(LV_PALETTE_RED), 0);
-      lv_label_set_text(status_label, fmt::format("Couldn't read network state:\n{}", output).c_str());
+      lv_label_set_text(status_label, fmt::format("Não foi possível ler a configuração da rede:\n{}", output).c_str());
       return;
     }
 
@@ -452,11 +452,11 @@ void StaticIpPanel::refresh_status() {
 
       lv_obj_set_style_text_color(status_label, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
       lv_label_set_text(status_label,
-        fmt::format("Currently {} on {}", has_static_config ? "static" : "DHCP",
+        fmt::format("Agora: {}, endereço {}", has_static_config ? "IP fixo" : "automático (DHCP)",
                     json_str(live, "ip")).c_str());
     } catch (const std::exception &ex) {
       lv_obj_set_style_text_color(status_label, lv_palette_main(LV_PALETTE_RED), 0);
-      lv_label_set_text(status_label, fmt::format("Couldn't parse network state: {}", ex.what()).c_str());
+      lv_label_set_text(status_label, fmt::format("Não foi possível interpretar a configuração da rede: {}", ex.what()).c_str());
     }
   }).detach();
 }
@@ -472,8 +472,8 @@ void StaticIpPanel::handle_mode_toggle(lv_event_t *e) {
 void StaticIpPanel::handle_revert_btn(lv_event_t *e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED || busy) return;
 
-  static const char *btns[] = {"Revert to DHCP", "Cancel", ""};
-  std::string msg = fmt::format("Switch \"{}\" back to DHCP?\nThis drops the static IP.", ssid);
+  static const char *btns[] = {"Voltar ao automático", "Cancelar", ""};
+  std::string msg = fmt::format("Passar a rede \"{}\" para o automático?\nIsso apaga o IP fixo.", ssid);
   lv_obj_t *mbox = lv_msgbox_create(NULL, NULL, msg.c_str(), btns, false);
   lv_obj_add_event_cb(mbox, [](lv_event_t *ev) {
     lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(ev));
@@ -483,7 +483,7 @@ void StaticIpPanel::handle_revert_btn(lv_event_t *e) {
     if (!confirmed) return;
 
     self->run_backend_async(fmt::format("remove {}", shell_quote(self->ssid)),
-                             "Reverting to DHCP...",
+                             "Voltando ao automático (DHCP)...",
                              [self](int rc, const std::string &output) {
       if (rc == 0) {
         self->has_static_config = false;
@@ -492,7 +492,7 @@ void StaticIpPanel::handle_revert_btn(lv_event_t *e) {
         self->refresh_status();
       } else {
         lv_obj_set_style_text_color(self->status_label, lv_palette_main(LV_PALETTE_RED), 0);
-        lv_label_set_text(self->status_label, fmt::format("Revert failed:\n{}", output).c_str());
+        lv_label_set_text(self->status_label, fmt::format("Falha ao voltar ao automático:\n{}", output).c_str());
       }
     });
   }, LV_EVENT_VALUE_CHANGED, this);
@@ -513,7 +513,7 @@ void StaticIpPanel::handle_save_btn(lv_event_t *e) {
 
   if (!ip_ok || !netmask_ok || !gateway_ok || !dns_ok) {
     lv_obj_set_style_text_color(status_label, lv_palette_main(LV_PALETTE_RED), 0);
-    lv_label_set_text(status_label, "Enter a value 0-255 in every highlighted box.");
+    lv_label_set_text(status_label, "Digite um número de 0 a 255 nas caixas em vermelho.");
     return;
   }
 
@@ -530,15 +530,15 @@ void StaticIpPanel::handle_save_btn(lv_event_t *e) {
   }
 
   std::string args = fmt::format("set {} {} {} {} {}", shell_quote(ssid), ip, netmask, gateway, dns);
-  run_backend_async(args, "Applying static IP...", [this](int rc, const std::string &output) {
+  run_backend_async(args, "Aplicando o IP fixo...", [this](int rc, const std::string &output) {
     if (rc == 0) {
       lv_obj_set_style_text_color(status_label, lv_palette_main(LV_PALETTE_GREEN), 0);
-      lv_label_set_text(status_label, "Static IP applied.");
+      lv_label_set_text(status_label, "IP fixo aplicado.");
       has_static_config = true;
       update_revert_visibility();
     } else {
       lv_obj_set_style_text_color(status_label, lv_palette_main(LV_PALETTE_RED), 0);
-      lv_label_set_text(status_label, fmt::format("Failed to apply:\n{}", output).c_str());
+      lv_label_set_text(status_label, fmt::format("Falha ao aplicar:\n{}", output).c_str());
     }
   });
 }

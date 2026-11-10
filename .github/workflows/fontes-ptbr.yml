@@ -1,0 +1,33 @@
+name: gerar fontes pt-BR
+
+# Gera as fontes com acentos (fonts_ptbr/*.c) na nuvem, para quando não der para
+# rodar o Node no computador. Só roda quando alguém aciona à mão (aba Actions ->
+# "gerar fontes pt-BR" -> Run workflow, ou: gh workflow run fontes-ptbr.yml).
+# O resultado fica para baixar como "fonts_ptbr" (ou: gh run download -n fonts_ptbr).
+# Depois é só pôr os 6 arquivos em fonts_ptbr/ e salvar no Git.
+# Detalhes: traducao/FONTES.md
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fontes:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v6
+
+    # Só o LVGL é preciso (Montserrat, FontAwesome e as fontes embutidas para comparar).
+    - name: baixar o submódulo lvgl
+      run: git submodule update --init lvgl
+
+    - name: gerar e conferir as fontes
+      run: bash scripts/gerar-fontes-ptbr.sh
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: fonts_ptbr
+        path: fonts_ptbr/
+        if-no-files-found: error

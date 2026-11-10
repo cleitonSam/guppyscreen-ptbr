@@ -15,7 +15,7 @@ FanPanel::FanPanel(KWebSocketClient &websocket_client, std::mutex &lock)
   , ws(websocket_client)
   , fanpanel_cont(lv_obj_create(lv_scr_act()))
   , fans_cont(lv_obj_create(fanpanel_cont))
-  , back_btn(fanpanel_cont, &back, "Back", &FanPanel::_handle_callback, this)
+  , back_btn(fanpanel_cont, &back, "Voltar", &FanPanel::_handle_callback, this)
 {
   lv_obj_set_style_pad_all(fanpanel_cont, 0, 0);
 
@@ -79,6 +79,11 @@ void FanPanel::create_fans(json &f) {
     std::string key = fan.key();
     spdlog::trace("create fan {}, {}", f.dump(), fan.value().dump());
     std::string display_name = fan.value()["display_name"].template get<std::string>();
+    // pt-BR: nomes padrão antigos (em inglês) gravados no guppyconfig.json.
+    // Traduz só o que aparece; o arquivo fica igual.
+    if (display_name == "Toolhead Fan" || display_name == "Part Cooling Fan") display_name = "Ventoinha da peça";
+    else if (display_name == "Back Fan") display_name = "Ventoinha traseira";
+    else if (display_name == "Side Fan") display_name = "Ventoinha lateral";
 
     lv_event_cb_t fan_cb = &FanPanel::_handle_fan_update;
     if (key == "fan") {
@@ -87,8 +92,8 @@ void FanPanel::create_fans(json &f) {
       // generic_fan, controller_fan, etc.
       fan_cb = &FanPanel::_handle_fan_update_generic;
     }
-    auto fptr = std::make_shared<SliderContainer>(fans_cont, display_name.c_str(), &cancel, "Off",
-      &fan_on, "Max", fan_cb, this);
+    auto fptr = std::make_shared<SliderContainer>(fans_cont, display_name.c_str(), &cancel, "Desligar",
+      &fan_on, "Máximo", fan_cb, this);
     fans.insert({key, fptr});
     // lv_obj_set_grid_cell(fptr->get_container(), LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, rowidx++, 1);
   }
@@ -184,7 +189,7 @@ std::string FanPanel::fmt_ro_value(const std::string &key) {
     return "-";
   }
   if (is_binary_fan(key)) {
-    return v > 0.0 ? "On" : "Off";
+    return v > 0.0 ? "Ligada" : "Desligada";
   }
   std::string out = fmt::format("{}%", (int)std::lround(v * 100.0));
   auto rpm = s->get_data(json::json_pointer("/printer_state/" + key + "/rpm"));

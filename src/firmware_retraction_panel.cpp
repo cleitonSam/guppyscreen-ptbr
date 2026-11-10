@@ -16,15 +16,15 @@ FirmwareRetractionPanel::FirmwareRetractionPanel(KWebSocketClient &websocket_cli
   , reset_all_btn(lv_btn_create(bottom_row))
   , back_btn(lv_btn_create(bottom_row))
   , empty_back_btn(lv_btn_create(empty_cont))
-  , length_step_selector(step_row, "Length step (mm)", {"0.05", "0.10", "0.25", ""}, 1,
+  , length_step_selector(step_row, "Passo do comprimento (mm)", {"0.05", "0.10", "0.25", ""}, 1,
       &FirmwareRetractionPanel::_handle_callback, this)
-  , speed_step_selector(step_row, "Speed step (mm/s)", {"1", "5", "10", ""}, 1,
+  , speed_step_selector(step_row, "Passo da velocidade (mm/s)", {"1", "5", "10", ""}, 1,
       &FirmwareRetractionPanel::_handle_callback, this)
 {
-  fields[0] = {"Retract length",   "RETRACT_LENGTH",         "retract_length",         "mm",   false, nullptr, nullptr, nullptr};
-  fields[1] = {"Retract speed",    "RETRACT_SPEED",          "retract_speed",          "mm/s", true,  nullptr, nullptr, nullptr};
-  fields[2] = {"Unretract extra",  "UNRETRACT_EXTRA_LENGTH", "unretract_extra_length", "mm",   false, nullptr, nullptr, nullptr};
-  fields[3] = {"Unretract speed",  "UNRETRACT_SPEED",        "unretract_speed",        "mm/s", true,  nullptr, nullptr, nullptr};
+  fields[0] = {"Compr. da retração",     "RETRACT_LENGTH",         "retract_length",         "mm",   false, nullptr, nullptr, nullptr};
+  fields[1] = {"Velocidade da retração", "RETRACT_SPEED",          "retract_speed",          "mm/s", true,  nullptr, nullptr, nullptr};
+  fields[2] = {"Extra ao voltar",        "UNRETRACT_EXTRA_LENGTH", "unretract_extra_length", "mm",   false, nullptr, nullptr, nullptr};
+  fields[3] = {"Velocidade ao voltar",   "UNRETRACT_SPEED",        "unretract_speed",        "mm/s", true,  nullptr, nullptr, nullptr};
 
   lv_obj_move_background(panel_cont);
   lv_obj_set_size(panel_cont, LV_PCT(100), LV_PCT(100));
@@ -76,14 +76,14 @@ FirmwareRetractionPanel::FirmwareRetractionPanel(KWebSocketClient &websocket_cli
   lv_obj_set_height(reset_all_btn, 36);
   lv_obj_set_style_bg_color(reset_all_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *ra_lbl = lv_label_create(reset_all_btn);
-  lv_label_set_text(ra_lbl, LV_SYMBOL_REFRESH "  Reset all");
+  lv_label_set_text(ra_lbl, LV_SYMBOL_REFRESH "  Restaurar tudo");
   lv_obj_center(ra_lbl);
   lv_obj_add_event_cb(reset_all_btn, &FirmwareRetractionPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
   lv_obj_set_flex_grow(back_btn, 1);
   lv_obj_set_height(back_btn, 36);
   lv_obj_t *bk_lbl = lv_label_create(back_btn);
-  lv_label_set_text(bk_lbl, LV_SYMBOL_LEFT "  Back");
+  lv_label_set_text(bk_lbl, LV_SYMBOL_LEFT "  Voltar");
   lv_obj_center(bk_lbl);
   lv_obj_add_event_cb(back_btn, &FirmwareRetractionPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -95,15 +95,15 @@ FirmwareRetractionPanel::FirmwareRetractionPanel(KWebSocketClient &websocket_cli
   lv_obj_set_style_pad_row(empty_cont, 16, 0);
   lv_obj_t *empty_lbl = lv_label_create(empty_cont);
   lv_label_set_text(empty_lbl,
-    "Firmware retraction is not enabled.\n\n"
-    "Add a [firmware_retraction] section to\n"
-    "printer.cfg and restart Klipper.");
+    "A retração pelo firmware não está ativada.\n\n"
+    "Adicione a seção [firmware_retraction]\n"
+    "ao printer.cfg e reinicie o Klipper.");
   lv_obj_set_style_text_align(empty_lbl, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(empty_lbl, &lv_font_montserrat_16, 0);
   lv_obj_set_height(empty_back_btn, 40);
   lv_obj_set_width(empty_back_btn, 140);
   lv_obj_t *eb_lbl = lv_label_create(empty_back_btn);
-  lv_label_set_text(eb_lbl, LV_SYMBOL_LEFT "  Back");
+  lv_label_set_text(eb_lbl, LV_SYMBOL_LEFT "  Voltar");
   lv_obj_center(eb_lbl);
   lv_obj_add_event_cb(empty_back_btn, &FirmwareRetractionPanel::_handle_callback, LV_EVENT_CLICKED, this);
   lv_obj_add_flag(empty_cont, LV_OBJ_FLAG_HIDDEN);

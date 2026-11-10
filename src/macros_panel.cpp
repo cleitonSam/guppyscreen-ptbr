@@ -7,7 +7,7 @@
 LV_IMG_DECLARE(arrow_up);
 LV_IMG_DECLARE(arrow_down);
 
-static const char *VIEW_MAP[] = {"Favorites", "All Macros", ""};
+static const char *VIEW_MAP[] = {"Favoritos", "Todas as macros", ""};
 
 MacrosPanel::MacrosPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent,
 			 std::function<void()> on_macro_run)
@@ -78,7 +78,7 @@ MacrosPanel::MacrosPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent,
 
   // floated (ignored by the list's flex layout) so it can be centred
   lv_label_set_text(empty_label,
-		    "No favorites yet.\nOpen All Macros and tap the star to add.");
+		    "Nenhum favorito ainda.\nEm Todas as macros, toque na estrela para adicionar.");
   lv_obj_add_flag(empty_label, LV_OBJ_FLAG_IGNORE_LAYOUT);
   lv_obj_set_width(empty_label, LV_PCT(90));
   lv_obj_set_style_text_align(empty_label, LV_TEXT_ALIGN_CENTER, 0);

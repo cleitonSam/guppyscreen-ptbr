@@ -60,11 +60,11 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
   , profile_table(lv_table_create(profile_cont))
   , profile_info(lv_table_create(profile_cont))
   , controls_cont(lv_obj_create(cont))
-  , save_btn(controls_cont, &sd_img, "Save Profile", &BedMeshPanel::_handle_callback, this)
-  , clear_btn(controls_cont, &delete_img, "Clear Profile", &BedMeshPanel::_handle_callback, this)
-  , calibrate_btn(controls_cont, &bedmesh_img, "Calibrate", &BedMeshPanel::_handle_callback, this)
-  , toggle_view_btn(controls_cont, &chart_img, "3D View", &BedMeshPanel::_handle_toggle_view, this)
-  , back_btn(controls_cont, &back, "Back", &BedMeshPanel::_handle_callback, this)
+  , save_btn(controls_cont, &sd_img, "Salvar perfil", &BedMeshPanel::_handle_callback, this)
+  , clear_btn(controls_cont, &delete_img, "Limpar malha", &BedMeshPanel::_handle_callback, this)
+  , calibrate_btn(controls_cont, &bedmesh_img, "Calibrar", &BedMeshPanel::_handle_callback, this)
+  , toggle_view_btn(controls_cont, &chart_img, "Vista 3D", &BedMeshPanel::_handle_toggle_view, this)
+  , back_btn(controls_cont, &back, "Voltar", &BedMeshPanel::_handle_callback, this)
   , msgbox(lv_obj_create(prompt))
   , input(lv_textarea_create(msgbox))
   , kb(lv_keyboard_create(prompt))
@@ -303,16 +303,16 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
 
   label = lv_label_create(msgbox);
   lv_obj_set_width(label, LV_PCT(100));
-  lv_label_set_text(label, "Saving the profile will restart the printer.");
+  lv_label_set_text(label, "Salvar o perfil reinicia o Klipper.");
 
   lv_obj_t *prompt_save_btn = lv_btn_create(msgbox);
   lv_obj_t *prompt_cancel_btn = lv_btn_create(msgbox);
 
   label = lv_label_create(prompt_save_btn);
-  lv_label_set_text(label, "Save");
+  lv_label_set_text(label, "Salvar");
 
   label = lv_label_create(prompt_cancel_btn);
-  lv_label_set_text(label, "Cancel");
+  lv_label_set_text(label, "Cancelar");
   lv_obj_center(label);
 
   lv_obj_add_event_cb(prompt_save_btn, &BedMeshPanel::_handle_prompt_save, LV_EVENT_CLICKED, this);
@@ -514,14 +514,14 @@ void BedMeshPanel::refresh_profile_info(std::string profile) {
     uint32_t rowidx = 0;
     auto &v = mesh_params["/algo"_json_pointer];
     if (!v.is_null()) {
-      lv_table_set_cell_value(profile_info, rowidx, 0, "Algorithm");
+      lv_table_set_cell_value(profile_info, rowidx, 0, "Algoritmo");
       lv_table_set_cell_value(profile_info, rowidx, 1, v.template get<std::string>().c_str());
       rowidx++;
     }
 
     v = mesh_params["/tension"_json_pointer];
     if (!v.is_null()) {
-      lv_table_set_cell_value(profile_info, rowidx, 0, "Tension");
+      lv_table_set_cell_value(profile_info, rowidx, 0, "Tensão");
       lv_table_set_cell_value(profile_info, rowidx, 1, fmt::format("{}", v.template get<double>()).c_str());
       rowidx++;
     }
@@ -539,7 +539,7 @@ void BedMeshPanel::refresh_profile_info(std::string profile) {
       mesh_max_x = v.template get<double>();
     }
 
-    lv_table_set_cell_value(profile_info, rowidx, 0, "X (min, max, count, pps)");
+    lv_table_set_cell_value(profile_info, rowidx, 0, "X (mín., máx., pontos, pps)");
     lv_table_set_cell_value(profile_info, rowidx, 1, fmt::format("{}", fmt::join(xvalues, ", ")).c_str());
     rowidx++;
 
@@ -556,7 +556,7 @@ void BedMeshPanel::refresh_profile_info(std::string profile) {
       mesh_max_y = v.template get<double>();
     }
 
-    lv_table_set_cell_value(profile_info, rowidx, 0, "Y (min, max, count, pps)");
+    lv_table_set_cell_value(profile_info, rowidx, 0, "Y (mín., máx., pontos, pps)");
     lv_table_set_cell_value(profile_info, rowidx, 1, fmt::format("{}", fmt::join(yvalues, ", ")).c_str());
     rowidx++;
   }
@@ -977,10 +977,10 @@ void BedMeshPanel::draw_axes_and_labels(const std::vector<std::vector<BedMeshPan
 
   // Add mesh info (left-justified) and Z-range info (right-justified) on same line using smaller font
   char mesh_info[64];
-  snprintf(mesh_info, sizeof(mesh_info), "Mesh: %dx%d", cols, rows);
+  snprintf(mesh_info, sizeof(mesh_info), "Malha: %dx%d", cols, rows);
 
   char z_info[64];
-  snprintf(z_info, sizeof(z_info), "Z: %.3f to %.3f", min_z, max_z);
+  snprintf(z_info, sizeof(z_info), "Z: %.3f a %.3f", min_z, max_z);
 
   // Use smaller font for both labels
   lv_draw_label_dsc_t small_label_dsc;
@@ -1004,7 +1004,7 @@ void BedMeshPanel::draw_axes_and_labels(const std::vector<std::vector<BedMeshPan
   // Debug info for simulation mode: show current viewing angles at top
   char debug_info[128];
   // The Y rotation is fixed at 0° since we only control X (tilt) and Z (spin) rotations
-  snprintf(debug_info, sizeof(debug_info), "View: X=%.1f° Y=0.0° Z=%.1f°",
+  snprintf(debug_info, sizeof(debug_info), "Vista: X=%.1f° Y=0.0° Z=%.1f°",
            current_x_angle, (double)current_view_angle);
 
   lv_draw_label_dsc_t debug_label_dsc;

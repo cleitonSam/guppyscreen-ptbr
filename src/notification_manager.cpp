@@ -127,7 +127,7 @@ void NotificationManager::process(json &st) {
       if (ns == "shutdown" || ns == "error") {
         std::string msg = st["webhooks"]["state_message"].is_string()
           ? st["webhooks"]["state_message"].template get<std::string>() : "";
-        push(msg.empty() ? ("Klipper " + ns) : msg, ERROR);
+        push(msg.empty() ? ("O Klipper parou (estado '" + ns + "').") : msg, ERROR);
       }
       last_webhooks_state = ns;
     }

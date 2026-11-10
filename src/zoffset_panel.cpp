@@ -13,7 +13,7 @@ ZOffsetPanel::ZOffsetPanel(KWebSocketClient &websocket_client, std::mutex &l)
   , reset_btn(lv_btn_create(panel_cont))
   , auto_save_hint(lv_label_create(panel_cont))
   , back_btn(lv_btn_create(panel_cont))
-  , step_selector(panel_cont, "Step (mm)", {"0.001", "0.005", "0.01", "0.025", "0.05", ""}, 2,
+  , step_selector(panel_cont, "Passo (mm)", {"0.001", "0.005", "0.01", "0.025", "0.05", ""}, 2,
       &ZOffsetPanel::_handle_callback, this)
 {
   lv_obj_move_background(panel_cont);
@@ -38,8 +38,8 @@ ZOffsetPanel::ZOffsetPanel(KWebSocketClient &websocket_client, std::mutex &l)
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
     lv_obj_center(lbl);
   };
-  style_dir_btn(up_btn, LV_SYMBOL_UP "  Raise  (farther from bed)");
-  style_dir_btn(down_btn, LV_SYMBOL_DOWN "  Lower  (closer to bed)");
+  style_dir_btn(up_btn, LV_SYMBOL_UP "  Subir  (mais longe da mesa)");
+  style_dir_btn(down_btn, LV_SYMBOL_DOWN "  Descer  (mais perto da mesa)");
   lv_obj_add_event_cb(up_btn, &ZOffsetPanel::_handle_callback, LV_EVENT_CLICKED, this);
   lv_obj_add_event_cb(down_btn, &ZOffsetPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -47,7 +47,7 @@ ZOffsetPanel::ZOffsetPanel(KWebSocketClient &websocket_client, std::mutex &l)
 
   // the Helper Script's Save Z-Offset macros persist every adjustment to
   // variables.cfg automatically, so there is no Save button - just say so.
-  lv_label_set_text(auto_save_hint, LV_SYMBOL_OK "  Adjustments are saved automatically");
+  lv_label_set_text(auto_save_hint, LV_SYMBOL_OK "  Os ajustes são salvos automaticamente");
   lv_obj_set_style_text_font(auto_save_hint, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(auto_save_hint, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
 
@@ -74,8 +74,8 @@ ZOffsetPanel::ZOffsetPanel(KWebSocketClient &websocket_client, std::mutex &l)
     lv_label_set_text(lbl, txt);
     lv_obj_center(lbl);
   };
-  style_action_btn(reset_btn, LV_SYMBOL_REFRESH "  Reset", lv_palette_darken(LV_PALETTE_GREY, 2));
-  style_action_btn(back_btn, LV_SYMBOL_LEFT "  Back", lv_palette_darken(LV_PALETTE_GREY, 2));
+  style_action_btn(reset_btn, LV_SYMBOL_REFRESH "  Zerar", lv_palette_darken(LV_PALETTE_GREY, 2));
+  style_action_btn(back_btn, LV_SYMBOL_LEFT "  Voltar", lv_palette_darken(LV_PALETTE_GREY, 2));
   lv_obj_add_event_cb(reset_btn, &ZOffsetPanel::_handle_callback, LV_EVENT_CLICKED, this);
   lv_obj_add_event_cb(back_btn, &ZOffsetPanel::_handle_callback, LV_EVENT_CLICKED, this);
 

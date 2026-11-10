@@ -1,4 +1,7 @@
 name: Publish wiki
+# Desligado no repositório da versão em português (cleitonSam/guppyscreen-ptbr):
+# a pasta wiki/ é o manual em inglês do OpenKE original, e o repositório do
+# dono não tem a aba Wiki preparada (a ação falharia). Só roda no original.
 on:
   push:
     branches: [main]
@@ -7,6 +10,7 @@ permissions:
   contents: write
 jobs:
   publish:
+    if: github.repository == 'coreflake1/guppyscreen'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

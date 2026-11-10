@@ -20,25 +20,25 @@ HomingPanel::HomingPanel(KWebSocketClient &websocket_client, std::mutex &lock)
   : NotifyConsumer(lock)
   , ws(websocket_client)
   , homing_cont(lv_obj_create(lv_scr_act()))
-  , home_all_btn(homing_cont, &home, "Home All", &HomingPanel::_handle_callback, this)
-  , home_xy_btn(homing_cont, &home, "Home XY", &HomingPanel::_handle_callback, this)
+  , home_all_btn(homing_cont, &home, "Origem XYZ", &HomingPanel::_handle_callback, this)
+  , home_xy_btn(homing_cont, &home, "Origem XY", &HomingPanel::_handle_callback, this)
   , y_up_btn(homing_cont, &arrow_up, "Y+", &HomingPanel::_handle_callback, this)
   , y_down_btn(homing_cont, &arrow_down, "Y-", &HomingPanel::_handle_callback, this)
   , x_up_btn(homing_cont, &arrow_right, "X+", &HomingPanel::_handle_callback, this)
   , x_down_btn(homing_cont, &arrow_left, "X-", &HomingPanel::_handle_callback, this)
   , z_up_btn(homing_cont, &z_closer, "Z+", &HomingPanel::_handle_callback, this)
   , z_down_btn(homing_cont, &z_farther, "Z-", &HomingPanel::_handle_callback, this)
-  , emergency_btn(homing_cont, &emergency, "Stop", &HomingPanel::_handle_callback, this,
-    "Do you want to emergency stop?",
+  , emergency_btn(homing_cont, &emergency, "Parar tudo", &HomingPanel::_handle_callback, this,
+    "Fazer parada de emergência?",
     [&websocket_client]() {
       spdlog::debug("emergency stop pressed");
       websocket_client.send_jsonrpc("printer.emergency_stop");
     })
-  , motoroff_btn(homing_cont, &motor_off_img, "Motor Off", &HomingPanel::_handle_callback, this)
-  , back_btn(homing_cont, &back, "Back", &HomingPanel::_handle_callback, this)
-  , speed_selector(homing_cont, "Move Speed (mm/s)",
+  , motoroff_btn(homing_cont, &motor_off_img, "Soltar motores", &HomingPanel::_handle_callback, this)
+  , back_btn(homing_cont, &back, "Voltar", &HomingPanel::_handle_callback, this)
+  , speed_selector(homing_cont, "Velocidade (mm/s)",
     {"10", "50", "100", "200", "400", "600", ""}, 2, 50, 10, &HomingPanel::_handle_speed_selector_cb, this)
-  , distance_selector(homing_cont, "Move Distance (mm)",
+  , distance_selector(homing_cont, "Distância (mm)",
     {"0.1", "1", "5", "10", "50", "100", ""}, 3, 50, 10, &HomingPanel::_handle_selector_cb, this)
 {
   lv_obj_clear_flag(homing_cont, LV_OBJ_FLAG_SCROLLABLE);

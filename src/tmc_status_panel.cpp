@@ -10,7 +10,7 @@ TmcStatusPanel::TmcStatusPanel(KWebSocketClient &c,
   , cont(lv_obj_create(lv_scr_act()))
   , top(lv_obj_create(cont))
   , toggle(lv_switch_create(top))
-  , back_btn(cont, &back, "Back", [](lv_event_t *e) {
+  , back_btn(cont, &back, "Voltar", [](lv_event_t *e) {
     TmcStatusPanel *panel = (TmcStatusPanel*)e->user_data;
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
       panel->background();
@@ -25,9 +25,9 @@ TmcStatusPanel::TmcStatusPanel(KWebSocketClient &c,
 
   lv_obj_set_size(top, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_t *l = lv_label_create(top);
-  lv_label_set_text(l, "TMC Metrics is experimental and disabled by default. "
-		    "Turn it on as needed. For in-depth detail, refer to the TMC "
-		    "driver datasheet.");
+  lv_label_set_text(l, "As medições TMC são experimentais e vêm desligadas. "
+		    "Ligue quando precisar. Para mais detalhes, veja a folha de "
+		    "dados (datasheet) do driver TMC.");
   lv_obj_set_width(l, LV_PCT(70));
   lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
 

@@ -49,11 +49,11 @@ MainPanel::MainPanel(KWebSocketClient &websocket,
   , spoolman_panel(sm)
   , temp_cont(lv_obj_create(main_cont))
   , temp_chart(lv_chart_create(main_cont))
-  , homing_btn(main_cont, &move, "Homing", &MainPanel::_handle_homing_cb, this)
-  , extrude_btn(main_cont, &filament_img, "Extrude", &MainPanel::_handle_extrude_cb, this)
-  , action_btn(main_cont, &fan, "Fans", &MainPanel::_handle_fanpanel_cb, this)
-  , led_btn(main_cont, &light_img, "LED", &MainPanel::_handle_ledpanel_cb, this)
-  , print_btn(main_cont, &print, "Print", &MainPanel::_handle_print_cb, this)
+  , homing_btn(main_cont, &move, "Mover", &MainPanel::_handle_homing_cb, this)
+  , extrude_btn(main_cont, &filament_img, "Filamento", &MainPanel::_handle_extrude_cb, this)
+  , action_btn(main_cont, &fan, "Ventoinhas", &MainPanel::_handle_fanpanel_cb, this)
+  , led_btn(main_cont, &light_img, "Luz", &MainPanel::_handle_ledpanel_cb, this)
+  , print_btn(main_cont, &print, "Imprimir", &MainPanel::_handle_print_cb, this)
 {
   lv_style_init(&style);
   lv_style_set_img_recolor_opa(&style, LV_OPA_30);
@@ -353,6 +353,12 @@ void MainPanel::create_sensors(json &temp_sensors) {
     }
 
     std::string display_name = sensor.value()["display_name"].template get<std::string>();
+    // pt-BR: o guppyconfig.json da impressora guarda os nomes padrão em inglês.
+    // Traduz só o que aparece; o arquivo e as comparações ("Chamber") ficam iguais.
+    if (display_name == "Extruder") display_name = "Bico";
+    else if (display_name == "Bed") display_name = "Mesa";
+    else if (display_name == "MCU Temp") display_name = "Placa-mãe";
+    else if (display_name == "Chamber") display_name = "Câmara";
 
     SensorType type = SensorType::Heater;
     auto space_idx = key.find(' ');

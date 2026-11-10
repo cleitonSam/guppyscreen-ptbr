@@ -41,7 +41,7 @@ class ZOffsetPanel : public NotifyConsumer {
   lv_obj_t *up_btn;            // raise — farther from bed / less squish
   lv_obj_t *down_btn;          // lower — closer to bed / more squish
   lv_obj_t *reset_btn;
-  lv_obj_t *auto_save_hint;    // "Adjustments are saved automatically"
+  lv_obj_t *auto_save_hint;    // "Os ajustes são salvos automaticamente"
   lv_obj_t *back_btn;
   Selector step_selector;
 };

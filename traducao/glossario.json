@@ -1,0 +1,1257 @@
+[
+ {
+  "en": "Back",
+  "pt": "Voltar",
+  "obs": "Igual ao Marlin e ao Orca. [30 px, fonte 10]"
+ },
+ {
+  "en": "Cancel",
+  "pt": "Cancelar",
+  "obs": "Mainsail. [45 px, fonte 10]"
+ },
+ {
+  "en": "Confirm",
+  "pt": "Confirmar",
+  "obs": "Mainsail. [52 px, fonte 10]"
+ },
+ {
+  "en": "Continue",
+  "pt": "Continuar",
+  "obs": "[51 px, fonte 10]"
+ },
+ {
+  "en": "OK",
+  "pt": "OK",
+  "obs": ""
+ },
+ {
+  "en": "Yes / No",
+  "pt": "Sim / Não",
+  "obs": "Mainsail."
+ },
+ {
+  "en": "Close",
+  "pt": "Fechar",
+  "obs": "Mainsail. [35 px, fonte 10]"
+ },
+ {
+  "en": "Save",
+  "pt": "Salvar",
+  "obs": "Mainsail. [30 px, fonte 10]"
+ },
+ {
+  "en": "Save & Restart / Save/Restart",
+  "pt": "Salvar e reiniciar",
+  "obs": "Mainsail (\"Salvar e Reiniciar\"; aqui só a 1ª maiúscula). Nunca usar \"&\". Em 1 linha mede 84 px: cabe nos botões largos (torção do eixo X). No botão de 62 px (Autoajuste dos motores), 2 linhas: \"Salvar e\\nreiniciar\" (39 e 42 px)."
+ },
+ {
+  "en": "Apply / Apply & Save",
+  "pt": "Aplicar / Aplicar e salvar",
+  "obs": "Mainsail e Orca. [36 px / 77 px, fonte 10]"
+ },
+ {
+  "en": "Accept",
+  "pt": "Aceitar",
+  "obs": "Mainsail (Sonda manual, Parafusos da mesa). Na torção do eixo X o dono toca 5 vezes. [36 px, fonte 10]"
+ },
+ {
+  "en": "Abort",
+  "pt": "Abortar",
+  "obs": "Mainsail, Orca e KlipperScreen. Calibration aborted = Calibração abortada. [38 px, fonte 10]"
+ },
+ {
+  "en": "Start / Start Calibration",
+  "pt": "Iniciar / Iniciar calibração",
+  "obs": ""
+ },
+ {
+  "en": "Stop (parar uma ação)",
+  "pt": "Parar",
+  "obs": "Ex.: parar de carregar filamento. \"Press Stop to halt.\" = \"Toque em Parar para interromper.\" [27 px, fonte 10]"
+ },
+ {
+  "en": "Stop (botão vermelho de parada de emergência)",
+  "pt": "Parar tudo",
+  "obs": "O botão faz parada de emergência (M112). \"Emergência\" mede 63 px e seria cortada no meio no botão de 62 px. A pergunta usa o termo completo: \"Fazer parada de emergência?\" [54 px, fonte 10]"
+ },
+ {
+  "en": "Emergency stop",
+  "pt": "Parada de emergência",
+  "obs": "Mainsail e KlipperScreen; termo que o dono já viu. Prompt: \"Do you want to emergency stop?\" = \"Fazer parada de emergência?\""
+ },
+ {
+  "en": "Done",
+  "pt": "Concluir (no resumo da impressão: OK)",
+  "obs": "Fim de assistente (calibração da extrusora). Na torção do eixo X o botão com seta ← só fecha a tela sem salvar: lá usar \"Voltar\". No resumo de fim de impressão o botão só fecha o aviso: lá ficou \"OK\". [43 px, fonte 10]"
+ },
+ {
+  "en": "Discard",
+  "pt": "Descartar",
+  "obs": "\"Discard, Keep Previous\" = \"Descartar e manter o anterior\"; \"Discard Both, Keep Original\" = \"Descartar os dois e manter o original\". [49 px, fonte 10]"
+ },
+ {
+  "en": "Reset (painel Limites)",
+  "pt": "Restaurar",
+  "obs": "Volta o limite ao valor do printer.cfg. [49 px, fonte 10]"
+ },
+ {
+  "en": "Reset (configurações, de forma geral)",
+  "pt": "Redefinir",
+  "obs": "Padrão Microsoft pt-BR. \"Reset Options\" = \"Opções de redefinição\". [47 px, fonte 10]"
+ },
+ {
+  "en": "Reload",
+  "pt": "Recarregar",
+  "obs": "Spoolman e lista de arquivos. [56 px, fonte 10]"
+ },
+ {
+  "en": "Refresh",
+  "pt": "Atualizar",
+  "obs": "[45 px, fonte 10]"
+ },
+ {
+  "en": "Remove",
+  "pt": "Remover (no Wi-Fi: Esquecer)",
+  "obs": "[45 px, fonte 10]. No Wi-Fi o botão apaga a rede salva: ficou \"Esquecer\", com a pergunta \"Esquecer a rede ...?\" (mesmo termo de Forget)."
+ },
+ {
+  "en": "Delete",
+  "pt": "Excluir",
+  "obs": "Mainsail. Não usar \"Deletar\". [35 px, fonte 10]"
+ },
+ {
+  "en": "Clear",
+  "pt": "Limpar",
+  "obs": "Mainsail. [37 px, fonte 10]"
+ },
+ {
+  "en": "Forget / Forget This Network",
+  "pt": "Esquecer / Esquecer esta rede",
+  "obs": "KlipperScreen."
+ },
+ {
+  "en": "Switch (trocar de impressora)",
+  "pt": "Trocar",
+  "obs": "[32 px, fonte 10]"
+ },
+ {
+  "en": "Retry",
+  "pt": "Tentar de novo",
+  "obs": ""
+ },
+ {
+  "en": "Verify Again",
+  "pt": "Conferir de novo",
+  "obs": ""
+ },
+ {
+  "en": "Dismiss",
+  "pt": "Ignorar",
+  "obs": "Só esconde a oferta de retomar após queda de energia. [37 px, fonte 10]"
+ },
+ {
+  "en": "Calibrate",
+  "pt": "Calibrar",
+  "obs": "Mainsail. [40 px, fonte 10]"
+ },
+ {
+  "en": "Next",
+  "pt": "Avançar",
+  "obs": "Não aparece hoje no código; padrão Windows/Android pt-BR. [41 px, fonte 10]"
+ },
+ {
+  "en": "Home (botão do aviso de origem)",
+  "pt": "Ir à origem",
+  "obs": "Com crase. [56 px, fonte 10]"
+ },
+ {
+  "en": "Send",
+  "pt": "Enviar",
+  "obs": "Console. [33 px, fonte 10]"
+ },
+ {
+  "en": "(aba com ícone de casa)",
+  "pt": "Início",
+  "obs": "A aba não tem texto; nome para usar nas instruções ao dono."
+ },
+ {
+  "en": "Macros",
+  "pt": "Macros",
+  "obs": "Mainsail. [37 px, fonte 10]"
+ },
+ {
+  "en": "Console",
+  "pt": "Console",
+  "obs": "Mainsail. [40 px, fonte 10]"
+ },
+ {
+  "en": "(aba \"Tune\", só ícone)",
+  "pt": "Ajustes",
+  "obs": "Sem texto na tela; nome para instruções. Tem: Malha da mesa, Ajuste fino, Limites, Medições TMC, Energia, Retração, Altura do bico, Calibração."
+ },
+ {
+  "en": "(aba com ícone de engrenagem)",
+  "pt": "Configurações",
+  "obs": "Sem texto na tela; nome para instruções. \"Configurações\" mede 74 px: não usar em botão de 62 px."
+ },
+ {
+  "en": "Homing (botão da tela inicial)",
+  "pt": "Mover",
+  "obs": "Abre a tela com origem, setas X/Y/Z, soltar motores e parada. Igual ao KlipperScreen. [31 px, fonte 10]"
+ },
+ {
+  "en": "Extrude (botão da tela inicial)",
+  "pt": "Filamento",
+  "obs": "Abre a tela de carregar/descarregar/extrudar. Dentro dela, o botão Extrude é \"Extrudar\". [52 px, fonte 10]"
+ },
+ {
+  "en": "Fans",
+  "pt": "Ventoinhas",
+  "obs": "[58 px, fonte 10]"
+ },
+ {
+  "en": "LED",
+  "pt": "Luz",
+  "obs": "Marlin pt-BR. [18 px, fonte 10]"
+ },
+ {
+  "en": "Print",
+  "pt": "Imprimir",
+  "obs": "Mainsail. [46 px, fonte 10]"
+ },
+ {
+  "en": "Status",
+  "pt": "Status",
+  "obs": "Mainsail. [32 px, fonte 10]"
+ },
+ {
+  "en": "Fine Tune",
+  "pt": "Ajuste fino",
+  "obs": "KlipperScreen. [55 px, fonte 10]"
+ },
+ {
+  "en": "Limits",
+  "pt": "Limites",
+  "obs": "[38 px, fonte 10]"
+ },
+ {
+  "en": "TMC Metrics",
+  "pt": "Medições TMC",
+  "obs": "Cabe em 1 linha na aba Ajustes (~90 px). [75 px, fonte 10]"
+ },
+ {
+  "en": "Power Settings",
+  "pt": "Energia",
+  "obs": "Mainsail: \"Dispositivos de energia\". [40 px, fonte 10]"
+ },
+ {
+  "en": "Retraction",
+  "pt": "Retração",
+  "obs": "Mainsail e Orca. [45 px, fonte 10]"
+ },
+ {
+  "en": "Firmware Retraction",
+  "pt": "Retração pelo firmware",
+  "obs": "Fluidd."
+ },
+ {
+  "en": "Z Offset / Z-Offset",
+  "pt": "Altura do bico",
+  "obs": "Termo que o dono conhece. No Mainsail aparece \"Z-Offset\": em título pode ir \"Altura do bico (Z-Offset)\". A chave técnica z_offset fica. [72 px, fonte 10]"
+ },
+ {
+  "en": "Calibration",
+  "pt": "Calibração",
+  "obs": "Mainsail e Orca (a Creality usa \"Calibragem\"). [54 px, fonte 10]"
+ },
+ {
+  "en": "System",
+  "pt": "Sistema",
+  "obs": "[41 px, fonte 10]"
+ },
+ {
+  "en": "Network",
+  "pt": "Rede",
+  "obs": "[26 px, fonte 10]"
+ },
+ {
+  "en": "WIFI / wifi",
+  "pt": "Wi-Fi",
+  "obs": "Grafia oficial. [27 px, fonte 10]"
+ },
+ {
+  "en": "Printers",
+  "pt": "Impressoras",
+  "obs": "No limite de 62 px. [62 px, fonte 10]"
+ },
+ {
+  "en": "Objects",
+  "pt": "Objetos",
+  "obs": "[39 px, fonte 10]"
+ },
+ {
+  "en": "Exclude Object / Exclude",
+  "pt": "Excluir objeto / Excluir",
+  "obs": "Mainsail e Orca. Confirmação: \"Excluir \\\"{}\\\" da impressão?\\nIsso não pode ser desfeito.\""
+ },
+ {
+  "en": "Favorites",
+  "pt": "Favoritos",
+  "obs": "Atenção: texto comparado no código (ver Cuidados). [45 px, fonte 10]"
+ },
+ {
+  "en": "Recent",
+  "pt": "Recentes",
+  "obs": "Atenção: texto comparado no código. [47 px, fonte 10]"
+ },
+ {
+  "en": "All Macros",
+  "pt": "Todas as macros",
+  "obs": ""
+ },
+ {
+  "en": "Commands / All commands",
+  "pt": "Comandos / Todos os comandos",
+  "obs": ""
+ },
+ {
+  "en": "Other / OTHER",
+  "pt": "Outros / OUTROS",
+  "obs": ""
+ },
+ {
+  "en": "IN ORDER",
+  "pt": "NESTA ORDEM",
+  "obs": "Cabeçalho do menu Calibração."
+ },
+ {
+  "en": "Recalibration Wizard",
+  "pt": "Assistente de recalibração",
+  "obs": "\"Wizard\" = \"Assistente\" (Windows pt-BR)."
+ },
+ {
+  "en": "Reset Options",
+  "pt": "Opções de redefinição",
+  "obs": "Título. No botão de 62 px, 2 linhas como o original: \"Opções de\\nredefinição\" (54 e 58 px)."
+ },
+ {
+  "en": "Power Loss Recovery",
+  "pt": "Queda de energia",
+  "obs": "Título. \"Resume Print\" = \"Retomar impressão\"."
+ },
+ {
+  "en": "Home / homing (ação)",
+  "pt": "ir à origem / levar à origem",
+  "obs": "\"Homing...\" = \"Indo à origem...\". O Mainsail deixou \"Home all\" em inglês."
+ },
+ {
+  "en": "Home All",
+  "pt": "Origem XYZ",
+  "obs": "62 px; a célula da tela Mover tem ~82 px. [62 px, fonte 10]"
+ },
+ {
+  "en": "Home XY",
+  "pt": "Origem XY",
+  "obs": "[55 px, fonte 10]"
+ },
+ {
+  "en": "Homing required",
+  "pt": "Ir à origem primeiro",
+  "obs": "Título do aviso. \"The printer must be homed first.\" = \"Leve a impressora à origem antes.\" Botões: Ir à origem / Cancelar."
+ },
+ {
+  "en": "Must home axis first",
+  "pt": "Leve os eixos à origem primeiro",
+  "obs": "Mensagem da tela. O texto do Klipper continua comparado em inglês no código."
+ },
+ {
+  "en": "Motor Off",
+  "pt": "Soltar motores",
+  "obs": "Cabe na tela Mover (~82 px); \"Desligar motores\" (87 px) não cabe. Mainsail: \"Motores off\". [74 px, fonte 10]"
+ },
+ {
+  "en": "X Axis / Y Axis / Z Axis",
+  "pt": "Eixo X / Eixo Y / Eixo Z",
+  "obs": ""
+ },
+ {
+  "en": "Move Distance (mm)",
+  "pt": "Distância (mm)",
+  "obs": ""
+ },
+ {
+  "en": "Move Speed (mm/s)",
+  "pt": "Velocidade (mm/s)",
+  "obs": ""
+ },
+ {
+  "en": "Invert Y Direction / Invert Z Direction",
+  "pt": "Inverter direção do Y / Inverter direção do Z",
+  "obs": "Mainsail."
+ },
+ {
+  "en": "Raise (farther from bed)",
+  "pt": "Subir (mais longe da mesa)",
+  "obs": "Botão da tela Altura do bico."
+ },
+ {
+  "en": "Lower (closer to bed)",
+  "pt": "Descer (mais perto da mesa)",
+  "obs": ""
+ },
+ {
+  "en": "Toolhead",
+  "pt": "cabeçote",
+  "obs": "Orca (o Mainsail diz \"Ferramenta\")."
+ },
+ {
+  "en": "Nozzle / Hotend",
+  "pt": "bico",
+  "obs": "\"Heating the hotend...\" = \"Aquecendo o bico...\""
+ },
+ {
+  "en": "Extruder (sensor de temperatura)",
+  "pt": "Bico",
+  "obs": "Nome do sensor na tela inicial (largura 78 px). [23 px, fonte 10]"
+ },
+ {
+  "en": "Extruder (mecanismo que empurra o filamento)",
+  "pt": "extrusora",
+  "obs": "Mainsail e Orca, no feminino."
+ },
+ {
+  "en": "Bed",
+  "pt": "Mesa",
+  "obs": "Mainsail. [27 px, fonte 10]"
+ },
+ {
+  "en": "Chamber",
+  "pt": "Câmara",
+  "obs": "Mainsail. Atenção: \"Chamber\" é comparado no código. [40 px, fonte 10]"
+ },
+ {
+  "en": "MCU Temp",
+  "pt": "Placa-mãe",
+  "obs": "Temperatura da placa-mãe. [55 px, fonte 10]"
+ },
+ {
+  "en": "Motion (categoria do console)",
+  "pt": "Movimento",
+  "obs": ""
+ },
+ {
+  "en": "Probe / probing (verbo)",
+  "pt": "medir / medindo",
+  "obs": "\"Homing, wiping, and probing...\" = \"Indo à origem, limpando o bico e medindo...\""
+ },
+ {
+  "en": "Probe (peça)",
+  "pt": "sensor de nivelamento",
+  "obs": "Na KE é o CR Touch. O Mainsail usa \"sonda\"."
+ },
+ {
+  "en": "Load Sensor",
+  "pt": "sensor de pressão",
+  "obs": "Sensor que sente o bico encostar na mesa (KE)."
+ },
+ {
+  "en": "Accelerometer",
+  "pt": "acelerômetro",
+  "obs": ""
+ },
+ {
+  "en": "Calipers / ruler / tape / mark",
+  "pt": "paquímetro / régua / fita crepe / marca",
+  "obs": "Ferramentas citadas nas calibrações."
+ },
+ {
+  "en": "Sheet of paper / drags",
+  "pt": "folha de papel / arrastar de leve",
+  "obs": "Mesmas palavras já ditas ao dono."
+ },
+ {
+  "en": "Heating / Heating...",
+  "pt": "Aquecendo / Aquecendo...",
+  "obs": "[59 px / 65 px, fonte 10]"
+ },
+ {
+  "en": "Cooling",
+  "pt": "Esfriando",
+  "obs": "[49 px, fonte 10]"
+ },
+ {
+  "en": "Preheat",
+  "pt": "Preaquecer",
+  "obs": "Mainsail; grafia sem hífen (Priberam). Não aparece hoje no código. [59 px, fonte 10]"
+ },
+ {
+  "en": "Cooldown",
+  "pt": "Esfriar",
+  "obs": "Mainsail (painel de temperaturas) e Marlin. [33 px, fonte 10]"
+ },
+ {
+  "en": "Target",
+  "pt": "Alvo",
+  "obs": "Mainsail."
+ },
+ {
+  "en": "Def. Temp",
+  "pt": "Temp. padrão",
+  "obs": "Temperatura do bico usada para carregar e descarregar filamento."
+ },
+ {
+  "en": "Heater",
+  "pt": "aquecedor",
+  "obs": ""
+ },
+ {
+  "en": "Temperature / Fans (categoria do console)",
+  "pt": "Temperatura / ventoinhas",
+  "obs": ""
+ },
+ {
+  "en": "Fan",
+  "pt": "Ventoinha",
+  "obs": "Orca, Marlin, Creality e Fluidd. [53 px, fonte 10]"
+ },
+ {
+  "en": "Part Cooling Fan",
+  "pt": "Ventoinha da peça",
+  "obs": "Orca: \"Ventoinha de resfriamento de peças\". Na KE é a fan0."
+ },
+ {
+  "en": "Hotend Fan",
+  "pt": "Ventoinha do bico",
+  "obs": "Na KE se chama nozzle_fan no printer.cfg."
+ },
+ {
+  "en": "Mainboard Fan",
+  "pt": "Ventoinha da placa-mãe",
+  "obs": ""
+ },
+ {
+  "en": "Controller Fan",
+  "pt": "Ventoinha da eletrônica",
+  "obs": ""
+ },
+ {
+  "en": "Toolhead Fan",
+  "pt": "Ventoinha da peça",
+  "obs": "Nome padrão do K1, gravado no guppyconfig.json para a fan0, que na KE é a ventoinha da peça. A tela traduz na hora de mostrar (fan_panel.cpp)."
+ },
+ {
+  "en": "Back Fan / Side Fan",
+  "pt": "Ventoinha traseira / Ventoinha lateral",
+  "obs": "Termos da própria Creality em português."
+ },
+ {
+  "en": "Off (botão)",
+  "pt": "Desligar",
+  "obs": "Botão da barra da ventoinha e da luz. [42 px, fonte 10]"
+ },
+ {
+  "en": "Max (botão)",
+  "pt": "Máximo",
+  "obs": "[42 px, fonte 10]"
+ },
+ {
+  "en": "On / Off (estado)",
+  "pt": "Ligada / Desligada",
+  "obs": "No feminino (ventoinha, luz). [35 px / 51 px, fonte 10]"
+ },
+ {
+  "en": "Filament",
+  "pt": "Filamento",
+  "obs": "[52 px, fonte 10]"
+ },
+ {
+  "en": "Load",
+  "pt": "Carregar",
+  "obs": "Mainsail (\"Carregar filamento\"). [44 px, fonte 10]"
+ },
+ {
+  "en": "Unload",
+  "pt": "Descarregar",
+  "obs": "Mainsail. Exatamente no limite de 62 px; se quebrar, usar \"Retirar\" (34 px). [62 px, fonte 10]"
+ },
+ {
+  "en": "Extrude (botão)",
+  "pt": "Extrudar",
+  "obs": "Fluidd e KlipperScreen; o Priberam registra \"extrudar\". O Mainsail mostra \"Extrusão\". [45 px, fonte 10]"
+ },
+ {
+  "en": "Extruding...",
+  "pt": "Extrudando...",
+  "obs": ""
+ },
+ {
+  "en": "Retract",
+  "pt": "Retrair",
+  "obs": "Mainsail e Marlin. [34 px, fonte 10]"
+ },
+ {
+  "en": "Purge / Purge More",
+  "pt": "Purgar / Purgar mais",
+  "obs": "Empurrar filamento até sair limpo (Orca: \"purga\"). \"Purge More\" é botão da janela do M600, que é larga. [35 px / 63 px, fonte 10]"
+ },
+ {
+  "en": "Purge line",
+  "pt": "linha de limpeza",
+  "obs": "Termo já usado com o dono."
+ },
+ {
+  "en": "Filament runout",
+  "pt": "Fim do filamento",
+  "obs": "Título. Runout sensor = sensor de filamento."
+ },
+ {
+  "en": "Filament change",
+  "pt": "Troca de filamento",
+  "obs": "Orca."
+ },
+ {
+  "en": "Spool",
+  "pt": "carretel",
+  "obs": "Orca e Creality Print."
+ },
+ {
+  "en": "Remain\\nWeight / Remain\\nLength",
+  "pt": "Peso\\nrestante / Compr.\\nrestante",
+  "obs": "Cabeçalhos da tabela do Spoolman (fonte de 10 px). [42 px / 42 px, fonte 10]"
+ },
+ {
+  "en": "MAT (coluna)",
+  "pt": "Tipo",
+  "obs": "PLA, PETG..."
+ },
+ {
+  "en": "Show Archived",
+  "pt": "Mostrar arquivados",
+  "obs": ""
+ },
+ {
+  "en": "enough / not enough",
+  "pt": "suficiente / insuficiente",
+  "obs": "\"Print needs {} g\" = \"A impressão usa {} g\"."
+ },
+ {
+  "en": "(active)",
+  "pt": "(ativo)",
+  "obs": "Carretel ativo."
+ },
+ {
+  "en": "Mark the Filament / Enter the Measurement",
+  "pt": "Marque o filamento / Digite a medida",
+  "obs": "Títulos da calibração da extrusora."
+ },
+ {
+  "en": "Bed Mesh",
+  "pt": "Malha da mesa",
+  "obs": "Mainsail. Cabe em 1 linha na aba Ajustes. [79 px, fonte 10]"
+ },
+ {
+  "en": "Bed Mesh / Leveling (categoria do console)",
+  "pt": "Malha / nivelamento",
+  "obs": ""
+ },
+ {
+  "en": "Bed leveling",
+  "pt": "Nivelamento da mesa",
+  "obs": "Orca."
+ },
+ {
+  "en": "Mesh",
+  "pt": "malha",
+  "obs": "\"Mesh: 5x5\" = \"Malha: 5x5\"."
+ },
+ {
+  "en": "Save Profile",
+  "pt": "Salvar perfil",
+  "obs": "[60 px, fonte 10]"
+ },
+ {
+  "en": "Clear Profile",
+  "pt": "Limpar malha",
+  "obs": "Faz BED_MESH_CLEAR (descarrega, não apaga). Mainsail: \"Limpar malha da mesa\". [73 px, fonte 10]"
+ },
+ {
+  "en": "3D View",
+  "pt": "Vista 3D",
+  "obs": "[42 px, fonte 10]"
+ },
+ {
+  "en": "Profile",
+  "pt": "perfil",
+  "obs": ""
+ },
+ {
+  "en": "Algorithm / Tension",
+  "pt": "Algoritmo / Tensão",
+  "obs": "Dados da malha."
+ },
+ {
+  "en": "Axis Twist",
+  "pt": "Torção do eixo X",
+  "obs": "Termo já usado com o dono. Linha 1 do menu Calibração. [117 px, fonte 14]"
+ },
+ {
+  "en": "Axis Twist Compensation",
+  "pt": "Compensação da torção do eixo X",
+  "obs": "Título (fonte de 20 px, cabe). [344 px, fonte 20]"
+ },
+ {
+  "en": "Z-Offset & Bed Mesh",
+  "pt": "Altura do bico e malha da mesa",
+  "obs": "Linha 2 do menu Calibração. [229 px, fonte 14]"
+ },
+ {
+  "en": "Input Shaper",
+  "pt": "Compensação de vibração",
+  "obs": "Creality Print pt-BR. O Orca diz \"Modelagem de entrada\", que não diz nada ao dono. [191 px, fonte 14]"
+ },
+ {
+  "en": "Resonance",
+  "pt": "ressonância",
+  "obs": ""
+ },
+ {
+  "en": "Frequency Response",
+  "pt": "Resposta em frequência",
+  "obs": "\"X Frequency Response\" = \"Resposta em frequência X\"."
+ },
+ {
+  "en": "E-Steps Calibration",
+  "pt": "Calibração da extrusora",
+  "obs": "No título pode ir \"Calibração da extrusora (E-steps)\". [169 px, fonte 14]"
+ },
+ {
+  "en": "rotation_distance",
+  "pt": "rotation_distance",
+  "obs": "Nome do ajuste no Klipper; fica."
+ },
+ {
+  "en": "Skew Correction",
+  "pt": "Correção de esquadro",
+  "obs": "Termo já usado com o dono (esquadro). [161 px, fonte 14]"
+ },
+ {
+  "en": "TMC Autotune (optional)",
+  "pt": "Autoajuste dos motores (opcional)",
+  "obs": "Linha 6 do menu Calibração. [250 px, fonte 14]"
+ },
+ {
+  "en": "Tuning Goal",
+  "pt": "Objetivo do ajuste",
+  "obs": "As opções auto/silent/performance/autoswitch são gravadas no printer.cfg: ficam em inglês, a não ser que o código separe texto e valor."
+ },
+ {
+  "en": "Sensorless Threshold",
+  "pt": "Limiar sensorless",
+  "obs": "Ajusta quando o motor \"sente\" o fim do eixo na ida à origem sem chave de fim de curso. Não chamar de \"sensibilidade\": conforme o driver, número maior pode ser mais ou menos sensível."
+ },
+ {
+  "en": "Not Configured",
+  "pt": "Não configurado",
+  "obs": "Atenção: comparado no código."
+ },
+ {
+  "en": "Motor",
+  "pt": "Motor",
+  "obs": ""
+ },
+ {
+  "en": "Belts / Shake Belts",
+  "pt": "correias / Testar correias",
+  "obs": "[40 px / 73 px, fonte 10]"
+ },
+ {
+  "en": "Excitate",
+  "pt": "Vibrar",
+  "obs": "[31 px, fonte 10]"
+ },
+ {
+  "en": "Excite Frequency Control",
+  "pt": "Frequência de vibração",
+  "obs": ""
+ },
+ {
+  "en": "Paper test",
+  "pt": "teste do papel",
+  "obs": ""
+ },
+ {
+  "en": "Keep Paper Value / Use Sensor Value",
+  "pt": "Manter valor do papel / Usar valor do sensor",
+  "obs": ""
+ },
+ {
+  "en": "Refine with Load Sensor (optional)",
+  "pt": "Refinar com o sensor de pressão (opcional)",
+  "obs": ""
+ },
+ {
+  "en": "Calibration complete",
+  "pt": "Calibração concluída",
+  "obs": "Só no texto da tela; quando vem do Klipper, o código compara em inglês."
+ },
+ {
+  "en": "Step 1 of 2 / Point 1 of 5",
+  "pt": "Etapa 1 de 2 / Ponto 1 de 5",
+  "obs": ""
+ },
+ {
+  "en": "Ready to review / Result",
+  "pt": "Pronto para revisar / Resultado",
+  "obs": ""
+ },
+ {
+  "en": "Speed",
+  "pt": "Velocidade",
+  "obs": "[57 px, fonte 10]"
+ },
+ {
+  "en": "Speed+ / Speed-",
+  "pt": "Veloc.+ / Veloc.-",
+  "obs": "\"Velocidade+\" mede 63 px. [36 px / 34 px, fonte 10]"
+ },
+ {
+  "en": "Speed Reset",
+  "pt": "Veloc. 100%",
+  "obs": "Volta a velocidade a 100% (M220 S100). \"Velocidade 100%\" (86 px) não cabe. [59 px, fonte 10]"
+ },
+ {
+  "en": "Flow",
+  "pt": "Fluxo",
+  "obs": "Mainsail e Orca (o Marlin diz \"Vazão\"). [27 px, fonte 10]"
+ },
+ {
+  "en": "Flow+ / Flow-",
+  "pt": "Fluxo+ / Fluxo-",
+  "obs": "[34 px / 32 px, fonte 10]"
+ },
+ {
+  "en": "Flow Reset",
+  "pt": "Fluxo 100%",
+  "obs": "Volta o fluxo a 100% (M221 S100). [56 px, fonte 10]"
+ },
+ {
+  "en": "Pressure Advance (PA)",
+  "pt": "Avanço de pressão (PA)",
+  "obs": "Mainsail e Orca deixam em inglês. PA+ e PA- ficam."
+ },
+ {
+  "en": "Reset PA",
+  "pt": "PA padrão",
+  "obs": "Volta ao valor do printer.cfg. [53 px, fonte 10]"
+ },
+ {
+  "en": "Reset Z",
+  "pt": "Zerar Z",
+  "obs": "Zera o ajuste de altura feito na impressão (SET_GCODE_OFFSET Z=0). [36 px, fonte 10]"
+ },
+ {
+  "en": "Z+ / Z-",
+  "pt": "Z+ / Z-",
+  "obs": "No Ajuste fino, Z+ afasta o bico da mesa."
+ },
+ {
+  "en": "Step (mm)",
+  "pt": "Passo (mm)",
+  "obs": "Quanto cada toque move."
+ },
+ {
+  "en": "Multipler Step (%)",
+  "pt": "Passo do ajuste (%)",
+  "obs": "O original tem erro de digitação (\"Multipler\")."
+ },
+ {
+  "en": "Velocity (mm/s)",
+  "pt": "Velocidade máx. (mm/s)",
+  "obs": ""
+ },
+ {
+  "en": "Acceleration (mm/s2)",
+  "pt": "Aceleração máx. (mm/s²)",
+  "obs": "As fontes novas (fonts_ptbr) têm o ²; o original escreve \"mm/s2\" porque a fonte antiga não tinha."
+ },
+ {
+  "en": "Acceleration to Deceleration (mm/s2)",
+  "pt": "Aceleração para desaceleração (mm/s²)",
+  "obs": "Mainsail: \"Aceleração máx. para desacel.\""
+ },
+ {
+  "en": "Square Corner Velocity (mm/s)",
+  "pt": "Velocidade nos cantos (mm/s)",
+  "obs": "Mainsail: \"Velocidade em canto\"."
+ },
+ {
+  "en": "Retract length / Retract speed",
+  "pt": "Compr. da retração / Velocidade da retração",
+  "obs": "No rótulo da tela Retração ficou \"Compr. da retração\" para caber em 1 linha (abreviação da lista fechada)."
+ },
+ {
+  "en": "Unretract extra / Unretract speed",
+  "pt": "Extra ao voltar / Velocidade ao voltar",
+  "obs": "Mainsail: \"Compr. Extra ao Voltar Retração\"."
+ },
+ {
+  "en": "Printing",
+  "pt": "Imprimindo",
+  "obs": "No limite de 62 px. [62 px, fonte 10]"
+ },
+ {
+  "en": "Paused",
+  "pt": "Pausada",
+  "obs": "A impressão (feminino). [44 px, fonte 10]"
+ },
+ {
+  "en": "Pause / Resume",
+  "pt": "Pausar / Retomar",
+  "obs": "Mainsail (\"Pausar impressão\" / \"Retomar impressão\"). [35 px / 44 px, fonte 10]"
+ },
+ {
+  "en": "Cancel Print / Cancelling print...",
+  "pt": "Cancelar impressão / Cancelando a impressão...",
+  "obs": "Mainsail."
+ },
+ {
+  "en": "Print complete / Print cancelled",
+  "pt": "Impressão concluída / Impressão cancelada",
+  "obs": ""
+ },
+ {
+  "en": "Print Job (categoria do console)",
+  "pt": "Impressão",
+  "obs": ""
+ },
+ {
+  "en": "Layer",
+  "pt": "Camada",
+  "obs": "Mainsail."
+ },
+ {
+  "en": "ETA (tempo que falta)",
+  "pt": "Falta",
+  "obs": "Tempo restante (\"Falta  1h 23min\"). No código ficou \"Falta\" (singular, mais curto que \"Faltam\"); a medida da largura usa \"Falta  88:88:88\" (mini_print_status.cpp). [fonte 16]"
+ },
+ {
+  "en": "Time",
+  "pt": "Tempo",
+  "obs": ""
+ },
+ {
+  "en": "Last print:",
+  "pt": "Última impressão:",
+  "obs": ""
+ },
+ {
+  "en": "Filament Weight / Print Time / Size / Modified",
+  "pt": "Peso do filamento / Tempo de impressão / Tamanho / Modificado em",
+  "obs": "Detalhes do arquivo."
+ },
+ {
+  "en": "Modified (botão de ordenar)",
+  "pt": "Data",
+  "obs": "Ordena a lista pela data. [24 px, fonte 10]"
+ },
+ {
+  "en": "No metadata available",
+  "pt": "Sem informações do arquivo",
+  "obs": ""
+ },
+ {
+  "en": "object labels (opção do fatiador)",
+  "pt": "\"Etiquetar objetos\"",
+  "obs": "Nome da opção no OrcaSlicer pt-BR."
+ },
+ {
+  "en": "printing / paused / complete / cancelled / error / standby",
+  "pt": "Imprimindo / Pausada / Concluída / Cancelada / Erro / Em espera",
+  "obs": "Só para exibir. O valor em inglês continua nas comparações do código."
+ },
+ {
+  "en": "ready / startup / shutdown",
+  "pt": "Pronto / Iniciando / Parado",
+  "obs": "Estado do Klipper (masculino: o Klipper está pronto). \"shutdown\" é parada por erro, não \"desligado\". Em texto que cita o estado, deixar em inglês entre aspas, como o Mainsail mostra: \"se aparecer 'shutdown'...\""
+ },
+ {
+  "en": "KNOWN NETWORKS / OTHER NETWORKS IN RANGE",
+  "pt": "REDES SALVAS / OUTRAS REDES POR PERTO",
+  "obs": ""
+ },
+ {
+  "en": "Signal: Excellent / Good / Fair / Weak",
+  "pt": "Sinal: Excelente / Bom / Razoável / Fraco",
+  "obs": ""
+ },
+ {
+  "en": "Security: Open (unsecured) / Secured (WPA/WPA2)",
+  "pt": "Segurança: Aberta (sem senha) / Protegida (WPA/WPA2)",
+  "obs": ""
+ },
+ {
+  "en": "Static IP / Configure Static IP",
+  "pt": "IP fixo / Configurar IP fixo",
+  "obs": ""
+ },
+ {
+  "en": "Revert to DHCP",
+  "pt": "Voltar ao automático (DHCP)",
+  "obs": ""
+ },
+ {
+  "en": "Netmask / Gateway / subnet",
+  "pt": "Máscara de rede / Gateway / sub-rede",
+  "obs": "\"sub-rede\" com hífen. No rótulo curto da tela de IP fixo ficou só \"Máscara\" (falta espaço); nas mensagens de erro, \"Máscara de rede\"."
+ },
+ {
+  "en": "IP address",
+  "pt": "Endereço IP",
+  "obs": ""
+ },
+ {
+  "en": "Password / Enter password for {}",
+  "pt": "Senha / Digite a senha de {}",
+  "obs": ""
+ },
+ {
+  "en": "Scanning for networks...",
+  "pt": "Procurando redes...",
+  "obs": ""
+ },
+ {
+  "en": "Connected / Connecting to {} ...",
+  "pt": "Conectado / Conectando a {}...",
+  "obs": ""
+ },
+ {
+  "en": "Low Latency: ON / OFF",
+  "pt": "Baixa latência: ativa / inativa",
+  "obs": "Wi-Fi mais estável, sem economia de energia."
+ },
+ {
+  "en": "Restart\\nKlipper",
+  "pt": "Reiniciar\\nKlipper",
+  "obs": "Mainsail. [45 px, fonte 10]"
+ },
+ {
+  "en": "Restart\\nFirmware",
+  "pt": "Reiniciar\\nfirmware",
+  "obs": "Mainsail. [46 px, fonte 10]"
+ },
+ {
+  "en": "Restart\\nGuppy",
+  "pt": "Reiniciar\\ntela",
+  "obs": "Guppy/GuppyScreen é o programa da tela. [45 px, fonte 10]"
+ },
+ {
+  "en": "Update\\nGuppy",
+  "pt": "Atualizar\\ntela",
+  "obs": "Atualiza o programa da tela. [45 px, fonte 10]"
+ },
+ {
+  "en": "Display Sleep",
+  "pt": "Apagar tela",
+  "obs": "Opções na lista: Nunca, 30 s, 1 min, 5 min, 10 min, 30 min, 1 h (formas curtas para caber na lista)."
+ },
+ {
+  "en": "Brightness: Low / Dim / Medium / Bright / Max",
+  "pt": "Brilho: Mín. / Baixo / Médio / Alto / Máx.",
+  "obs": "Manter o % entre parênteses: \"Mín. (10%)\", \"Máx. (100%)\". Abreviado para caber na lista (abreviações da lista fechada)."
+ },
+ {
+  "en": "Log Level",
+  "pt": "Nível de registro",
+  "obs": "Os valores trace/debug/info/warn/error ficam (são gravados)."
+ },
+ {
+  "en": "Prompt Emergency Stop",
+  "pt": "Confirmar parada de emergência",
+  "obs": "KlipperScreen."
+ },
+ {
+  "en": "Theme Color: blue / red / green / purple / pink / yellow",
+  "pt": "Tema: Azul / Vermelho / Verde / Roxo / Rosa / Amarelo",
+  "obs": "Rótulo ficou \"Tema\": \"Cor do tema\" não cabe antes da lista. Só na exibição; o valor gravado e o nome do arquivo do tema ficam em inglês (a escolha é pela posição na lista)."
+ },
+ {
+  "en": "Touch Beep",
+  "pt": "Som ao tocar",
+  "obs": ""
+ },
+ {
+  "en": "Reset GuppyScreen settings",
+  "pt": "Redefinir as configurações da tela",
+  "obs": ""
+ },
+ {
+  "en": "Factory Reset Printer",
+  "pt": "Restaurar a impressora de fábrica",
+  "obs": "Mainsail: \"Reset de Fábrica\"."
+ },
+ {
+  "en": "Reset Touch Calibration",
+  "pt": "Refazer a calibração do toque",
+  "obs": ""
+ },
+ {
+  "en": "This cannot be undone.",
+  "pt": "Isso não pode ser desfeito.",
+  "obs": ""
+ },
+ {
+  "en": "Version",
+  "pt": "Versão",
+  "obs": ""
+ },
+ {
+  "en": "Printer Name / Moonraker IP Address / Moonraker Port",
+  "pt": "Nome da impressora / Endereço IP do Moonraker / Porta do Moonraker",
+  "obs": ""
+ },
+ {
+  "en": "Unavailable while printing",
+  "pt": "Indisponível durante a impressão",
+  "obs": ""
+ },
+ {
+  "en": "Waiting for printer to initialize...",
+  "pt": "Aguardando a impressora iniciar...",
+  "obs": ""
+ },
+ {
+  "en": "type gcode... / filter...",
+  "pt": "digite o G-code... / filtrar...",
+  "obs": "Texto de exemplo dentro do campo."
+ },
+ {
+  "en": "Probe / Calibration",
+  "pt": "Medição / calibração",
+  "obs": "Categoria do console."
+ },
+ {
+  "en": "Extruder / Filament",
+  "pt": "Extrusora / filamento",
+  "obs": "Categoria do console."
+ },
+ {
+  "en": "TMC / Drivers",
+  "pt": "TMC / drivers",
+  "obs": "Categoria do console."
+ },
+ {
+  "en": "Camera",
+  "pt": "Câmera",
+  "obs": "Categoria do console."
+ },
+ {
+  "en": "Query / Debug",
+  "pt": "Consulta / depuração",
+  "obs": "Categoria do console."
+ },
+ {
+  "en": "showing %d of %d  -  filter to narrow",
+  "pt": "Mostrando %d de %d: use o filtro para ver menos",
+  "obs": "Manter os dois %d na mesma ordem."
+ },
+ {
+  "en": "No favorites yet. / No recent commands yet.",
+  "pt": "Nenhum favorito ainda. / Nenhum comando recente.",
+  "obs": ""
+ },
+ {
+  "en": "Do you want to emergency stop?",
+  "pt": "Fazer parada de emergência?",
+  "obs": "4 telas + a comparação em button_container.cpp:49 (as 5 precisam ficar iguais)."
+ },
+ {
+  "en": "Cancel is queued and will run when heating finishes.",
+  "pt": "O cancelamento fica na fila até o aquecimento terminar.",
+  "obs": "6 lugares."
+ },
+ {
+  "en": "Startup in progress — cancel is queued / and will run when startup finishes.",
+  "pt": "A impressão está começando. O cancelamento fica na fila / e acontece quando essa etapa terminar.",
+  "obs": "Dividida em duas frases: fica mais clara que com travessão."
+ },
+ {
+  "en": "Extruder heating: {:.0f}/{:.0f}°C / Bed heating: {:.0f}/{:.0f}°C",
+  "pt": "Aquecendo o bico: {:.0f}/{:.0f}°C / Aquecendo a mesa: {:.0f}/{:.0f}°C",
+  "obs": ""
+ },
+ {
+  "en": "Extruder {:.0f}/{:.0f}°C + Bed {:.0f}/{:.0f}°C",
+  "pt": "Bico {:.0f}/{:.0f}°C + mesa {:.0f}/{:.0f}°C",
+  "obs": ""
+ },
+ {
+  "en": "Homing and probing...",
+  "pt": "Indo à origem e medindo...",
+  "obs": "3 lugares."
+ },
+ {
+  "en": "Lower until a sheet of paper just drags, then Accept.",
+  "pt": "Abaixe até o papel arrastar de leve e toque em Aceitar.",
+  "obs": "Mesmas palavras já ditas ao dono."
+ },
+ {
+  "en": "Mapping bed... this takes about a minute, no input needed.",
+  "pt": "Medindo a mesa... leva cerca de 1 minuto. Não precisa tocar em nada.",
+  "obs": ""
+ },
+ {
+  "en": "Saving... Klipper will restart.",
+  "pt": "Salvando... O Klipper vai reiniciar.",
+  "obs": ""
+ },
+ {
+  "en": "Can't calibrate while printing. / Can't recalibrate while printing.",
+  "pt": "Não é possível calibrar durante a impressão. / Não é possível recalibrar durante a impressão.",
+  "obs": ""
+ },
+ {
+  "en": "Load new filament, then Continue.",
+  "pt": "Carregue o filamento novo e toque em Continuar.",
+  "obs": "\"Carregue\" casa com o botão Carregar da tela Filamento."
+ },
+ {
+  "en": "Use this filament? / Use the same filament?",
+  "pt": "Usar este filamento? / Usar o mesmo filamento?",
+  "obs": ""
+ },
+ {
+  "en": "Stopping load...",
+  "pt": "Parando o carregamento...",
+  "obs": ""
+ },
+ {
+  "en": "{}, {:.0f} g left",
+  "pt": "{}, restam {:.0f} g",
+  "obs": ""
+ },
+ {
+  "en": "No interrupted print to recover.",
+  "pt": "Nenhuma impressão interrompida para retomar.",
+  "obs": ""
+ },
+ {
+  "en": "Please select your wifi network",
+  "pt": "Escolha sua rede Wi-Fi",
+  "obs": ""
+ },
+ {
+  "en": "Printer is printing.\\nRun this macro anyway? (e Send this command / Adjust limits / Change power devices)",
+  "pt": "A impressora está imprimindo.\\nExecutar esta macro mesmo assim? (Enviar este comando / Ajustar os limites / Mudar os dispositivos de energia)",
+  "obs": ""
+ },
+ {
+  "en": "Bigger gap than normal (0.1mm) - paper test (green) is the safer pick.",
+  "pt": "Diferença maior que o normal (0.1 mm): o teste do papel (verde) é a escolha mais segura.",
+  "obs": ""
+ },
+ {
+  "en": "Close agreement - sensor reading (green) is usually the more precise pick.",
+  "pt": "Valores parecidos: a leitura do sensor (verde) costuma ser a mais precisa.",
+  "obs": ""
+ }
+]

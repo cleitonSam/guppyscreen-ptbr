@@ -336,15 +336,24 @@ extern uint32_t custom_tick_get(void);
  *   FONT USAGE
  *===================*/
 
+/* pt-BR: fontes com acentos (veja traducao/FONTES.md).
+ * 1 = as Montserrat 8/10/12/14/16/20 vêm de fonts_ptbr/ (iguais às embutidas,
+ *     com acentos, ç, º, ª, – — ‘ ’ “ ” … a mais) e as embutidas desses tamanhos
+ *     ficam desligadas. Os nomes são os mesmos, então nada em src/ muda.
+ * 0 = volta às fontes embutidas do LVGL, sem acentos (faça "make clean" depois). */
+#ifndef GUPPY_FONTES_PTBR
+    #define GUPPY_FONTES_PTBR 1
+#endif
+
 /*Montserrat fonts with ASCII range and some symbols using bpp = 4
  *https://fonts.google.com/specimen/Montserrat*/
-#define LV_FONT_MONTSERRAT_8  1
-#define LV_FONT_MONTSERRAT_10 1
-#define LV_FONT_MONTSERRAT_12 1
-#define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_MONTSERRAT_16 1
+#define LV_FONT_MONTSERRAT_8  (!GUPPY_FONTES_PTBR)
+#define LV_FONT_MONTSERRAT_10 (!GUPPY_FONTES_PTBR)
+#define LV_FONT_MONTSERRAT_12 (!GUPPY_FONTES_PTBR)
+#define LV_FONT_MONTSERRAT_14 (!GUPPY_FONTES_PTBR)
+#define LV_FONT_MONTSERRAT_16 (!GUPPY_FONTES_PTBR)
 #define LV_FONT_MONTSERRAT_18 0
-#define LV_FONT_MONTSERRAT_20 1
+#define LV_FONT_MONTSERRAT_20 (!GUPPY_FONTES_PTBR)
 #define LV_FONT_MONTSERRAT_22 0
 #define LV_FONT_MONTSERRAT_24 0
 #define LV_FONT_MONTSERRAT_26 0
@@ -373,7 +382,14 @@ extern uint32_t custom_tick_get(void);
 /*Optionally declare custom fonts here.
  *You can use these fonts as default font too and they will be available globally.
  *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)*/
-#define LV_FONT_CUSTOM_DECLARE
+#if GUPPY_FONTES_PTBR
+    /* pt-BR: as fontes de fonts_ptbr/, com os mesmos nomes das embutidas */
+    #define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(lv_font_montserrat_8)  LV_FONT_DECLARE(lv_font_montserrat_10) \
+                                   LV_FONT_DECLARE(lv_font_montserrat_12) LV_FONT_DECLARE(lv_font_montserrat_14) \
+                                   LV_FONT_DECLARE(lv_font_montserrat_16) LV_FONT_DECLARE(lv_font_montserrat_20)
+#else
+    #define LV_FONT_CUSTOM_DECLARE
+#endif
 
 /*Always set a default font*/
 #ifdef GUPPY_SMALL_SCREEN
@@ -1023,15 +1039,20 @@ e.g. "stm32f769xx.h" or "stm32f429xx.h"*/
  *   FONT USAGE
  *===================*/
 
+/* pt-BR: fontes com acentos -- mesma chave da parte de cima (veja traducao/FONTES.md). */
+#ifndef GUPPY_FONTES_PTBR
+    #define GUPPY_FONTES_PTBR 1
+#endif
+
 /*Montserrat fonts with ASCII range and some symbols using bpp = 4
  *https://fonts.google.com/specimen/Montserrat*/
-#define LV_FONT_MONTSERRAT_8     1
-#define LV_FONT_MONTSERRAT_10    1
-#define LV_FONT_MONTSERRAT_12    1
-#define LV_FONT_MONTSERRAT_14    1
-#define LV_FONT_MONTSERRAT_16    1
+#define LV_FONT_MONTSERRAT_8     (!GUPPY_FONTES_PTBR)
+#define LV_FONT_MONTSERRAT_10    (!GUPPY_FONTES_PTBR)
+#define LV_FONT_MONTSERRAT_12    (!GUPPY_FONTES_PTBR)
+#define LV_FONT_MONTSERRAT_14    (!GUPPY_FONTES_PTBR)
+#define LV_FONT_MONTSERRAT_16    (!GUPPY_FONTES_PTBR)
 #define LV_FONT_MONTSERRAT_18    1
-#define LV_FONT_MONTSERRAT_20    1
+#define LV_FONT_MONTSERRAT_20    (!GUPPY_FONTES_PTBR)
 #define LV_FONT_MONTSERRAT_22    1
 #define LV_FONT_MONTSERRAT_24    1
 #define LV_FONT_MONTSERRAT_26    1
@@ -1060,7 +1081,14 @@ e.g. "stm32f769xx.h" or "stm32f429xx.h"*/
 /*Optionally declare custom fonts here.
  *You can use these fonts as default font too and they will be available globally.
  *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)*/
-#define LV_FONT_CUSTOM_DECLARE
+#if GUPPY_FONTES_PTBR
+    /* pt-BR: as fontes de fonts_ptbr/, com os mesmos nomes das embutidas */
+    #define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(lv_font_montserrat_8)  LV_FONT_DECLARE(lv_font_montserrat_10) \
+                                   LV_FONT_DECLARE(lv_font_montserrat_12) LV_FONT_DECLARE(lv_font_montserrat_14) \
+                                   LV_FONT_DECLARE(lv_font_montserrat_16) LV_FONT_DECLARE(lv_font_montserrat_20)
+#else
+    #define LV_FONT_CUSTOM_DECLARE
+#endif
 
 /*Always set a default font*/
 #define LV_FONT_DEFAULT &lv_font_montserrat_16

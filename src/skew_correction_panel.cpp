@@ -32,15 +32,15 @@ SkewCorrectionPanel::SkewCorrectionPanel(KWebSocketClient &websocket_client)
   lv_obj_set_style_pad_row(panel_cont, 6, 0);
 
   lv_obj_t *title = lv_label_create(panel_cont);
-  lv_label_set_text(title, "Skew Correction");
+  lv_label_set_text(title, "Correção de esquadro");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
 
   lv_obj_t *body = lv_label_create(panel_cont);
   lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(body, LV_PCT(96));
   lv_label_set_text(body,
-    "Print a skew calibration object, measure the three lengths (mm) with "
-    "calipers, and enter them. A-C and B-D are the diagonals; A-D the edge.");
+    "Imprima uma peça de calibração de esquadro, meça as três distâncias (mm) "
+    "com um paquímetro e digite os valores abaixo. A-C e B-D são as diagonais; A-D é o lado.");
   lv_obj_set_style_text_font(body, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -78,14 +78,14 @@ SkewCorrectionPanel::SkewCorrectionPanel(KWebSocketClient &websocket_client)
   lv_obj_set_size(back_btn, 140, 44);
   lv_obj_set_style_bg_color(back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *bl = lv_label_create(back_btn);
-  lv_label_set_text(bl, LV_SYMBOL_LEFT "  Back");
+  lv_label_set_text(bl, LV_SYMBOL_LEFT "  Voltar");
   lv_obj_center(bl);
   lv_obj_add_event_cb(back_btn, &SkewCorrectionPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
   apply_btn = lv_btn_create(btnrow);
   lv_obj_set_size(apply_btn, 190, 44);
   lv_obj_t *al = lv_label_create(apply_btn);
-  lv_label_set_text(al, LV_SYMBOL_OK "  Apply & Save");
+  lv_label_set_text(al, LV_SYMBOL_OK "  Aplicar e salvar");
   lv_obj_center(al);
   lv_obj_add_event_cb(apply_btn, &SkewCorrectionPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -150,14 +150,14 @@ void SkewCorrectionPanel::apply_and_save() {
     const char *txt = lv_textarea_get_text(ta[i]);
     s[i] = txt ? std::string(txt) : std::string();
     if (s[i].empty() || std::atof(s[i].c_str()) <= 0.0) {
-      KUtils::notify_toast("Enter all three measurements (mm) first.", 4000);
+      KUtils::notify_toast("Digite as três medidas (mm) primeiro.", 4000);
       return;
     }
   }
   // SET_SKEW XY=<ac>,<bd>,<ad> then persist (restarts Klipper).
   ws.gcode_script(fmt::format("SET_SKEW XY={},{},{}\nSAVE_CONFIG",
                               s[0], s[1], s[2]));
-  KUtils::notify_toast("Skew applied. Saving and restarting Klipper.", 4000);
+  KUtils::notify_toast("Correção de esquadro aplicada.\nSalvando... O Klipper vai reiniciar.", 4000);
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
   lv_obj_move_background(panel_cont);
 }

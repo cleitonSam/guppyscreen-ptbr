@@ -11,7 +11,7 @@ PowerPanel::PowerPanel(KWebSocketClient &websocket_client, std::mutex &l)
   : ws(websocket_client)
   , lv_lock(l)
   , cont(lv_obj_create(lv_scr_act()))
-  , back_btn(cont, &back, "Back", &PowerPanel::_handle_callback, this)
+  , back_btn(cont, &back, "Voltar", &PowerPanel::_handle_callback, this)
 {
   lv_obj_move_background(cont);
   lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
@@ -34,7 +34,7 @@ void PowerPanel::build_recovery_section() {
   lv_obj_clear_flag(recovery_cont, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *heading = lv_label_create(recovery_cont);
-  lv_label_set_text(heading, LV_SYMBOL_CHARGE " Power Loss Recovery");
+  lv_label_set_text(heading, LV_SYMBOL_CHARGE " Queda de energia");
 
   recovery_status = lv_label_create(recovery_cont);
   lv_obj_set_width(recovery_status, LV_PCT(100));
@@ -51,13 +51,13 @@ void PowerPanel::build_recovery_section() {
 
   recovery_resume_btn = lv_btn_create(btn_row);
   lv_obj_t *rl = lv_label_create(recovery_resume_btn);
-  lv_label_set_text(rl, LV_SYMBOL_PLAY " Resume Print");
+  lv_label_set_text(rl, LV_SYMBOL_PLAY " Retomar impressão");
   lv_obj_center(rl);
   lv_obj_add_event_cb(recovery_resume_btn, &PowerPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
   recovery_dismiss_btn = lv_btn_create(btn_row);
   lv_obj_t *dl = lv_label_create(recovery_dismiss_btn);
-  lv_label_set_text(dl, LV_SYMBOL_CLOSE " Dismiss");
+  lv_label_set_text(dl, LV_SYMBOL_CLOSE " Ignorar");
   lv_obj_center(dl);
   lv_obj_add_event_cb(recovery_dismiss_btn, &PowerPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -110,12 +110,12 @@ void PowerPanel::refresh_recovery() {
   bool show_actions = false;
   if (KUtils::is_printing()) {
     lv_label_set_text(recovery_status,
-      "A print is running. If power is lost, reopen this screen to resume.");
+      "Impressão em andamento. Se faltar energia, abra esta tela de novo para retomar.");
   } else if (recovery_relpath.empty()) {
-    lv_label_set_text(recovery_status, "No interrupted print to recover.");
+    lv_label_set_text(recovery_status, "Nenhuma impressão interrompida para retomar.");
   } else {
     lv_label_set_text(recovery_status,
-      ("Last print: " + display + "\nResume from where power was lost?").c_str());
+      ("Última impressão: " + display + "\nRetomar de onde parou quando faltou energia?").c_str());
     show_actions = true;
   }
 
@@ -234,14 +234,14 @@ void PowerPanel::handle_callback(lv_event_t *e) {
         // when ISCONTINUEPRINT=1; if no valid breakpoint exists it safely starts the
         // file normally rather than crashing.
         ws.gcode_script("SDCARD_PRINT_FILE FILENAME=\"" + recovery_relpath + "\" ISCONTINUEPRINT=1");
-        KUtils::notify_toast("Resuming print after power loss...", 2500);
-        lv_label_set_text(recovery_status, "Resuming...");
+        KUtils::notify_toast("Retomando a impressão após a queda de energia...", 2500);
+        lv_label_set_text(recovery_status, "Retomando...");
         lv_obj_add_flag(recovery_resume_btn, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(recovery_dismiss_btn, LV_OBJ_FLAG_HIDDEN);
         lv_obj_move_background(cont);
       }
     } else if (btn == recovery_dismiss_btn) {
-      lv_label_set_text(recovery_status, "No interrupted print to recover.");
+      lv_label_set_text(recovery_status, "Nenhuma impressão interrompida para retomar.");
       lv_obj_add_flag(recovery_resume_btn, LV_OBJ_FLAG_HIDDEN);
       lv_obj_add_flag(recovery_dismiss_btn, LV_OBJ_FLAG_HIDDEN);
     }

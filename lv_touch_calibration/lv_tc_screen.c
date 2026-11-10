@@ -221,7 +221,7 @@ static void lv_tc_screen_process_input(lv_obj_t* screenObj, lv_point_t tchPoint)
         } else {
             /* More sub-taps needed — show progress so the user knows to tap again */
             lv_label_set_text_fmt(tCScreenObj->msgLabelObj,
-                "Lift and tap again (%d/%d)",
+                "Tire o dedo e toque de novo (%d/%d)",
                 (int)(tCScreenObj->tapCount + 1), LV_TC_TAPS_PER_POINT);
         }
     } else if(tCScreenObj->currentStep >= STEP_FINISH) {

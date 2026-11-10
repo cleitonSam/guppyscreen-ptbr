@@ -55,24 +55,24 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   lv_obj_set_style_pad_row(intro_cont, 10, 0);
 
   lv_obj_t *title = lv_label_create(intro_cont);
-  lv_label_set_text(title, "Axis Twist Compensation");
+  lv_label_set_text(title, "Compensação da torção do eixo X");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
 
   lv_obj_t *intro_body = lv_label_create(intro_cont);
   lv_label_set_long_mode(intro_body, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(intro_body, LV_PCT(94));
   lv_label_set_text(intro_body,
-    "Corrects left-to-right first-layer error that bed mesh can't fix.\n\n"
-    "You'll probe 5 points across X. At each one, lower the nozzle until a "
-    "sheet of paper just drags, then Accept. Nozzle must be clean; no heating "
-    "needed. Homing and clearing the mesh happen automatically.");
+    "Corrige a primeira camada esmagada de um lado e alta do outro, que a malha da mesa não resolve.\n\n"
+    "São 5 pontos ao longo do eixo X. Em cada um, abaixe o bico até a folha de papel "
+    "arrastar de leve e toque em Aceitar. O bico deve estar limpo; não precisa aquecer. "
+    "A impressora vai à origem e limpa a malha sozinha.");
   lv_obj_set_style_text_font(intro_body, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(intro_body, LV_TEXT_ALIGN_CENTER, 0);
 
   start_btn = lv_btn_create(intro_cont);
   lv_obj_set_size(start_btn, 220, 46);
   lv_obj_t *sb_lbl = lv_label_create(start_btn);
-  lv_label_set_text(sb_lbl, LV_SYMBOL_OK "  Start Calibration");
+  lv_label_set_text(sb_lbl, LV_SYMBOL_OK "  Iniciar calibração");
   lv_obj_set_style_text_font(sb_lbl, &lv_font_montserrat_16, 0);
   lv_obj_center(sb_lbl);
   lv_obj_add_event_cb(start_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -81,7 +81,7 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   lv_obj_set_size(intro_back_btn, 140, 36);
   lv_obj_set_style_bg_color(intro_back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *ib_lbl = lv_label_create(intro_back_btn);
-  lv_label_set_text(ib_lbl, LV_SYMBOL_LEFT "  Back");
+  lv_label_set_text(ib_lbl, LV_SYMBOL_LEFT "  Voltar");
   lv_obj_center(ib_lbl);
   lv_obj_add_event_cb(intro_back_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -101,7 +101,7 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   lv_obj_set_flex_align(hdr, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   point_label = lv_label_create(hdr);
-  lv_label_set_text(point_label, "Point 1 of 5");
+  lv_label_set_text(point_label, "Ponto 1 de 5");
   lv_obj_set_style_text_font(point_label, &lv_font_montserrat_16, 0);
 
   z_label = lv_label_create(hdr);
@@ -111,7 +111,7 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   instr_label = lv_label_create(probe_cont);
   lv_label_set_long_mode(instr_label, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(instr_label, LV_PCT(100));
-  lv_label_set_text(instr_label, "Lower until a sheet of paper just drags, then Accept.");
+  lv_label_set_text(instr_label, "Abaixe até o papel arrastar de leve e toque em Aceitar.");
   lv_obj_set_style_text_font(instr_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(instr_label, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -156,7 +156,7 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   lv_obj_set_height(abort_btn, 44);
   lv_obj_set_style_bg_color(abort_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *ab_lbl = lv_label_create(abort_btn);
-  lv_label_set_text(ab_lbl, LV_SYMBOL_CLOSE "  Abort");
+  lv_label_set_text(ab_lbl, LV_SYMBOL_CLOSE "  Abortar");
   lv_obj_set_style_text_font(ab_lbl, &lv_font_montserrat_16, 0);
   lv_obj_center(ab_lbl);
   lv_obj_add_event_cb(abort_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -165,7 +165,7 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   lv_obj_set_flex_grow(accept_btn, 1);
   lv_obj_set_height(accept_btn, 44);
   lv_obj_t *ac_lbl = lv_label_create(accept_btn);
-  lv_label_set_text(ac_lbl, LV_SYMBOL_OK "  Accept");
+  lv_label_set_text(ac_lbl, LV_SYMBOL_OK "  Aceitar");
   lv_obj_set_style_text_font(ac_lbl, &lv_font_montserrat_16, 0);
   lv_obj_center(ac_lbl);
   lv_obj_add_event_cb(accept_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -177,7 +177,7 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   lv_obj_set_style_pad_row(done_cont, 10, 0);
 
   lv_obj_t *done_title = lv_label_create(done_cont);
-  lv_label_set_text(done_title, LV_SYMBOL_OK "  Calibration complete");
+  lv_label_set_text(done_title, LV_SYMBOL_OK "  Calibração concluída");
   lv_obj_set_style_text_font(done_title, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_color(done_title, lv_palette_main(LV_PALETTE_GREEN), 0);
 
@@ -185,14 +185,14 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   lv_label_set_long_mode(done_offsets_label, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(done_offsets_label, LV_PCT(94));
   lv_label_set_text(done_offsets_label,
-    "Review the offsets, then Save to write them to printer.cfg.");
+    "Confira os valores e toque em Salvar e reiniciar para gravar no printer.cfg.");
   lv_obj_set_style_text_font(done_offsets_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(done_offsets_label, LV_TEXT_ALIGN_CENTER, 0);
 
   save_btn = lv_btn_create(done_cont);
   lv_obj_set_size(save_btn, 240, 46);
   lv_obj_t *sv_lbl = lv_label_create(save_btn);
-  lv_label_set_text(sv_lbl, LV_SYMBOL_SAVE "  Save & Restart");
+  lv_label_set_text(sv_lbl, LV_SYMBOL_SAVE "  Salvar e reiniciar");
   lv_obj_set_style_text_font(sv_lbl, &lv_font_montserrat_16, 0);
   lv_obj_center(sv_lbl);
   lv_obj_add_event_cb(save_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -201,7 +201,7 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   lv_obj_set_size(done_back_btn, 140, 36);
   lv_obj_set_style_bg_color(done_back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *db_lbl = lv_label_create(done_back_btn);
-  lv_label_set_text(db_lbl, LV_SYMBOL_LEFT "  Done");
+  lv_label_set_text(db_lbl, LV_SYMBOL_LEFT "  Voltar");
   lv_obj_center(db_lbl);
   lv_obj_add_event_cb(done_back_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -211,15 +211,15 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   lv_obj_set_style_pad_row(empty_cont, 16, 0);
   lv_obj_t *empty_lbl = lv_label_create(empty_cont);
   lv_label_set_text(empty_lbl,
-    "Axis Twist Compensation is not enabled.\n\n"
-    "Add an [axis_twist_compensation] section to\n"
-    "printer.cfg and restart Klipper.");
+    "A compensação da torção do eixo X não está ativada.\n\n"
+    "Adicione a seção [axis_twist_compensation]\n"
+    "ao printer.cfg e reinicie o Klipper.");
   lv_obj_set_style_text_align(empty_lbl, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(empty_lbl, &lv_font_montserrat_16, 0);
   empty_back_btn = lv_btn_create(empty_cont);
   lv_obj_set_size(empty_back_btn, 140, 40);
   lv_obj_t *eb_lbl = lv_label_create(empty_back_btn);
-  lv_label_set_text(eb_lbl, LV_SYMBOL_LEFT "  Back");
+  lv_label_set_text(eb_lbl, LV_SYMBOL_LEFT "  Voltar");
   lv_obj_center(eb_lbl);
   lv_obj_add_event_cb(empty_back_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -267,16 +267,16 @@ void AxisTwistPanel::foreground() {
 
 void AxisTwistPanel::start_calibration() {
   if (KUtils::is_printing()) {
-    KUtils::notify_toast("Can't calibrate while printing.", 3000);
+    KUtils::notify_toast("Não é possível calibrar durante a impressão.", 3000);
     return;
   }
   calibrating = true;
   accepted = 0;
   have_z = false;
   last_active = false;
-  lv_label_set_text(point_label, "Point 1 of 5");
+  lv_label_set_text(point_label, "Ponto 1 de 5");
   lv_label_set_text(z_label, "Z -");
-  lv_label_set_text(instr_label, "Homing and probing the first point...");
+  lv_label_set_text(instr_label, "Indo à origem e medindo o primeiro ponto...");
   show_stage(PROBING);
   update_probe_ui();
 
@@ -298,14 +298,14 @@ void AxisTwistPanel::update_probe_ui() {
   else        lv_obj_add_state(accept_btn, LV_STATE_DISABLED);
 
   lv_label_set_text(point_label,
-    fmt::format("Point {} of {}", std::min(accepted + 1, total), total).c_str());
+    fmt::format("Ponto {} de {}", std::min(accepted + 1, total), total).c_str());
 
   if (active) {
     if (have_z) lv_label_set_text(z_label, fmt::format("Z {:.3f}", last_z).c_str());
     else        lv_label_set_text(z_label, "Z -");
-    lv_label_set_text(instr_label, "Lower until a sheet of paper just drags, then Accept.");
+    lv_label_set_text(instr_label, "Abaixe até o papel arrastar de leve e toque em Aceitar.");
   } else {
-    lv_label_set_text(instr_label, "Repositioning / probing next point...");
+    lv_label_set_text(instr_label, "Indo ao próximo ponto e medindo...");
   }
 }
 
@@ -344,14 +344,14 @@ void AxisTwistPanel::handle_gcode_response(json &j) {
       auto p = body.find("offsets:");
       std::string shown = (p != std::string::npos) ? body.substr(p) : body;
       lv_label_set_text(done_offsets_label,
-        fmt::format("{}\n\nSave writes this to printer.cfg (Klipper restarts).", shown).c_str());
+        fmt::format("{}\n\nToque em Salvar e reiniciar para gravar no printer.cfg.", shown).c_str());
       show_stage(DONE);
       return;
     }
     if (line.find("Calibration aborted") != std::string::npos) {
       calibrating = false;
       show_stage(INTRO);
-      KUtils::notify_toast("Axis twist calibration aborted.", 3000);
+      KUtils::notify_toast("Calibração da torção do eixo X abortada.", 3000);
       return;
     }
   }
@@ -387,7 +387,7 @@ void AxisTwistPanel::handle_callback(lv_event_t *e) {
 
   if (btn == save_btn) {
     ws.gcode_script("SAVE_CONFIG");
-    KUtils::notify_toast("Saving... Klipper will restart.", 3000);
+    KUtils::notify_toast("Salvando... O Klipper vai reiniciar.", 3000);
     lv_obj_move_background(panel_cont);
     return;
   }

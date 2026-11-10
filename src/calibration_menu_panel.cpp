@@ -139,7 +139,7 @@ CalibrationMenuPanel::CalibrationMenuPanel(KWebSocketClient &websocket_client, s
 
   lv_obj_t *title = lv_label_create(panel_cont);
   lv_obj_set_grid_cell(title, LV_GRID_ALIGN_START, 0, 1, LV_GRID_ALIGN_CENTER, 0, 1);
-  lv_label_set_text(title, "Calibration");
+  lv_label_set_text(title, "Calibração");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
 
   back_btn = lv_btn_create(panel_cont);
@@ -163,16 +163,16 @@ CalibrationMenuPanel::CalibrationMenuPanel(KWebSocketClient &websocket_client, s
   lv_obj_add_flag(list_cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_scrollbar_mode(list_cont, LV_SCROLLBAR_MODE_AUTO);
 
-  make_section_label(list_cont, "IN ORDER");
-  axis_twist_row  = make_row(list_cont, &layers_img,      "Axis Twist",              &CalibrationMenuPanel::_handle_callback, this, "1");
-  wizard_row      = make_row(list_cont, &home_z,          "Z-Offset & Bed Mesh",     &CalibrationMenuPanel::_handle_callback, this, "2");
-  inputshaper_row = make_row(list_cont, &inputshaper_img, "Input Shaper",            &CalibrationMenuPanel::_handle_callback, this, "3");
-  esteps_row      = make_row(list_cont, &extrude_img,     "E-Steps Calibration",     &CalibrationMenuPanel::_handle_callback, this, "4");
-  skew_row        = make_row(list_cont, &skew_img,        "Skew Correction",         &CalibrationMenuPanel::_handle_callback, this, "5");
-  tmc_tune_row    = make_row(list_cont, &motor_img,       "TMC Autotune (optional)", &CalibrationMenuPanel::_handle_callback, this, "6");
+  make_section_label(list_cont, "NESTA ORDEM");
+  axis_twist_row  = make_row(list_cont, &layers_img,      "Torção do eixo X",                  &CalibrationMenuPanel::_handle_callback, this, "1");
+  wizard_row      = make_row(list_cont, &home_z,          "Altura do bico e malha da mesa",    &CalibrationMenuPanel::_handle_callback, this, "2");
+  inputshaper_row = make_row(list_cont, &inputshaper_img, "Compensação de vibração",           &CalibrationMenuPanel::_handle_callback, this, "3");
+  esteps_row      = make_row(list_cont, &extrude_img,     "Calibração da extrusora",           &CalibrationMenuPanel::_handle_callback, this, "4");
+  skew_row        = make_row(list_cont, &skew_img,        "Correção de esquadro",              &CalibrationMenuPanel::_handle_callback, this, "5");
+  tmc_tune_row    = make_row(list_cont, &motor_img,       "Autoajuste dos motores (opcional)", &CalibrationMenuPanel::_handle_callback, this, "6");
 
-  make_section_label(list_cont, "OTHER");
-  bedmesh_row = make_row(list_cont, &bedmesh_img, "Bed Mesh", &CalibrationMenuPanel::_handle_callback, this);
+  make_section_label(list_cont, "OUTROS");
+  bedmesh_row = make_row(list_cont, &bedmesh_img, "Malha da mesa", &CalibrationMenuPanel::_handle_callback, this);
 
   rows = {axis_twist_row, wizard_row, inputshaper_row, esteps_row, skew_row, tmc_tune_row, bedmesh_row};
 
@@ -311,8 +311,8 @@ void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
     // it never shows up as a live printer object - only configfile.settings.
     if (!AxisTwistPanel::is_enabled()) {
       KUtils::notify_toast(
-        "Axis Twist Compensation isn't enabled.\n"
-        "Add [axis_twist_compensation] to printer.cfg.",
+        "A compensação da torção do eixo X não está ativada.\n"
+        "Adicione [axis_twist_compensation] ao printer.cfg.",
         4000);
       return;
     }
@@ -347,8 +347,8 @@ void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
     // Detect via the config section (no get_status), like Axis Twist.
     if (!SkewCorrectionPanel::is_enabled()) {
       KUtils::notify_toast(
-        "Skew correction isn't enabled.\n"
-        "Add [skew_correction] to printer.cfg.",
+        "A correção de esquadro não está ativada.\n"
+        "Adicione [skew_correction] ao printer.cfg.",
         4000);
       return;
     }

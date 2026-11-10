@@ -1,21 +1,62 @@
-name: guppy build
+# =============================================================================
+# Montagem e publicação da tela em português do Brasil (GuppyScreen do OpenKE
+# para a Creality Ender-3 V3 KE).
+#
+# Roda no GitHub do dono (cleitonSam/guppyscreen-ptbr) sem o contêiner privado
+# do OpenKE (ghcr.io/coreflake1/guppydev): instala as mesmas ferramentas que o
+# docker/Dockerfile instala e baixa a mesma ferramenta de montagem para MIPS da
+# Bootlin, conferida pelo SHA-256. O resto é igual ao original: remendos
+# (patches), make, guppybeep e scripts/release.sh. Antes de compilar entram as
+# fontes com acento (fonts_ptbr/, geradas pelo scripts/gerar-fontes-ptbr.sh).
+#
+# Quando roda:
+#   - envio (push) para a main ......... monta e atualiza a "Versão de teste"
+#                                        (pré-lançamento com a etiqueta "teste")
+#   - etiqueta vX.Y.Z-OpenKE-ptbr[.N] .. monta e publica a versão oficial
+#   - Actions > "montar tela em português" > Run workflow, com a versão
+#     preenchida ....................... monta e publica a versão oficial
+#                                        (a etiqueta é criada sozinha)
+#   - pedido de mudança (pull request) . só monta, para conferir
+#
+# Esquema das versões (o botão de atualizar da tela compara por ele):
+#   v1.5.0-OpenKE-ptbr      primeira versão em português, feita do OpenKE v1.5.0
+#   v1.5.0-OpenKE-ptbr.1    1ª correção da tradução (depois .2, .3 ... .10)
+#   v1.5.1-OpenKE-ptbr      quando o OpenKE lançar a 1.5.1 e ela for traduzida
+#   teste-ptbr-<commit>     versão de teste (o botão de atualizar ignora)
+# O pacote sempre se chama guppyscreen-smallscreen.tar.gz: é o nome gravado no
+# .version e procurado pelo scripts/update.sh. Junto vai o .sha256 (conferência).
+# =============================================================================
+name: montar tela em português
 
 on:
   push:
-    branches: [ "main", "develop", "ke-next" ]
+    branches: [ "main" ]
     tags:
-      - "*"
+      - "v*-ptbr"
+      - "v*-ptbr.*"
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão oficial para publicar (ex.: v1.5.0-OpenKE-ptbr.1). Vazio = só atualiza a versão de teste."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
-  packages: read
+
+concurrency:
+  group: montagem-${{ github.event_name }}-${{ github.ref }}-${{ inputs.versao }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref_type != 'tag' }}
 
 jobs:
   build:
     strategy:
       matrix:
         include:
-          # Ender-3 V3 KE only: MIPS, 480x272 small screen.
+          # Só a Ender-3 V3 KE: MIPS, tela pequena 480x272 (igual ao OpenKE).
           - arch: mipsel-buildroot-linux-musl-
             theme: material
             small: true
@@ -23,48 +64,97 @@ jobs:
             calibrate: true
             asset: guppyscreen-smallscreen
 
-    runs-on: ubuntu-22.04
-    container:
-      # Self-hosted cross toolchain (see docker/Dockerfile). Reproduces the
-      # upstream ballaswag/guppydev image. `credentials` lets the job pull it
-      # while the ghcr package is private; harmless once it is made public.
-      image: ghcr.io/coreflake1/guppydev:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user 1001
+    # ubuntu-24.04, e não 22.04: o GitHub está aposentando a 22.04 (falhas
+    # propositais em 23/03, 30/03, 06/04 e 13/04/2027 e remoção em 17/04/2027 -
+    # actions/runner-images#14254). A montagem não depende do Ubuntu: o
+    # compilador é o da Bootlin, o mesmo do contêiner do OpenKE. 24.04 também é
+    # o Ubuntu do WSL do dono (scripts/montar-local-wsl.sh).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        shell: bash
 
     env:
       CROSS_COMPILE: ${{ matrix.arch }}
       CC: ${{ matrix.arch }}
       CXX: ${{ matrix.arch }}
       GUPPY_THEME: ${{ matrix.theme }}
+      # Mesma ferramenta e mesma conferência do docker/Dockerfile.
+      MIPS_TOOLCHAIN: mips32el--musl--stable-2024.02-1
+      MIPS_URL: https://toolchains.bootlin.com/downloads/releases/toolchains/mips32el/tarballs/mips32el--musl--stable-2024.02-1.tar.bz2
+      MIPS_SHA256: 25c0b3217df1bf1a7bae2cc4f56cdeab9fec98b172bbf0b336b2e8fe41d3ee4e
 
     steps:
     - uses: actions/checkout@v6
       with:
         submodules: recursive
 
-    - if: ${{ ! startsWith(github.ref, 'refs/tags/') }}
-      name: set guppyscreen nightly version
+    - name: instalar as ferramentas do sistema (as mesmas do docker/Dockerfile)
       run: |
-        echo "GUPPYSCREEN_VERSION=nightly-${{ github.sha }}" >> $GITHUB_ENV
+        sudo apt-get update || { sleep 15; sudo apt-get update; }
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          build-essential cmake git wget xz-utils bzip2 ca-certificates file jq
 
-    # ke-next gets its own moving prerelease tag so its nightly never
-    # overwrites main's - every other ref (main, develop, and tag pushes)
-    # keeps the original shared "nightly" tag unchanged.
-    - name: set nightly channel
+    - name: recuperar a ferramenta MIPS já baixada antes (cache)
+      uses: actions/cache@v6
+      with:
+        path: ~/ferramentas/${{ env.MIPS_TOOLCHAIN }}.tar.bz2
+        key: bootlin-${{ env.MIPS_TOOLCHAIN }}-${{ env.MIPS_SHA256 }}
+
+    - name: baixar e conferir a ferramenta MIPS (Bootlin)
       run: |
-        if [ "${{ github.ref_name }}" = "ke-next" ]; then
-          echo "NIGHTLY_TAG=nightly-ke-next" >> $GITHUB_ENV
+        mkdir -p "$HOME/ferramentas"
+        ARQ="$HOME/ferramentas/$MIPS_TOOLCHAIN.tar.bz2"
+        conferir() { echo "$MIPS_SHA256  $ARQ" | sha256sum -c --status -; }
+        if [ -s "$ARQ" ] && conferir; then
+          echo "Ferramenta recuperada da cache e conferida (SHA-256 ok)."
         else
-          echo "NIGHTLY_TAG=nightly" >> $GITHUB_ENV
+          rm -f "$ARQ"
+          wget -q --tries=3 --timeout=120 -O "$ARQ" "$MIPS_URL"
+          if ! conferir; then
+            echo "::error::A ferramenta baixada não bate com o SHA-256 esperado ($MIPS_SHA256)."
+            exit 1
+          fi
+          echo "Ferramenta baixada e conferida (SHA-256 ok)."
         fi
+        tar -xjf "$ARQ" -C "$HOME/ferramentas"
+        echo "$HOME/ferramentas/$MIPS_TOOLCHAIN/bin" >> "$GITHUB_PATH"
 
-    - if: startsWith(github.ref, 'refs/tags/')
-      name: set guppyscreen release version
+    - name: mostrar o compilador MIPS
       run: |
-        echo "GUPPYSCREEN_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+        "${CROSS_COMPILE}gcc" --version | head -n 1
+        command -v "${CROSS_COMPILE}g++" "${CROSS_COMPILE}strip"
+
+    - name: definir a versão
+      env:
+        VERSAO_MANUAL: ${{ inputs.versao }}
+        NUMERO_PR: ${{ github.event.pull_request.number }}
+      run: |
+        CURTO="${GITHUB_SHA::7}"
+        PUBLICAR=nao
+        if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+          VERSAO="$GITHUB_REF_NAME"
+          PUBLICAR=oficial
+        elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "$VERSAO_MANUAL" ]; then
+          VERSAO="$VERSAO_MANUAL"
+          PUBLICAR=oficial
+        elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+          VERSAO="pr${NUMERO_PR}-ptbr-$CURTO"
+        else
+          VERSAO="teste-ptbr-$CURTO"
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            PUBLICAR=teste
+          fi
+        fi
+        if [ "$PUBLICAR" = "oficial" ] && ! printf '%s' "$VERSAO" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-OpenKE-ptbr(\.[0-9]+)?$'; then
+          echo "::error::A versão '$VERSAO' está fora do padrão. Use vX.Y.Z-OpenKE-ptbr (a primeira) ou vX.Y.Z-OpenKE-ptbr.N (as correções)."
+          exit 1
+        fi
+        echo "Versão: $VERSAO (publicar: $PUBLICAR)"
+        echo "GUPPYSCREEN_VERSION=$VERSAO" >> "$GITHUB_ENV"
+        echo "PUBLICAR=$PUBLICAR" >> "$GITHUB_ENV"
 
     - if: matrix.small
       name: export screen size
@@ -94,6 +184,47 @@ jobs:
         git apply ../patches/0003-lvgl-dpi-text-scale.patch
       working-directory: ./lvgl
 
+    - name: preparar o Node (para gerar as fontes)
+      uses: actions/setup-node@v6
+      with:
+        node-version: "22"
+        package-manager-cache: false
+
+    # As 6 fontes com acento (fonts_ptbr/*.c) normalmente vão salvas no Git
+    # (traducao/FONTES.md): aí a montagem usa exatamente as que foram testadas.
+    # Se faltarem, gera agora com o scripts/gerar-fontes-ptbr.sh (Node + Python;
+    # conversor e arquivos de fonte conferidos pela impressão digital).
+    - name: fontes com acento (á, ç, ã, ê...)
+      env:
+        npm_config_yes: "true"
+        npm_config_update_notifier: "false"
+        npm_config_fund: "false"
+        npm_config_audit: "false"
+      run: |
+        if [ ! -f scripts/gerar-fontes-ptbr.sh ]; then
+          echo "::error::Falta scripts/gerar-fontes-ptbr.sh. Sem ele a tela fica sem as letras com acento."
+          exit 1
+        fi
+        QTD=0
+        if [ -d fonts_ptbr ]; then
+          QTD=$(find fonts_ptbr -maxdepth 1 -name 'lv_font_montserrat_*.c' | wc -l)
+        fi
+        if [ "$QTD" -eq 6 ]; then
+          echo "Usando as 6 fontes com acento salvas no Git (fonts_ptbr/)."
+        else
+          echo "Fontes com acento no Git: $QTD de 6. Gerando agora com o Node $(node --version)."
+          bash scripts/gerar-fontes-ptbr.sh
+          git status --short -- fonts_ptbr || true
+        fi
+        echo "Conferindo se todas as letras dos textos da tela existem nas fontes:"
+        if ! bash scripts/gerar-fontes-ptbr.sh --so-conferir; then
+          if [ "$PUBLICAR" = "oficial" ]; then
+            echo "::error::Há letras nos textos da tela que não existem nas fontes (virariam quadradinhos). A versão oficial não foi publicada."
+            exit 1
+          fi
+          echo "::warning::Há letras nos textos da tela que não existem nas fontes (virariam quadradinhos)."
+        fi
+
     - name: make wpaclient
       run: make wpaclient
 
@@ -104,7 +235,11 @@ jobs:
       run: make libspdlog.a
 
     - name: make guppyscreen
-      run: make -j
+      run: |
+        # -j com o número de processadores (o original usava -j sem limite).
+        # Se a primeira passada falhar por corrida ao criar pastas, a segunda
+        # monta só o que faltou; erro de verdade falha nas duas.
+        make -j"$(nproc)" || { echo "::warning::A primeira passada falhou; tentando de novo só o que faltou."; make -j"$(nproc)"; }
 
     - name: make kd_graphic_mode
       run: make kd_graphic_mode
@@ -112,29 +247,172 @@ jobs:
     - name: make guppybeep
       run: ${CROSS_COMPILE}gcc -O2 -static -o build/bin/guppybeep k1/k1_mods/buzzer/guppybeep.c
 
+    - name: conferir o programa montado
+      run: |
+        BIN=build/bin/guppyscreen
+        file "$BIN"
+        file "$BIN" | grep -Eq 'ELF 32-bit LSB (pie )?executable, MIPS' || { echo "::error::O programa não saiu para MIPS 32 bits."; exit 1; }
+        file "$BIN" | grep -Eq 'statically linked|static-pie linked' || { echo "::error::O programa não saiu estático (a impressora não tem as bibliotecas)."; exit 1; }
+        LC_ALL=C grep -aqF -- "$GUPPYSCREEN_VERSION" "$BIN" || { echo "::error::A versão $GUPPYSCREEN_VERSION não ficou gravada no programa."; exit 1; }
+        # Palavras do glossário da tradução (traducao/glossario.json). Procurar só
+        # "ç"/"ã" não serve: esses bytes aparecem por acaso nos dados do programa.
+        if LC_ALL=C grep -aqF -e 'Calibração' -e 'Cancelar' "$BIN"; then
+          echo "Textos em português encontrados no programa."
+        elif [ "$PUBLICAR" = "oficial" ]; then
+          echo "::error::Não achei textos em português no programa (Calibração, Cancelar): a tradução não entrou. A versão oficial não foi publicada."
+          exit 1
+        else
+          echo "::warning::Não achei textos em português no programa (Calibração, Cancelar): a tradução ainda não entrou?"
+        fi
+
     - name: package release
       run: |
         chmod +x ./scripts/release.sh
         ./scripts/release.sh ${{ matrix.asset }}
 
+    - name: conferir o pacote e gerar a conferência (SHA-256)
+      env:
+        ASSET: ${{ matrix.asset }}
+      run: |
+        PKG="$ASSET.tar.gz"
+        tar -tzf "$PKG" > lista-pacote.txt
+        for f in ./guppyscreen/guppyscreen ./guppyscreen/guppybeep ./guppyscreen/.version \
+                 ./guppyscreen/update.sh ./guppyscreen/instalar-tela-ptbr.sh ./guppyscreen/voltar-tela-original.sh \
+                 ./guppyscreen/k1_mods/S99guppyscreen ./guppyscreen/k1_mods/respawn/supervise-daemon \
+                 ./guppyscreen/debian/guppyconfig.json; do
+          grep -qxF -- "$f" lista-pacote.txt || { echo "::error::Falta $f no pacote."; exit 1; }
+        done
+        # Tira do pacote os arquivos a conferir (grep direto no arquivo: com
+        # pipefail, "tar | grep -q" pode errar quando o grep fecha o cano cedo).
+        rm -rf conferencia && mkdir conferencia
+        tar -xzf "$PKG" -C conferencia ./guppyscreen/.version ./guppyscreen/update.sh \
+          ./guppyscreen/instalar-tela-ptbr.sh ./guppyscreen/voltar-tela-original.sh ./guppyscreen/k1_mods/S99guppyscreen
+        cat conferencia/guppyscreen/.version
+        jq -e --arg v "$GUPPYSCREEN_VERSION" --arg a "$PKG" '.version == $v and .asset_name == $a' conferencia/guppyscreen/.version > /dev/null \
+          || { echo "::error::O .version do pacote não bate com a versão $GUPPYSCREEN_VERSION e o nome $PKG."; exit 1; }
+        for s in update.sh instalar-tela-ptbr.sh voltar-tela-original.sh k1_mods/S99guppyscreen; do
+          if grep -q $'\r' "conferencia/guppyscreen/$s"; then
+            echo "::error::$s está com fim de linha do Windows (CRLF) e não rodaria na impressora."
+            exit 1
+          fi
+          if [ ! -x "conferencia/guppyscreen/$s" ]; then
+            echo "::error::$s está sem permissão de execução no pacote."
+            exit 1
+          fi
+        done
+        if ! grep -qiF "REPO=\"$GITHUB_REPOSITORY\"" conferencia/guppyscreen/update.sh; then
+          MSG="O scripts/update.sh não aponta para $GITHUB_REPOSITORY: o botão de atualizar da tela buscaria as atualizações em outro lugar."
+          if [ "$PUBLICAR" = "oficial" ]; then echo "::error::$MSG"; exit 1; else echo "::warning::$MSG"; fi
+        fi
+        sha256sum "$PKG" > "$PKG.sha256"
+        cat "$PKG.sha256"
+        echo "SHA256_PACOTE=$(cut -d' ' -f1 "$PKG.sha256")" >> "$GITHUB_ENV"
+
     - uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.asset }}
-        path: ./${{ matrix.asset }}.tar.gz
+        name: ${{ matrix.asset }}-${{ env.GUPPYSCREEN_VERSION }}
+        path: |
+          ${{ matrix.asset }}.tar.gz
+          ${{ matrix.asset }}.tar.gz.sha256
+        if-no-files-found: error
+        retention-days: 30
+        overwrite: true
 
-    - name: nightly release
+    - name: escrever as notas da versão
+      if: env.PUBLICAR != 'nao'
+      env:
+        ASSET: ${{ matrix.asset }}
+      run: |
+        DATA="$(TZ=America/Sao_Paulo date '+%d/%m/%Y %H:%M')"
+        RAW="https://raw.githubusercontent.com/$GITHUB_REPOSITORY"
+        CURTO="${GITHUB_SHA::7}"
+        if [ "$PUBLICAR" = "oficial" ]; then
+          BASE="${GUPPYSCREEN_VERSION%%-ptbr*}"
+          cat > notas.md <<EOF
+        ## Tela da Ender-3 V3 KE em português do Brasil
+
+        Versão **$GUPPYSCREEN_VERSION**, feita a partir do OpenKE ${BASE%-OpenKE} (GuppyScreen).
+        Montada em $DATA, a partir do commit \`$CURTO\`.
+
+        ### Instalar (primeira vez)
+        No terminal da impressora (acesso root pelo SSH), copie e cole:
+
+            wget --no-check-certificate -qO /tmp/instalar-tela-ptbr.sh $RAW/$GUPPYSCREEN_VERSION/scripts/instalar-tela-ptbr.sh && sh /tmp/instalar-tela-ptbr.sh $GUPPYSCREEN_VERSION
+
+        O instalador não roda com a impressora imprimindo, faz uma cópia de segurança completa da tela atual, mantém as suas configurações e volta sozinho para a tela anterior se a nova não subir.
+
+        ### Atualizar
+        Quem já tem a tela em português: na tela, aba da engrenagem > **Atualizar tela**.
+
+        ### Voltar para a tela original
+
+            sh /usr/data/voltar-tela-original.sh
+
+        ### Conferência do pacote
+        \`$ASSET.tar.gz\` - SHA-256: \`$SHA256_PACOTE\`
+        EOF
+        else
+          cat > notas.md <<EOF
+        ## Versão de teste (não oficial)
+
+        Montagem automática do commit \`$CURTO\` em $DATA (versão \`$GUPPYSCREEN_VERSION\`).
+        Serve para conferir mudanças antes de publicar uma versão oficial. O botão de atualizar da tela ignora esta versão.
+
+        Para instalar esta versão de teste (no terminal da impressora):
+
+            wget --no-check-certificate -qO /tmp/instalar-tela-ptbr.sh $RAW/main/scripts/instalar-tela-ptbr.sh && sh /tmp/instalar-tela-ptbr.sh teste
+
+        Para voltar para a versão oficial, rode o mesmo comando sem a palavra \`teste\`.
+
+        \`$ASSET.tar.gz\` - SHA-256: \`$SHA256_PACOTE\`
+        EOF
+        fi
+        cat notas.md
+
+    - name: mover a etiqueta "teste" para este commit
+      if: env.PUBLICAR == 'teste'
+      run: |
+        git tag -f teste "$GITHUB_SHA"
+        git push -f origin refs/tags/teste \
+          || echo "::warning::Não consegui mover a etiqueta teste (a versão de teste é atualizada mesmo assim)."
+
+    - name: publicar a versão de teste
+      if: env.PUBLICAR == 'teste'
       uses: softprops/action-gh-release@v3
       with:
+        tag_name: teste
+        name: Versão de teste (${{ env.GUPPYSCREEN_VERSION }})
+        body_path: notas.md
         prerelease: true
-        name: ${{ env.NIGHTLY_TAG }}
-        tag_name: ${{ env.NIGHTLY_TAG }}
-        files: ${{ matrix.asset }}.tar.gz
+        make_latest: false
+        files: |
+          ${{ matrix.asset }}.tar.gz
+          ${{ matrix.asset }}.tar.gz.sha256
         fail_on_unmatched_files: true
 
-    - name: stable release
+    - name: publicar a versão oficial
+      if: env.PUBLICAR == 'oficial'
       uses: softprops/action-gh-release@v3
-      if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: ${{ matrix.asset }}.tar.gz
-        generate_release_notes: true
+        tag_name: ${{ env.GUPPYSCREEN_VERSION }}
+        target_commitish: ${{ github.sha }}
+        name: Tela em português ${{ env.GUPPYSCREEN_VERSION }}
+        body_path: notas.md
+        prerelease: false
+        make_latest: true
+        files: |
+          ${{ matrix.asset }}.tar.gz
+          ${{ matrix.asset }}.tar.gz.sha256
         fail_on_unmatched_files: true
+
+    - name: resumo
+      if: always()
+      run: |
+        {
+          echo "### Tela em português - montagem"
+          echo "- Versão: \`${GUPPYSCREEN_VERSION:-?}\`"
+          echo "- Publicação: ${PUBLICAR:-nao}"
+          if [ -n "${SHA256_PACOTE:-}" ]; then
+            echo "- SHA-256 do pacote: \`$SHA256_PACOTE\`"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"

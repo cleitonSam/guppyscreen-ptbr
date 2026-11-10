@@ -65,15 +65,15 @@ InputShaperPanel::InputShaperPanel(KWebSocketClient &c, std::mutex &l)
   , switch_cont(lv_obj_create(button_cont))
   , graph_switch_label(lv_label_create(switch_cont))
   , graph_switch(lv_switch_create(switch_cont))
-  , calibrate_btn(button_cont, &resume, "Calibrate", &InputShaperPanel::_handle_callback, this)
-  , save_btn(button_cont, &sd_img, "Save", &InputShaperPanel::_handle_callback, this)
-  , emergency_btn(button_cont, &emergency, "Stop", &InputShaperPanel::_handle_callback, this,
-    "Do you want to emergency stop?",
+  , calibrate_btn(button_cont, &resume, "Calibrar", &InputShaperPanel::_handle_callback, this)
+  , save_btn(button_cont, &sd_img, "Salvar", &InputShaperPanel::_handle_callback, this)
+  , emergency_btn(button_cont, &emergency, "Parar tudo", &InputShaperPanel::_handle_callback, this,
+    "Fazer parada de emergência?",
     [&c]() {
       spdlog::debug("emergency stop pressed");
       c.send_jsonrpc("printer.emergency_stop");
     })
-  , back_btn(cont, &back, "Back", &InputShaperPanel::_handle_callback, this)
+  , back_btn(cont, &back, "Voltar", &InputShaperPanel::_handle_callback, this)
   , ximage_fullsized(false)
   , yimage_fullsized(false)
   , x_pending(false)
@@ -89,7 +89,7 @@ InputShaperPanel::InputShaperPanel(KWebSocketClient &c, std::mutex &l)
   lv_obj_set_style_pad_all(cont, 0, 0);
 
   lv_obj_t *graph_label = lv_label_create(xgraph_cont);
-  lv_label_set_text(graph_label, "X Frequency Response");
+  lv_label_set_text(graph_label, "Resposta em frequência X");
   lv_obj_align(graph_label, LV_ALIGN_BOTTOM_MID, 0, 0);
 
   lv_obj_set_style_pad_all(xgraph_cont, 0, 0);
@@ -99,7 +99,7 @@ InputShaperPanel::InputShaperPanel(KWebSocketClient &c, std::mutex &l)
     LV_EVENT_CLICKED, this);
 
   graph_label = lv_label_create(ygraph_cont);
-  lv_label_set_text(graph_label, "Y Frequency Response");
+  lv_label_set_text(graph_label, "Resposta em frequência Y");
   lv_obj_align(graph_label, LV_ALIGN_BOTTOM_MID, 0, 0);
 
   lv_obj_set_style_pad_all(ygraph_cont, 0, 0);
@@ -153,7 +153,7 @@ InputShaperPanel::InputShaperPanel(KWebSocketClient &c, std::mutex &l)
   lv_obj_set_flex_align(switch_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   lv_obj_set_style_text_align(graph_switch_label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(graph_switch_label, "Graph");
+  lv_label_set_text(graph_switch_label, "Gráfico");
   lv_obj_set_width(graph_switch_label, LV_PCT(100));
   lv_obj_clear_state(graph_switch, LV_STATE_CHECKED);
   lv_obj_clear_flag(switch_cont, LV_OBJ_FLAG_SCROLLABLE);
@@ -170,7 +170,7 @@ InputShaperPanel::InputShaperPanel(KWebSocketClient &c, std::mutex &l)
   lv_obj_set_style_pad_all(xcontrol, 0, 0);
 
   lv_obj_set_width(xaxis_label, LV_PCT(100));
-  lv_label_set_text(xaxis_label, "X Axis");
+  lv_label_set_text(xaxis_label, "Eixo X");
   lv_obj_add_state(x_switch, LV_STATE_CHECKED);
 
   lv_obj_clear_flag(xslider_cont, LV_OBJ_FLAG_SCROLLABLE);
@@ -198,7 +198,7 @@ InputShaperPanel::InputShaperPanel(KWebSocketClient &c, std::mutex &l)
   lv_obj_set_style_pad_row(ycontrol, 0, 0);
 
   lv_obj_set_width(yaxis_label, LV_PCT(100));
-  lv_label_set_text(yaxis_label, "Y Axis");
+  lv_label_set_text(yaxis_label, "Eixo Y");
   lv_obj_add_state(y_switch, LV_STATE_CHECKED);
 
   lv_obj_clear_flag(yslider_cont, LV_OBJ_FLAG_SCROLLABLE);
@@ -304,7 +304,7 @@ void InputShaperPanel::handle_callback(lv_event_t *event) {
     bool y_requested = lv_obj_has_state(y_switch, LV_STATE_CHECKED);
 
     if (!x_requested && !y_requested) {
-      KUtils::notify_toast("Pick X and/or Y first, then Calibrate.", 2500);
+      KUtils::notify_toast("Escolha o eixo X, o Y ou os dois e toque em Calibrar.", 2500);
       return;
     }
 
@@ -330,8 +330,8 @@ void InputShaperPanel::handle_callback(lv_event_t *event) {
       xhz, xbuf, yhz, ybuf));
 
     KUtils::notify_toast(
-      fmt::format("Saved - X: {} @ {:.1f} Hz, Y: {} @ {:.1f} Hz. Klipper is restarting to apply it "
-        "(if it shows 'shutdown', just restart it again).", xbuf, xhz, ybuf, yhz),
+      fmt::format("Salvo: X {} em {:.1f} Hz e Y {} em {:.1f} Hz. O Klipper vai reiniciar para aplicar. "
+        "Se aparecer 'shutdown', reinicie o Klipper de novo.", xbuf, xhz, ybuf, yhz),
       6000);
 
   } else if (btn == back_btn.get_container()) {
@@ -393,7 +393,7 @@ void InputShaperPanel::handle_macro_response(json &j) {
               auto bn = b.template get<std::string>();
               auto &fq = res["shapers"][bn]["freq"];
               if (fq.is_number()) {
-                KUtils::notify_toast(fmt::format("X done - recommended {} @ {:.1f} Hz. Tap Save to apply.",
+                KUtils::notify_toast(fmt::format("Eixo X pronto: recomendado {} em {:.1f} Hz. Toque em Salvar para aplicar.",
                   bn, fq.template get<double>()), 4000);
               }
             }
@@ -448,7 +448,7 @@ void InputShaperPanel::handle_macro_response(json &j) {
               auto bn = b.template get<std::string>();
               auto &fq = res["shapers"][bn]["freq"];
               if (fq.is_number()) {
-                KUtils::notify_toast(fmt::format("Y done - recommended {} @ {:.1f} Hz. Tap Save to apply.",
+                KUtils::notify_toast(fmt::format("Eixo Y pronto: recomendado {} em {:.1f} Hz. Toque em Salvar para aplicar.",
                   bn, fq.template get<double>()), 4000);
               }
             }
@@ -461,7 +461,7 @@ void InputShaperPanel::handle_macro_response(json &j) {
       }
 
     } else if ("// Resonances data written to " Y_DATA " file" == resp) {
-      KUtils::notify_toast(graph_requested ? "Analysing Y + rendering graph (slower)..." : "Analysing Y...", 3000);
+      KUtils::notify_toast(graph_requested ? "Analisando o eixo Y e gerando o gráfico (mais lento)..." : "Analisando o eixo Y...", 3000);
       auto config_root = KUtils::get_root_path("config");
       auto screen_width = (double)lv_disp_get_physical_hor_res(NULL) / 100.0;
       auto screen_height = (double)lv_disp_get_physical_ver_res(NULL) / 100.0;
@@ -473,7 +473,7 @@ void InputShaperPanel::handle_macro_response(json &j) {
       ws.gcode_script(fmt::format("RUN_SHELL_COMMAND CMD=guppy_input_shaper PARAMS={:?}", arg));
 
     } else if ("// Resonances data written to " X_DATA " file" == resp) {
-      KUtils::notify_toast(graph_requested ? "Analysing X + rendering graph (slower)..." : "Analysing X...", 3000);
+      KUtils::notify_toast(graph_requested ? "Analisando o eixo X e gerando o gráfico (mais lento)..." : "Analisando o eixo X...", 3000);
       auto config_root = KUtils::get_root_path("config");
       auto screen_width = (double)lv_disp_get_physical_hor_res(NULL) / 100.0;
       auto screen_height = (double)lv_disp_get_physical_ver_res(NULL) / 100.0;
@@ -560,9 +560,9 @@ void InputShaperPanel::handle_update_slider(lv_event_t *e) {
     double hz = (double)lv_slider_get_value(obj);
     lv_slider_set_value(obj, hz, LV_ANIM_OFF);
     if (obj == xslider) {
-      lv_label_set_text(xlabel, fmt::format("{} hz", hz / 10.0).c_str());
+      lv_label_set_text(xlabel, fmt::format("{} Hz", hz / 10.0).c_str());
     } else if (obj == yslider) {
-      lv_label_set_text(ylabel, fmt::format("{} hz", hz / 10.0).c_str());
+      lv_label_set_text(ylabel, fmt::format("{} Hz", hz / 10.0).c_str());
     }
   }
 }
@@ -585,7 +585,7 @@ void InputShaperPanel::set_shaper_detail(json &res,
       auto bs_name = best_shaper.template get<std::string>();
       double f = shapers_resp[bs_name]["freq"]
         .template get<double>();
-      shaper_details.push_back(fmt::format("Best: {} @ {:.1f} Hz\n", bs_name, f));
+      shaper_details.push_back(fmt::format("Melhor: {} em {:.1f} Hz\n", bs_name, f));
 
       uint32_t idx = find_shaper_index(shapers, bs_name);
       lv_dropdown_set_selected(dd, idx);
@@ -603,7 +603,7 @@ void InputShaperPanel::set_shaper_detail(json &res,
       };
       auto emit = [&](const std::string &name, json &el) {
         shaper_details.push_back(
-          fmt::format("{}  {:.1f} Hz  {:.1f}% vib",
+          fmt::format("{}  {:.1f} Hz  vib. {:.1f}%",
             name,
             el["freq"].template get<double>(),
             el["vib"].template get<double>()));
@@ -674,7 +674,7 @@ void InputShaperPanel::handle_watchdog() {
     lv_obj_add_flag(xspinner, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(yspinner, LV_OBJ_FLAG_HIDDEN);
     KUtils::notify_toast(
-      "Calibration timed out - nothing was changed. Check the printer and try again.", 6000);
+      "A calibração demorou demais e nada foi alterado. Confira a impressora e tente de novo.", 6000);
   }
 }
 
@@ -707,10 +707,10 @@ void InputShaperPanel::begin_axis(bool is_x) {
   lv_obj_add_state(graph_switch, LV_STATE_DISABLED);
   lv_obj_clear_flag(graph_switch, LV_OBJ_FLAG_CLICKABLE);
   KUtils::notify_toast(
-    fmt::format("Calibrating {} - it'll move & shake for ~1 min. Leave it be.{}{}",
+    fmt::format("Calibrando o eixo {}: a impressora vai vibrar por cerca de 1 minuto. Não mexa nela.{}{}",
       is_x ? "X" : "Y",
-      homing ? " (homing first)" : "",
-      graph ? " Graph is on, so it's slower." : ""),
+      homing ? " Antes, ela vai à origem." : "",
+      graph ? " Com o gráfico ligado, demora mais." : ""),
     5000);
 
   if (is_x) {
@@ -739,12 +739,12 @@ void InputShaperPanel::begin_axis(bool is_x) {
 
 void InputShaperPanel::show_placement_prompt(bool is_x, bool moving) {
   next_axis_is_x = is_x;
-  static const char *btns[] = {"Continue", "Cancel", ""};
-  const char *title = moving ? "Move the accelerometer" : "Position the accelerometer";
-  std::string where = is_x ? "the TOOLHEAD (for X)" : "the BED (for Y)";
+  static const char *btns[] = {"Continuar", "Cancelar", ""};
+  const char *title = moving ? "Mudar o acelerômetro de lugar" : "Posicionar o acelerômetro";
+  std::string where = is_x ? "no CABEÇOTE (para o X)" : "na MESA (para o Y)";
   std::string body = moving
-    ? fmt::format("First axis done.\n\nNow mount the accelerometer on {}, then tap Continue.", where)
-    : fmt::format("Mount the accelerometer on {}, then tap Continue.", where);
+    ? fmt::format("Primeiro eixo pronto.\n\nAgora prenda o acelerômetro {} e toque em Continuar.", where)
+    : fmt::format("Prenda o acelerômetro {} e toque em Continuar.", where);
   lv_obj_t *mbox = lv_msgbox_create(NULL, title, body.c_str(), btns, false);
   KUtils::style_lock_mbox(mbox, 90);
   lv_obj_add_event_cb(mbox, &InputShaperPanel::_placement_prompt_cb, LV_EVENT_VALUE_CHANGED, this);

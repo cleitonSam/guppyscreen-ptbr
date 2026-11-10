@@ -8,6 +8,20 @@ build-mips/
 *.so
 *.so.*
 /guppyscreen-*.tar.gz
+/guppyscreen-*.tar.gz.sha256
 /releases/guppyscreen/guppyscreen
 /.idea
 /.vscode
+# Pacote montado no computador por scripts/montar-local-wsl.sh
+/pacote-local/
+# Material de pesquisa e área de trabalho (não publicar: tem dados reais da impressora)
+/bocchi.html
+/d558.html
+/entware_pkgs.html
+/pr34.html
+/mr_en.yaml
+/kb_install.sh
+/retrato/
+# Arquivos que o Python gera sozinho ao rodar os scripts de traducao/
+__pycache__/
+*.pyc

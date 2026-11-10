@@ -31,18 +31,18 @@ PrinterTunePanel::PrinterTunePanel(KWebSocketClient &c, std::mutex &l, lv_obj_t 
   , axis_twist_panel(c, l)
   , skew_correction_panel(c)
   , calibration_menu_panel(c, l, bedmesh_panel, inputshaper_panel, axis_twist_panel, skew_correction_panel, tmc_tune_panel)
-  , bedmesh_btn(cont, &bedmesh_img, "Bed Mesh", &PrinterTunePanel::_handle_callback, this)
-  , finetune_btn(cont, &fine_tune_img, "Fine Tune", &PrinterTunePanel::_handle_callback, this)
-  , limits_btn(cont, &limit_img, "Limits", &PrinterTunePanel::_handle_callback, this)
-  , tmc_status_btn(cont, &chart_img, "TMC Metrics", &PrinterTunePanel::_handle_callback, this)
+  , bedmesh_btn(cont, &bedmesh_img, "Malha da mesa", &PrinterTunePanel::_handle_callback, this)
+  , finetune_btn(cont, &fine_tune_img, "Ajuste fino", &PrinterTunePanel::_handle_callback, this)
+  , limits_btn(cont, &limit_img, "Limites", &PrinterTunePanel::_handle_callback, this)
+  , tmc_status_btn(cont, &chart_img, "Medições TMC", &PrinterTunePanel::_handle_callback, this)
 #ifndef ZBOLT
-  , power_devices_btn(cont, &power_devices_img, "Power Settings", &PrinterTunePanel::_handle_callback, this)
+  , power_devices_btn(cont, &power_devices_img, "Energia", &PrinterTunePanel::_handle_callback, this)
 #else
-  , power_devices_btn(cont, &print, "Power Settings", &PrinterTunePanel::_handle_callback, this)
+  , power_devices_btn(cont, &print, "Energia", &PrinterTunePanel::_handle_callback, this)
 #endif
-  , retraction_btn(cont, &retract_img, "Retraction", &PrinterTunePanel::_handle_callback, this)
-  , zoffset_btn(cont, &home_z, "Z Offset", &PrinterTunePanel::_handle_callback, this)
-  , calibration_btn(cont, &calibration_img, "Calibration", &PrinterTunePanel::_handle_callback, this)
+  , retraction_btn(cont, &retract_img, "Retração", &PrinterTunePanel::_handle_callback, this)
+  , zoffset_btn(cont, &home_z, "Altura do bico", &PrinterTunePanel::_handle_callback, this)
+  , calibration_btn(cont, &calibration_img, "Calibração", &PrinterTunePanel::_handle_callback, this)
 {
   lv_obj_move_background(cont);
 
@@ -112,14 +112,14 @@ void PrinterTunePanel::handle_callback(lv_event_t *event) {
       bedmesh_panel.foreground();
     } else if (btn == limits_btn.get_container()) {
       spdlog::trace("limits pressed");
-      KUtils::confirm_if_printing("Printer is printing.\nAdjust limits anyway?",
+      KUtils::confirm_if_printing("A impressora está imprimindo.\nAjustar os limites mesmo assim?",
         [this]() { limits_panel.foreground(); });
     } else if (btn == tmc_status_btn.get_container()) {
       spdlog::trace("tmc metrics pressed");
       tmc_status_panel.foreground();
     } else if (btn == power_devices_btn.get_container()) {
       spdlog::trace("power devices pressed");
-      KUtils::confirm_if_printing("Printer is printing.\nChange power devices anyway?",
+      KUtils::confirm_if_printing("A impressora está imprimindo.\nMudar os dispositivos de energia mesmo assim?",
         [this]() { power_panel.foreground(); });
     } else if (btn == retraction_btn.get_container()) {
       spdlog::trace("retraction pressed");
@@ -129,8 +129,8 @@ void PrinterTunePanel::handle_callback(lv_event_t *event) {
         "/printer_state/firmware_retraction"_json_pointer);
       if (fr.is_null()) {
         KUtils::notify_toast(
-          "Firmware retraction isn't enabled.\n"
-          "Add [firmware_retraction] to printer.cfg.",
+          "A retração pelo firmware não está ativada.\n"
+          "Adicione [firmware_retraction] ao printer.cfg.",
           4000);
         return;
       }
@@ -140,8 +140,8 @@ void PrinterTunePanel::handle_callback(lv_event_t *event) {
       if (KUtils::is_printing()
           && KUtils::print_uses_firmware_retraction() == 0) {
         KUtils::notify_toast(
-          "This print isn't sliced for firmware retraction.\n"
-          "These settings won't apply.",
+          "Esta impressão não usa retração pelo firmware.\n"
+          "Estes ajustes não terão efeito.",
           4000);
         return;
       }

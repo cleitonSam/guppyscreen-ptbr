@@ -306,7 +306,7 @@ std::mutex &GuppyScreen::get_lock() {
 }
 
 void GuppyScreen::connect_ws(const std::string &url) {
-  init_panel.set_message(LV_SYMBOL_WARNING " Waiting for printer to initialize...");
+  init_panel.set_message(LV_SYMBOL_WARNING " Aguardando a impressora iniciar...");
   ws.connect(url.c_str(),
    [this]() { init_panel.connected(ws); },
    [this]() { init_panel.disconnected(ws); });

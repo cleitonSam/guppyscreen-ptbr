@@ -69,7 +69,7 @@ TmcStatusContainer::TmcStatusContainer(KWebSocketClient &c,
 
   lv_obj_set_width(label, LV_PCT(100));
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(label, fmt::format("{} (current/load)", stepper_name).c_str());
+  lv_label_set_text(label, fmt::format("{} (corrente/carga)", stepper_name).c_str());
 
   auto scale = (double)lv_disp_get_physical_hor_res(NULL) / 800.0;
   lv_obj_set_flex_flow(chart_cont, LV_FLEX_FLOW_COLUMN);

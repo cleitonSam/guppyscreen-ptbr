@@ -32,16 +32,16 @@ static bool is_klipper_temp_report(const std::string &line) {
 // this map is imperfect. Firmware-adaptive: empty groups are hidden.
 struct CatDef { const char *label; const char *keys; };  // keys: '|'-separated
 static const CatDef CAT_DEFS[] = {
-  {"Bed Mesh / Leveling", "MESH|Z_TILT|QUAD_GANTRY|SCREWS_TILT|BED_SCREWS|BED_TILT|LEVEL"},
-  {"Probe / Calibration", "PROBE|CALIBRATE|PID|SHAPER|RESONANCE|ACCELEROMETER|PRESSURE_ADVANCE|Z_OFFSET|GCODE_OFFSET|ENDSTOP_PHASE"},
-  {"Motion",              "G28|HOME|MOVE|KINEMATIC|VELOCITY|M204|M205|STEPPER_BUZZ|M84|M18"},
-  {"Temperature / Fans",  "TEMP|HEATER|M104|M109|M140|M190|M106|M107|FAN"},
-  {"Extruder / Filament", "EXTRUD|FILAMENT|M600|LOAD|UNLOAD|RETRACT|M83|M82"},
-  {"TMC / Drivers",       "TMC"},
-  {"Print Job",           "PRINT|SDCARD|PAUSE|RESUME|CANCEL|EXCLUDE_OBJECT|M24|M25|M73"},
-  {"Camera",              "CAM"},
-  {"Query / Debug",       "QUERY|GET_POSITION|M114|DUMP|DEBUG|RESPOND|M118|STATUS|HELP"},
-  {"System",              "RESTART|SAVE_CONFIG|SAVE_VARIABLE|SAVE_GCODE|SHUTDOWN|REBOOT|M112|IDLE_TIMEOUT|SET_PIN|DISPLAY|M115|BEEP|UPDATE"},
+  {"Malha / nivelamento", "MESH|Z_TILT|QUAD_GANTRY|SCREWS_TILT|BED_SCREWS|BED_TILT|LEVEL"},
+  {"Medição / calibração", "PROBE|CALIBRATE|PID|SHAPER|RESONANCE|ACCELEROMETER|PRESSURE_ADVANCE|Z_OFFSET|GCODE_OFFSET|ENDSTOP_PHASE"},
+  {"Movimento",           "G28|HOME|MOVE|KINEMATIC|VELOCITY|M204|M205|STEPPER_BUZZ|M84|M18"},
+  {"Temperatura / ventoinhas", "TEMP|HEATER|M104|M109|M140|M190|M106|M107|FAN"},
+  {"Extrusora / filamento", "EXTRUD|FILAMENT|M600|LOAD|UNLOAD|RETRACT|M83|M82"},
+  {"TMC / drivers",       "TMC"},
+  {"Impressão",           "PRINT|SDCARD|PAUSE|RESUME|CANCEL|EXCLUDE_OBJECT|M24|M25|M73"},
+  {"Câmera",              "CAM"},
+  {"Consulta / depuração", "QUERY|GET_POSITION|M114|DUMP|DEBUG|RESPOND|M118|STATUS|HELP"},
+  {"Sistema",             "RESTART|SAVE_CONFIG|SAVE_VARIABLE|SAVE_GCODE|SHUTDOWN|REBOOT|M112|IDLE_TIMEOUT|SET_PIN|DISPLAY|M115|BEEP|UPDATE"},
 };
 
 static std::string to_upper(const std::string &s) {
@@ -148,7 +148,7 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   lv_textarea_set_one_line(input, true);
   lv_obj_set_style_text_font(input, &lv_font_montserrat_16, LV_PART_MAIN);  // scale text to the taller field (20 overflowed with long commands)
   lv_obj_set_height(input, BAR_H);
-  lv_textarea_set_placeholder_text(input, "type gcode...");
+  lv_textarea_set_placeholder_text(input, "digite o G-code...");
   lv_obj_add_event_cb(input, &ConsolePanel::_handle_input_kb, LV_EVENT_ALL, this);
 
   lv_obj_t *clear_btn = lv_btn_create(input_bar);
@@ -193,7 +193,7 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   lv_obj_set_style_bg_color(back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_set_style_pad_hor(back_btn, 14, LV_PART_MAIN);
   lv_obj_t *back_lbl = lv_label_create(back_btn);
-  lv_label_set_text(back_lbl, LV_SYMBOL_LEFT "  Back");
+  lv_label_set_text(back_lbl, LV_SYMBOL_LEFT "  Voltar");
   lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, 0);
   lv_obj_center(back_lbl);
   lv_obj_add_event_cb(back_btn, &ConsolePanel::_handle_back, LV_EVENT_CLICKED, this);
@@ -286,7 +286,7 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   // filter box (level 2 only)
   lv_obj_set_size(filter, LV_PCT(100), LV_SIZE_CONTENT);
   lv_textarea_set_one_line(filter, true);
-  lv_textarea_set_placeholder_text(filter, "filter...");
+  lv_textarea_set_placeholder_text(filter, "filtrar...");
   lv_obj_add_flag(filter, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_event_cb(filter, &ConsolePanel::_handle_filter_kb, LV_EVENT_ALL, this);
 
@@ -406,7 +406,7 @@ void ConsolePanel::send_command(const std::string &cmd) {
   if (cmd.empty()) {
     return;
   }
-  KUtils::confirm_if_printing("Printer is printing.\nSend this command anyway?",
+  KUtils::confirm_if_printing("A impressora está imprimindo.\nEnviar este comando mesmo assim?",
     [this, cmd]() {
       append_output("> " + cmd);
       ws.gcode_script(cmd);
@@ -499,7 +499,7 @@ void ConsolePanel::build_keyword_cats() {
   for (int i = 0; i < n; i++) {
     groups.push_back({CAT_DEFS[i].label, {}});
   }
-  CmdCategory other{"Other", {}};
+  CmdCategory other{"Outros", {}};
 
   for (const auto &cmd : all_commands) {
     int hit = -1;
@@ -532,7 +532,7 @@ void ConsolePanel::show_categories() {
   // back at the top level exits to the terminal
   lv_obj_clear_flag(subhdr, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(back_btn, LV_OBJ_FLAG_HIDDEN);
-  lv_label_set_text(title_label, "Commands");
+  lv_label_set_text(title_label, "Comandos");
   lv_obj_add_flag(filter, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_flag(footer_label, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_flag(list_cont, LV_OBJ_FLAG_HIDDEN);
@@ -545,12 +545,12 @@ void ConsolePanel::show_categories() {
 
   // assemble the displayed categories: Favorites, Recent, keyword groups, All
   display_cats.clear();
-  display_cats.push_back({"Favorites", favorites});
-  display_cats.push_back({"Recent", std::vector<std::string>(history.begin(), history.end())});
+  display_cats.push_back({"Favoritos", favorites});
+  display_cats.push_back({"Recentes", std::vector<std::string>(history.begin(), history.end())});
   for (const auto &g : keyword_cats) {
     display_cats.push_back(g);
   }
-  display_cats.push_back({"All commands", all_commands});
+  display_cats.push_back({"Todos os comandos", all_commands});
 
   rebuild_category_rows();
   lv_obj_scroll_to_y(cat_cont, 0, LV_ANIM_OFF);
@@ -665,7 +665,7 @@ void ConsolePanel::rebuild_command_list() {
 
   // footer when truncated
   if ((int)matches.size() > shown) {
-    lv_label_set_text_fmt(footer_label, "showing %d of %d  -  filter to narrow",
+    lv_label_set_text_fmt(footer_label, "Mostrando %d de %d: use o filtro para ver menos",
 			  shown, (int)matches.size());
     lv_obj_clear_flag(footer_label, LV_OBJ_FLAG_HIDDEN);
   } else {
@@ -675,13 +675,13 @@ void ConsolePanel::rebuild_command_list() {
   // empty state
   if (matches.empty()) {
     const std::string &lbl = display_cats[active_cat].label;
-    const char *msg = "No commands.";
+    const char *msg = "Nenhum comando.";
     if (!f.empty()) {
-      msg = "No commands match the filter.";
-    } else if (lbl == "Favorites") {
-      msg = "No favorites yet.\nStar commands in any list.";
-    } else if (lbl == "Recent") {
-      msg = "No recent commands yet.";
+      msg = "Nenhum comando encontrado.";
+    } else if (lbl == "Favoritos") {
+      msg = "Nenhum favorito ainda.\nToque na estrela de um comando.";
+    } else if (lbl == "Recentes") {
+      msg = "Nenhum comando recente.";
     }
     lv_label_set_text(empty_label, msg);
     lv_obj_clear_flag(empty_label, LV_OBJ_FLAG_HIDDEN);
@@ -803,7 +803,7 @@ void ConsolePanel::toggle_favorite(CommandItem *item) {
 
   // on the Favorites list the row should disappear immediately
   if (active_cat >= 0 && active_cat < (int)display_cats.size() &&
-      display_cats[active_cat].label == "Favorites") {
+      display_cats[active_cat].label == "Favoritos") {
     display_cats[active_cat].cmds = favorites;
     rebuild_command_list();
   }

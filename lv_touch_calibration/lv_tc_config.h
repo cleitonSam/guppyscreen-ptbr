@@ -12,25 +12,25 @@ extern "C" {
 #if defined CONFIG_USE_CUSTOM_LV_TC_START_MSG
 #define LV_TC_START_MSG CONFIG_LV_TC_START_MSG
 #else
-#define LV_TC_START_MSG                         "Precisely touch the cursors (using a touch pen) to perform the calibration."
+#define LV_TC_START_MSG                         "Toque bem no centro da mira (se puder, use uma caneta de toque) para calibrar a tela."
 #endif
 
 #if defined CONFIG_USE_CUSTOM_LV_TC_READY_MSG
 #define LV_TC_READY_MSG CONFIG_LV_TC_READY_MSG
 #else
-#define LV_TC_READY_MSG                         "Calibration completed. You can check it by moving the cursor around on the screen."
+#define LV_TC_READY_MSG                         "Calibração concluída. Para conferir, toque em vários pontos da tela e veja se a mira acompanha."
 #endif
 
 #if defined CONFIG_USE_CUSTOM_LV_TC_RECALIBRATE_TXT
 #define LV_TC_RECALIBRATE_TXT CONFIG_LV_TC_RECALIBRATE_TXT
 #else
-#define LV_TC_RECALIBRATE_TXT                   "Recalibrate"
+#define LV_TC_RECALIBRATE_TXT                   "Recalibrar"
 #endif
 
 #if defined CONFIG_USE_CUSTOM_LV_TC_ACCEPT_TXT
 #define LV_TC_ACCEPT_TXT CONFIG_LV_TC_ACCEPT_TXT
 #else
-#define LV_TC_ACCEPT_TXT                        "Accept"
+#define LV_TC_ACCEPT_TXT                        "Aceitar"
 #endif
 
 //The format of the timeout string on the recalibration button.

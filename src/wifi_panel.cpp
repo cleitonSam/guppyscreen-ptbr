@@ -25,7 +25,7 @@ WifiPanel::WifiPanel(std::mutex &l)
   , pw_row(lv_obj_create(prompt_cont))
   , password_input(lv_textarea_create(pw_row))
   , eye_btn(lv_btn_create(pw_row))
-  , back_btn(cont, &back, "Back", &WifiPanel::_handle_back_btn, this)
+  , back_btn(cont, &back, "Voltar", &WifiPanel::_handle_back_btn, this)
   , kb(lv_keyboard_create(cont))
   , pm_cont(lv_obj_create(wifi_right))
   , pm_btn(lv_btn_create(pm_cont))
@@ -152,7 +152,7 @@ WifiPanel::WifiPanel(std::mutex &l)
     lv_obj_set_style_border_width(pm_btn, 0, LV_PART_MAIN | state);
   }
   lv_obj_set_style_pad_all(pm_btn, 2, 0);
-  lv_label_set_text(pm_label, "Low Latency: OFF");
+  lv_label_set_text(pm_label, "Baixa latência: inativa");
   lv_obj_set_style_text_font(pm_label, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_decor(pm_label, LV_TEXT_DECOR_UNDERLINE, 0);
   lv_obj_center(pm_label);
@@ -160,7 +160,7 @@ WifiPanel::WifiPanel(std::mutex &l)
   lv_obj_set_width(pm_hint, LV_PCT(100));
   lv_label_set_long_mode(pm_hint, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(pm_hint, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(pm_hint, "steadier WiFi - no power-save/roam/BT");
+  lv_label_set_text(pm_hint, "Wi-Fi mais estável, sem economia de energia nem Bluetooth");
   lv_obj_set_style_text_font(pm_hint, &lv_font_montserrat_10, 0);
   lv_obj_set_style_text_color(pm_hint, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
 
@@ -200,7 +200,7 @@ void WifiPanel::foreground() {
   std::string resp = wpa_event.send_command("SCAN");
   if (resp.empty() || resp.find("FAIL") != std::string::npos) {
     lv_obj_add_flag(spinner, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(wifi_label, "Failed to start wifi scan.\nIs wpa_supplicant running?");
+    lv_label_set_text(wifi_label, "Falha ao procurar redes.\nO wpa_supplicant\nestá rodando?");
     lv_obj_clear_flag(prompt_cont, LV_OBJ_FLAG_HIDDEN);
   }
 }
@@ -217,8 +217,8 @@ void WifiPanel::handle_back_btn(lv_event_t *e) {
 
 void WifiPanel::refresh_pm_label() {
   bool low_latency = lv_obj_has_state(pm_btn, LV_STATE_CHECKED);
-  lv_label_set_text(pm_label, low_latency ? "Low Latency: ON"
-                                          : "Low Latency: OFF");
+  lv_label_set_text(pm_label, low_latency ? "Baixa latência: ativa"
+                                          : "Baixa latência: inativa");
 }
 
 void WifiPanel::handle_pm_toggle(lv_event_t *e) {
@@ -264,7 +264,7 @@ void WifiPanel::rebuild_wifi_rows() {
   };
 
   if (!known.empty()) {
-    make_group_label("KNOWN NETWORKS");
+    make_group_label("REDES SALVAS");
     for (auto &kv : known) {
       bool connected = (kv.first == cur_network);
       auto nid_it = list_networks.find(kv.first);
@@ -276,7 +276,7 @@ void WifiPanel::rebuild_wifi_rows() {
     }
   }
   if (!other.empty()) {
-    make_group_label("OTHER NETWORKS IN RANGE");
+    make_group_label("OUTRAS REDES POR PERTO");
     for (auto &kv : other) {
       wifi_rows.push_back(std::make_unique<WifiRowItem>(
         wifi_list_cont, kv.first, kv.second.signal, /*connected=*/false, /*saved=*/false, "",
@@ -291,9 +291,9 @@ void WifiPanel::handle_row_activated(const std::string &ssid) {
     auto it = wifi_name_db.find(ssid);
     int signal = it != wifi_name_db.end() ? it->second.signal : -100;
     bool secured = it != wifi_name_db.end() ? it->second.secured : true;
-    std::string signal_text = signal >= -50 ? "Excellent" : signal >= -60 ? "Good"
-                             : signal >= -70 ? "Fair" : "Weak";
-    std::string security_text = secured ? "Secured (WPA/WPA2)" : "Open (unsecured)";
+    std::string signal_text = signal >= -50 ? "Excelente" : signal >= -60 ? "Bom"
+                             : signal >= -70 ? "Razoável" : "Fraco";
+    std::string security_text = secured ? "Protegida (WPA/WPA2)" : "Aberta (sem senha)";
     auto ip = KUtils::interface_ip(KUtils::get_wifi_interface());
     network_detail_panel.foreground(ssid, signal_text, security_text, ip);
     return;
@@ -302,14 +302,14 @@ void WifiPanel::handle_row_activated(const std::string &ssid) {
   selected_network = ssid;
   if (list_networks.count(ssid)) {
     auto nid = list_networks.find(ssid)->second;
-    lv_label_set_text(wifi_label, fmt::format("Connecting to {} ...", ssid).c_str());
+    lv_label_set_text(wifi_label, fmt::format("Conectando a {}...", ssid).c_str());
     lv_obj_add_flag(pw_row, LV_OBJ_FLAG_HIDDEN);
     wpa_event.send_command(fmt::format("SELECT_NETWORK {}", nid));
     wpa_event.send_command("SAVE_CONFIG");
     wpa_event.send_command("REASSOCIATE");
   } else {
     entering_password = true;
-    lv_label_set_text(wifi_label, fmt::format("Enter password for {}", ssid).c_str());
+    lv_label_set_text(wifi_label, fmt::format("Digite a senha de {}", ssid).c_str());
     lv_obj_clear_flag(pw_row, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(pm_cont, LV_OBJ_FLAG_HIDDEN);
     lv_event_send(password_input, LV_EVENT_FOCUSED, NULL);
@@ -330,8 +330,8 @@ void WifiPanel::forget_current_network() {
 }
 
 void WifiPanel::confirm_remove_network(const std::string &ssid, const std::string &nid) {
-  static const char *btns[] = {"Remove", "Cancel", ""};
-  std::string msg = fmt::format("Forget network \"{}\"?\nThis deletes its saved password.", ssid);
+  static const char *btns[] = {"Esquecer", "Cancelar", ""};
+  std::string msg = fmt::format("Esquecer a rede \"{}\"?\nIsso apaga a senha salva.", ssid);
   lv_obj_t *mbox = lv_msgbox_create(NULL, NULL, msg.c_str(), btns, false);
   lv_obj_add_event_cb(mbox, [](lv_event_t *ev) {
     lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(ev));
@@ -350,7 +350,7 @@ void WifiPanel::confirm_remove_network(const std::string &ssid, const std::strin
     lv_obj_add_flag(self->prompt_cont, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(self->spinner, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(self->wifi_list_cont, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(self->wifi_label, "Scanning for networks...");
+    lv_label_set_text(self->wifi_label, "Procurando redes...");
     self->wpa_event.send_command("SCAN");
   }, LV_EVENT_VALUE_CHANGED, this);
   pending_remove_nid = nid;
@@ -376,7 +376,7 @@ void WifiPanel::handle_wpa_event(const std::string &event) {
 
     std::lock_guard<std::mutex> lock(lv_lock);
     if (!found) {
-      lv_label_set_text(wifi_label, "Please select your wifi network");
+      lv_label_set_text(wifi_label, "Escolha sua rede Wi-Fi");
     }
     while (std::getline(f, line)) {
       if (line.rfind("bss", 0) == 0) {
@@ -415,7 +415,7 @@ void WifiPanel::handle_wpa_event(const std::string &event) {
 
     if (!cur_network.empty()) {
       auto ip = KUtils::interface_ip(KUtils::get_wifi_interface());
-      lv_label_set_text(wifi_label, fmt::format("Connected to network {}\nIP: {}",
+      lv_label_set_text(wifi_label, fmt::format("Conectado a {}\nIP: {}",
         cur_network, ip).c_str());
       lv_obj_add_flag(pw_row, LV_OBJ_FLAG_HIDDEN);
       lv_obj_clear_flag(prompt_cont, LV_OBJ_FLAG_HIDDEN);
@@ -452,7 +452,7 @@ void WifiPanel::handle_wpa_event(const std::string &event) {
       std::lock_guard<std::mutex> lock(lv_lock);
 
       lv_label_set_text(wifi_label,
-        fmt::format("Connected to {}\nGetting IP...", cur_network).c_str());
+        fmt::format("Conectado a {}\nObtendo o IP...", cur_network).c_str());
       lv_obj_add_flag(pw_row, LV_OBJ_FLAG_HIDDEN);
       lv_obj_clear_flag(prompt_cont, LV_OBJ_FLAG_HIDDEN);
 
@@ -488,7 +488,7 @@ void WifiPanel::handle_kb_input(lv_event_t *e)
   } else if (code == LV_EVENT_DEFOCUSED || code == LV_EVENT_CANCEL) {
     entering_password = false;
     lv_keyboard_set_textarea(kb, NULL);
-    lv_label_set_text(wifi_label, "Please select your wifi network");
+    lv_label_set_text(wifi_label, "Escolha sua rede Wi-Fi");
     lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(pw_row, LV_OBJ_FLAG_HIDDEN);
     pw_visible = false;
@@ -508,7 +508,7 @@ void WifiPanel::handle_kb_input(lv_event_t *e)
     connect(password);
     lv_textarea_set_text(password_input, "");
     lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(wifi_label, fmt::format("Connecting to {} ...", selected_network).c_str());
+    lv_label_set_text(wifi_label, fmt::format("Conectando a {}...", selected_network).c_str());
     lv_obj_clear_state(password_input, LV_STATE_FOCUSED);
     lv_obj_add_flag(pw_row, LV_OBJ_FLAG_HIDDEN);
     pw_visible = false;
@@ -544,7 +544,7 @@ void WifiPanel::wait_for_connectivity(const std::string &iface,
   auto ip = KUtils::interface_ip(iface);
   std::lock_guard<std::mutex> lock(lv_lock);
   lv_label_set_text(wifi_label,
-    fmt::format("Connected to {}\nIP: {}", net, ip).c_str());
+    fmt::format("Conectado a {}\nIP: {}", net, ip).c_str());
 }
 
 void WifiPanel::handle_eye_btn(lv_event_t *e) {

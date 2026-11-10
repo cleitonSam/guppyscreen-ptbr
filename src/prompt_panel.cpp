@@ -216,7 +216,7 @@ void PromptPanel::on_button_click(lv_event_t *e) {
     // FilamentRunoutPanel::send_load_chunk).
     panel->ws.gcode_script(*pcmd, [panel](json &j) {
       if (j.contains("error")) {
-        std::string msg = "Command failed";
+        std::string msg = "Falha ao executar o comando";
         if (j["error"].contains("message") && j["error"]["message"].is_string()) {
           msg = j["error"]["message"].template get<std::string>();
         }

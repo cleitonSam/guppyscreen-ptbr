@@ -39,8 +39,8 @@ PrintPanel::PrintPanel(KWebSocketClient &websocket, std::mutex &lock, PrintStatu
   , file_table(lv_table_create(left_cont))
   , file_view(lv_obj_create(files_cont))
   , status_btn(file_view, &info_img, "Status", &PrintPanel::_handle_status_btn, this)
-  , print_btn(file_view, &print, "Print", &PrintPanel::_handle_print_callback, this)
-  , back_btn(file_view, &back, "Back", &PrintPanel::_handle_back_btn, this)
+  , print_btn(file_view, &print, "Imprimir", &PrintPanel::_handle_print_callback, this)
+  , back_btn(file_view, &back, "Voltar", &PrintPanel::_handle_back_btn, this)
   , root("", "", 0)
   , cur_dir(&root)
   , cur_file(NULL)
@@ -71,12 +71,12 @@ PrintPanel::PrintPanel(KWebSocketClient &websocket, std::mutex &lock, PrintStatu
    * some reason, possibly because they're children of plain lv_btn which carries
    * its own default style. Forcing the font here matches the rest of the UI. */
   label = lv_label_create(refresh_btn);
-  lv_label_set_text(label, LV_SYMBOL_REFRESH " Reload");
+  lv_label_set_text(label, LV_SYMBOL_REFRESH " Recarregar");
   lv_obj_set_style_text_font(label, &lv_font_montserrat_10, 0);
   lv_obj_center(label);
 
   label = lv_label_create(modified_sort_btn);
-  lv_label_set_text(label, LV_SYMBOL_LIST " Modified");
+  lv_label_set_text(label, LV_SYMBOL_LIST " Data");
   lv_obj_set_style_text_font(label, &lv_font_montserrat_10, 0);
   lv_obj_center(label);
 
@@ -134,7 +134,7 @@ PrintPanel::PrintPanel(KWebSocketClient &websocket, std::mutex &lock, PrintStatu
 
   // header (text swapped per spool state in show_filament_dialog)
   filament_title_label = lv_label_create(filament_box);
-  lv_label_set_text(filament_title_label, "Use the same filament?");
+  lv_label_set_text(filament_title_label, "Usar o mesmo filamento?");
   KUtils::style_dialog_title(filament_title_label);
 
   // content block: a centered group of rows, centered in the box
@@ -176,14 +176,14 @@ PrintPanel::PrintPanel(KWebSocketClient &websocket, std::mutex &lock, PrintStatu
   lv_obj_add_event_cb(filament_yes_btn, &PrintPanel::_handle_filament_btns, LV_EVENT_CLICKED, this);
   lv_obj_align(filament_yes_btn, LV_ALIGN_BOTTOM_LEFT, 0, 0);
   label = lv_label_create(filament_yes_btn);
-  lv_label_set_text(label, "Yes");
+  lv_label_set_text(label, "Sim");
   lv_obj_center(label);
 
   lv_obj_set_size(filament_no_btn, 96, LV_SIZE_CONTENT);
   lv_obj_add_event_cb(filament_no_btn, &PrintPanel::_handle_filament_btns, LV_EVENT_CLICKED, this);
   lv_obj_align(filament_no_btn, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
   label = lv_label_create(filament_no_btn);
-  lv_label_set_text(label, "No");
+  lv_label_set_text(label, "Não");
   lv_obj_center(label);
 
   ws.register_notify_update(this);
@@ -451,7 +451,7 @@ void PrintPanel::handle_print_callback(lv_event_t *event) {
       }
 
     } else {
-      KUtils::notify_toast("A print is already in progress.", 2500);
+      KUtils::notify_toast("Já há uma impressão em andamento.", 2500);
     }
   }
 }
@@ -471,13 +471,13 @@ void PrintPanel::show_filament_dialog() {
   json spool = sm.get_active_spool();
 
   if (spool.is_null()) {
-    lv_label_set_text(filament_title_label, "No spool selected - print anyway?");
+    lv_label_set_text(filament_title_label, "Sem carretel ativo. Imprimir mesmo assim?");
     lv_obj_add_flag(filament_swatch, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(filament_name_label, "");
     lv_label_set_text(filament_detail_label, "");
     lv_label_set_text(filament_enough_label, "");
   } else {
-    lv_label_set_text(filament_title_label, "Use the same filament?");
+    lv_label_set_text(filament_title_label, "Usar o mesmo filamento?");
     // name: "Vendor - Name"
     auto vendor_json = spool["/filament/vendor/name"_json_pointer];
     auto vendor = !vendor_json.is_null() ? vendor_json.template get<std::string>() : "";
@@ -501,7 +501,7 @@ void PrintPanel::show_filament_dialog() {
     auto remaining_json = spool["/remaining_weight"_json_pointer];
     if (!remaining_json.is_null()) {
       lv_label_set_text(filament_detail_label,
-        fmt::format("{}, {:.0f} g left", material, remaining_json.template get<double>()).c_str());
+        fmt::format("{}, restam {:.0f} g", material, remaining_json.template get<double>()).c_str());
     } else {
       lv_label_set_text(filament_detail_label, material.c_str());
     }
@@ -514,15 +514,15 @@ void PrintPanel::show_filament_dialog() {
     if (pending_needed_g > 0 && !remaining_json.is_null()) {
       known = true;
       enough = remaining_json.template get<double>() >= pending_needed_g;
-      verdict = fmt::format("Print needs {:.0f} g  {}", pending_needed_g,
-        enough ? LV_SYMBOL_OK " enough" : LV_SYMBOL_CLOSE " not enough");
+      verdict = fmt::format("A impressão usa {:.0f} g  {}", pending_needed_g,
+        enough ? LV_SYMBOL_OK " suficiente" : LV_SYMBOL_CLOSE " insuficiente");
     } else {
       auto rem_len_json = spool["/remaining_length"_json_pointer];
       if (pending_needed_mm > 0 && !rem_len_json.is_null()) {
         known = true;
         enough = rem_len_json.template get<double>() >= pending_needed_mm;
-        verdict = fmt::format("Print needs {:.1f} m  {}", pending_needed_mm / 1000.0,
-          enough ? LV_SYMBOL_OK " enough" : LV_SYMBOL_CLOSE " not enough");
+        verdict = fmt::format("A impressão usa {:.1f} m  {}", pending_needed_mm / 1000.0,
+          enough ? LV_SYMBOL_OK " suficiente" : LV_SYMBOL_CLOSE " insuficiente");
       }
     }
     if (known) {
@@ -530,7 +530,7 @@ void PrintPanel::show_filament_dialog() {
       lv_label_set_text(filament_enough_label, verdict.c_str());
     } else {
       lv_obj_set_style_text_color(filament_enough_label, lv_color_white(), 0);
-      lv_label_set_text(filament_enough_label, "Filament usage unknown");
+      lv_label_set_text(filament_enough_label, "Consumo de filamento desconhecido");
     }
   }
 

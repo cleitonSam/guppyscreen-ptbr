@@ -25,9 +25,9 @@ InitPanel::InitPanel(MainPanel &mp, BedMeshPanel &bmp, FilamentRunoutPanel &frp,
 
   Config *conf = Config::get_instance();
   if (!conf->get_json("/default_printer").is_null()) {
-    lv_label_set_text(label, LV_SYMBOL_WARNING " Waiting for printer to initialize...");
+    lv_label_set_text(label, LV_SYMBOL_WARNING " Aguardando a impressora iniciar...");
   } else {
-    lv_label_set_text(label, "Welcome to Guppy Screen. Use the Setting Panel to add your printers.");
+    lv_label_set_text(label, "Bem-vindo. Adicione suas impressoras na aba Configurações.");
   }
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);

@@ -39,7 +39,7 @@ ExcludeObjectPanel::ExcludeObjectPanel(KWebSocketClient &websocket_client, std::
   , info_cont(lv_obj_create(panel_cont))
   , title_label(lv_label_create(info_cont))
   , status_label(lv_label_create(info_cont))
-  , back_btn(info_cont, &back, "Back", &ExcludeObjectPanel::_handle_callback, this)
+  , back_btn(info_cont, &back, "Voltar", &ExcludeObjectPanel::_handle_callback, this)
 {
   lv_obj_move_background(panel_cont);
   lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
@@ -74,7 +74,7 @@ ExcludeObjectPanel::ExcludeObjectPanel(KWebSocketClient &websocket_client, std::
   lv_obj_set_flex_align(info_cont, LV_FLEX_ALIGN_SPACE_BETWEEN,
                         LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-  lv_label_set_text(title_label, "Exclude Object");
+  lv_label_set_text(title_label, "Excluir objeto");
   lv_obj_set_style_text_font(title_label, &lv_font_montserrat_16, 0);
 
   lv_label_set_recolor(status_label, true);  // legend colours match the bed map
@@ -179,7 +179,7 @@ void ExcludeObjectPanel::redraw() {
   };
 
   if (!objects.is_array() || objects.empty()) {
-    lv_label_set_text(status_label, "No excludable objects.\n\nThe gcode must be sliced\nwith object labels.");
+    lv_label_set_text(status_label, "Nenhum objeto para excluir.\n\nO arquivo precisa ser fatiado\ncom a opção \"Etiquetar objetos\".");
     return;
   }
 
@@ -257,10 +257,10 @@ void ExcludeObjectPanel::redraw() {
   }
 
   lv_label_set_text(status_label,
-    fmt::format("#4caf50 Printing now#\n"
-                "#2196f3 Tap to exclude#\n"
-                "#b71c1c Excluded#\n\n"
-                "{} object(s), {} excluded",
+    fmt::format("#4caf50 Imprimindo agora#\n"
+                "#2196f3 Toque para excluir#\n"
+                "#b71c1c Excluído#\n\n"
+                "Objetos: {}, excluídos: {}",
                 (int)objects.size(), n_excluded).c_str());
 
 }
@@ -332,8 +332,8 @@ void ExcludeObjectPanel::confirm_exclude(const std::string &name) {
   if (shown.size() > MAXLEN) shown = shown.substr(0, MAXLEN) + "...";
 
   std::string msg;
-  static const char *cancel_btns[]  = {"Cancel Print", "Back", ""};
-  static const char *exclude_btns[] = {"Exclude", "Cancel", ""};
+  static const char *cancel_btns[]  = {"Cancelar impressão", "Voltar", ""};
+  static const char *exclude_btns[] = {"Excluir", "Cancelar", ""};
   const char **btns;
 
   if (cancel_on_confirm) {
@@ -354,27 +354,27 @@ void ExcludeObjectPanel::confirm_exclude(const std::string &name) {
 
     std::string delay;
     if (e_heating && b_heating)
-      delay = fmt::format("\n\nExtruder {:.0f}/{:.0f}°C + Bed {:.0f}/{:.0f}°C\n"
-                          "Cancel is queued and will run when heating finishes.", etemp, etarget, btemp, btarget);
+      delay = fmt::format("\n\nBico {:.0f}/{:.0f}°C + mesa {:.0f}/{:.0f}°C\n"
+                          "O cancelamento fica na fila até o aquecimento terminar.", etemp, etarget, btemp, btarget);
     else if (e_heating)
-      delay = fmt::format("\n\nExtruder heating: {:.0f}/{:.0f}°C\n"
-                          "Cancel is queued and will run when heating finishes.", etemp, etarget);
+      delay = fmt::format("\n\nAquecendo o bico: {:.0f}/{:.0f}°C\n"
+                          "O cancelamento fica na fila até o aquecimento terminar.", etemp, etarget);
     else if (b_heating)
-      delay = fmt::format("\n\nBed heating: {:.0f}/{:.0f}°C\n"
-                          "Cancel is queued and will run when heating finishes.", btemp, btarget);
+      delay = fmt::format("\n\nAquecendo a mesa: {:.0f}/{:.0f}°C\n"
+                          "O cancelamento fica na fila até o aquecimento terminar.", btemp, btarget);
     else if (in_startup)
-      delay = "\n\nStartup in progress — cancel is queued\n"
-              "and will run when startup finishes.";
+      delay = "\n\nA impressão está começando.\n"
+              "O cancelamento fica na fila até essa etapa terminar.";
 
-    msg  = fmt::format("\"{}\" is the last object.\n"
-                       "Excluding it will cancel the print.{}", shown, delay);
+    msg  = fmt::format("\"{}\" é o último objeto.\n"
+                       "Excluir este objeto cancela a impressão.{}", shown, delay);
     btns = cancel_btns;
   } else {
     auto cur = s->get_data("/printer_state/exclude_object/current_object"_json_pointer);
     bool printing_now = cur.is_string() && cur.template get<std::string>() == name;
     msg  = printing_now
-             ? fmt::format("Stop printing \"{}\"?\nThis cannot be undone.", shown)
-             : fmt::format("Exclude \"{}\"?\nThis cannot be undone.", shown);
+             ? fmt::format("Parar de imprimir \"{}\"?\nIsso não pode ser desfeito.", shown)
+             : fmt::format("Excluir \"{}\" da impressão?\nIsso não pode ser desfeito.", shown);
     btns = exclude_btns;
   }
 

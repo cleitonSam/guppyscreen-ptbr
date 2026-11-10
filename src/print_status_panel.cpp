@@ -37,18 +37,18 @@ PrintStatusPanel::PrintStatusPanel(KWebSocketClient &websocket_client,
   , mini_print_status(mini_parent, &PrintStatusPanel::_handle_callback, this)
   , status_cont(lv_obj_create(lv_scr_act()))
   , buttons_cont(lv_obj_create(status_cont))
-  , finetune_btn(buttons_cont, &fine_tune_img, "Fine Tune", &PrintStatusPanel::_handle_callback, this)
-  , objects_btn(buttons_cont, &delete_img, "Objects", &PrintStatusPanel::_handle_callback, this)
-  , pause_btn(buttons_cont, &pause_img, "Pause", &PrintStatusPanel::_handle_callback, this)
-  , resume_btn(buttons_cont, &resume, "Resume", &PrintStatusPanel::_handle_callback, this)
-  , cancel_btn(buttons_cont, &cancel, "Cancel", &PrintStatusPanel::_handle_callback, this)
-  , emergency_btn(buttons_cont, &emergency, "Stop", &PrintStatusPanel::_handle_callback, this,
-		  "Do you want to emergency stop?",
+  , finetune_btn(buttons_cont, &fine_tune_img, "Ajuste fino", &PrintStatusPanel::_handle_callback, this)
+  , objects_btn(buttons_cont, &delete_img, "Objetos", &PrintStatusPanel::_handle_callback, this)
+  , pause_btn(buttons_cont, &pause_img, "Pausar", &PrintStatusPanel::_handle_callback, this)
+  , resume_btn(buttons_cont, &resume, "Retomar", &PrintStatusPanel::_handle_callback, this)
+  , cancel_btn(buttons_cont, &cancel, "Cancelar", &PrintStatusPanel::_handle_callback, this)
+  , emergency_btn(buttons_cont, &emergency, "Parar tudo", &PrintStatusPanel::_handle_callback, this,
+		  "Fazer parada de emergência?",
 		  [&websocket_client]() {
 		    spdlog::debug("emergency stop pressed");
 		    websocket_client.send_jsonrpc("printer.emergency_stop");
 		  })
-  , back_btn(buttons_cont, &back, "Back", &PrintStatusPanel::_handle_callback, this)
+  , back_btn(buttons_cont, &back, "Voltar", &PrintStatusPanel::_handle_callback, this)
   , thumbnail_cont(lv_obj_create(status_cont))
   , filename_label(lv_label_create(thumbnail_cont))
   , thumbnail(lv_img_create(thumbnail_cont))
@@ -61,7 +61,7 @@ PrintStatusPanel::PrintStatusPanel(KWebSocketClient &websocket_client,
   , chamber_temp(detail_cont, &heater, 100, "22")
   , print_speed(detail_cont, &speed_up_img, 100, "0 mm/s")
   , z_offset(detail_cont, &home_z, 100, "0.0 mm")
-  , flow_rate(detail_cont, &extrude, 100, "0.0 mm3/s")
+  , flow_rate(detail_cont, &extrude, 100, "0.0 mm³/s")
   , layers(detail_cont, &layers_img, 100, "...")
   , fan0(detail_cont, &fan, 100, "0%")
   , elapsed(detail_cont, &clock_img, 100, "0s")
@@ -196,7 +196,7 @@ PrintStatusPanel::PrintStatusPanel(KWebSocketClient &websocket_client,
   complete_done_btn = lv_btn_create(complete_cont);
   lv_obj_set_size(complete_done_btn, 160, 48);
   lv_obj_t *done_lbl = lv_label_create(complete_done_btn);
-  lv_label_set_text(done_lbl, "Done");
+  lv_label_set_text(done_lbl, "OK");
   lv_obj_center(done_lbl);
   lv_obj_add_event_cb(complete_done_btn, &PrintStatusPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -225,8 +225,8 @@ void PrintStatusPanel::show_completion(const std::string &state) {
   State *s = State::get_instance();
   bool ok = (state == "complete");
 
-  lv_label_set_text(complete_title, ok ? LV_SYMBOL_OK "  Print complete"
-                                       : LV_SYMBOL_CLOSE "  Print cancelled");
+  lv_label_set_text(complete_title, ok ? LV_SYMBOL_OK "  Impressão concluída"
+                                       : LV_SYMBOL_CLOSE "  Impressão cancelada");
   lv_obj_set_style_text_color(complete_title,
     ok ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
 
@@ -238,12 +238,12 @@ void PrintStatusPanel::show_completion(const std::string &state) {
   if (dur.is_number()) {
     int t = (int)dur.template get<double>();
     int h = t / 3600, m = (t % 3600) / 60, sec = t % 60;
-    stats = h > 0 ? fmt::format("Time  {}h {:02d}m", h, m)
-                  : fmt::format("Time  {}m {:02d}s", m, sec);
+    stats = h > 0 ? fmt::format("Tempo  {}h {:02d}min", h, m)
+                  : fmt::format("Tempo  {}min {:02d}s", m, sec);
   }
   auto fil = s->get_data("/printer_state/print_stats/filament_used"_json_pointer);
   if (fil.is_number()) {
-    stats += fmt::format("     Filament  {:.2f} m", fil.template get<double>() / 1000.0);
+    stats += fmt::format("     Filamento  {:.2f} m", fil.template get<double>() / 1000.0);
   }
   lv_label_set_text(complete_stats, stats.c_str());
 
@@ -257,7 +257,7 @@ void PrintStatusPanel::reset() {
   lv_bar_set_value(progress_bar, 0, LV_ANIM_OFF);
   lv_label_set_text(progress_label, "0%");
   print_speed.update_label("0 mm/s");
-  flow_rate.update_label("0.0 mm3/s");
+  flow_rate.update_label("0.0 mm³/s");
   elapsed.update_label("0s");
   time_left.update_label("...");
   estimated_time_s = 0;
@@ -615,7 +615,7 @@ void PrintStatusPanel::consume(json &j) {
   v = j["/params/0/motion_report/live_extruder_velocity"_json_pointer];
   if (!v.is_null()) {
     double flow = pi() / 4 * std::pow(filament_diameter, 2) * v.template get<double>();
-    flow_rate.update_label(fmt::format("{:.1f} mm3/s", flow > 0.0 ? flow : 0.0).c_str());
+    flow_rate.update_label(fmt::format("{:.1f} mm³/s", flow > 0.0 ? flow : 0.0).c_str());
   }
 
   v = j["/params/0/pause_resume/is_paused"_json_pointer];
@@ -680,20 +680,20 @@ void PrintStatusPanel::handle_callback(lv_event_t *event) {
 
     std::string delay;
     if (e_heating && b_heating)
-      delay = fmt::format("\n\nExtruder {:.0f}/{:.0f}°C + Bed {:.0f}/{:.0f}°C\n"
-                          "Cancel is queued and will run when heating finishes.", etemp, etarget, btemp, btarget);
+      delay = fmt::format("\n\nBico {:.0f}/{:.0f}°C + mesa {:.0f}/{:.0f}°C\n"
+                          "O cancelamento fica na fila até o aquecimento terminar.", etemp, etarget, btemp, btarget);
     else if (e_heating)
-      delay = fmt::format("\n\nExtruder heating: {:.0f}/{:.0f}°C\n"
-                          "Cancel is queued and will run when heating finishes.", etemp, etarget);
+      delay = fmt::format("\n\nAquecendo o bico: {:.0f}/{:.0f}°C\n"
+                          "O cancelamento fica na fila até o aquecimento terminar.", etemp, etarget);
     else if (b_heating)
-      delay = fmt::format("\n\nBed heating: {:.0f}/{:.0f}°C\n"
-                          "Cancel is queued and will run when heating finishes.", btemp, btarget);
+      delay = fmt::format("\n\nAquecendo a mesa: {:.0f}/{:.0f}°C\n"
+                          "O cancelamento fica na fila até o aquecimento terminar.", btemp, btarget);
     else if (in_startup)
-      delay = "\n\nStartup in progress — cancel is queued\n"
-              "and will run when startup finishes.";
+      delay = "\n\nA impressão está começando.\n"
+              "O cancelamento fica na fila até essa etapa terminar.";
 
-    static const char *cancel_dlg_btns[] = {"Cancel Print", "Back", ""};
-    std::string cancel_msg = fmt::format("Cancel the print?{}", delay);
+    static const char *cancel_dlg_btns[] = {"Cancelar impressão", "Voltar", ""};
+    std::string cancel_msg = fmt::format("Cancelar a impressão?{}", delay);
     lv_obj_t *mbox = lv_msgbox_create(NULL, NULL, cancel_msg.c_str(), cancel_dlg_btns, false);
     lv_obj_add_event_cb(mbox, [](lv_event_t *ev) {
       lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(ev));

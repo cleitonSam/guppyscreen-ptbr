@@ -16,8 +16,8 @@ static const int RUNOUT_LOAD_FEED = 300;
 // Button maps for the runout dialog. The first button toggles Load <-> Stop
 // depending on whether a chunked feed is in progress (lv_btnmatrix_set_map
 // stores the pointer, not a copy, so these must have static lifetime).
-static const char *RUNOUT_BTNS_IDLE[]    = {"Load", "Continue", "Cancel", ""};
-static const char *RUNOUT_BTNS_LOADING[] = {"Stop", "Continue", "Cancel", ""};
+static const char *RUNOUT_BTNS_IDLE[]    = {"Carregar", "Continuar", "Cancelar", ""};
+static const char *RUNOUT_BTNS_LOADING[] = {"Parar", "Continuar", "Cancelar", ""};
 
 FilamentRunoutPanel::FilamentRunoutPanel(KWebSocketClient &websocket_client, std::mutex &lock,
   std::function<bool()> is_prompt_visible)
@@ -56,8 +56,8 @@ void FilamentRunoutPanel::show() {
   if (mbox != NULL) {
     return;  // already open
   }
-  mbox = lv_msgbox_create(NULL, "Filament runout",
-    "Load new filament, then Continue.", RUNOUT_BTNS_IDLE, false);
+  mbox = lv_msgbox_create(NULL, "Fim do filamento",
+    "Carregue o filamento novo e toque em Continuar.\nCancelar encerra a impressão.", RUNOUT_BTNS_IDLE, false);
   KUtils::style_lock_mbox(mbox, 95);  // centered card + blue buttons, like other dialogs
   lv_obj_add_event_cb(mbox, &FilamentRunoutPanel::_mbox_cb, LV_EVENT_VALUE_CHANGED, this);
 }
@@ -121,7 +121,7 @@ void FilamentRunoutPanel::begin_load() {
   load_stop = false;
   load_remaining_mm = RUNOUT_LOAD_TOTAL_MM;
   set_load_btn(true);   // Load -> Stop while feeding
-  set_mbox_text("Loading filament...\nPress Stop to halt.");
+  set_mbox_text("Carregando o filamento...\nToque em Parar para interromper.");
   send_load_chunk();
 }
 
@@ -151,7 +151,7 @@ void FilamentRunoutPanel::finish_load() {
   load_stop = false;
   load_remaining_mm = 0;
   set_load_btn(false);  // Stop -> Load; press again to feed more
-  set_mbox_text("Load new filament, then Continue.");
+  set_mbox_text("Carregue o filamento novo e toque em Continuar.\nCancelar encerra a impressão.");
 }
 
 void FilamentRunoutPanel::consume(json &j) {
@@ -258,7 +258,7 @@ void FilamentRunoutPanel::handle_mbox(lv_event_t *e) {
   if (id == 0) {            // First button: "Load" when idle, "Stop" while feeding
     if (load_active) {
       load_stop = true;     // Stop pressed: halt after the in-flight chunk
-      set_mbox_text("Stopping load...");
+      set_mbox_text("Parando o carregamento...");
     } else {
       begin_load();
     }
@@ -266,14 +266,14 @@ void FilamentRunoutPanel::handle_mbox(lv_event_t *e) {
     if (load_active) {
       // Don't resume mid-feed; stop first, then the user taps Continue again.
       load_stop = true;
-      KUtils::notify_toast("Stopping load; tap Continue again.");
+      KUtils::notify_toast("Parando o carregamento. Toque em Continuar de novo.");
       return;
     }
     if (filament_present()) {
       ws.gcode_script("RESUME");
       close();
     } else {
-      KUtils::notify_toast("No filament detected yet.");
+      KUtils::notify_toast("O sensor ainda não detectou o filamento.");
     }
   } else if (id == 2) {     // Cancel print
     load_stop = true;       // CANCEL_PRINT halts motion; stop our feed loop too
@@ -283,7 +283,7 @@ void FilamentRunoutPanel::handle_mbox(lv_event_t *e) {
     // re-fire while it runs, which would immediately re-pop a freshly-closed
     // dialog. Show progress + lock the buttons; consume() closes it once the
     // print actually leaves printing/paused.
-    set_mbox_text("Cancelling print...");
+    set_mbox_text("Cancelando a impressão...");
     lv_obj_t *btnm = lv_msgbox_get_btns(mbox);
     if (btnm != NULL) {
       lv_obj_add_state(btnm, LV_STATE_DISABLED);

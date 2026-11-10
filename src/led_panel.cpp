@@ -13,7 +13,7 @@ LedPanel::LedPanel(KWebSocketClient &websocket_client, std::mutex &lock)
   , ws(websocket_client)
   , ledpanel_cont(lv_obj_create(lv_scr_act()))
   , leds_cont(lv_obj_create(ledpanel_cont))
-  , back_btn(ledpanel_cont, &back, "Back", &LedPanel::_handle_callback, this)
+  , back_btn(ledpanel_cont, &back, "Voltar", &LedPanel::_handle_callback, this)
 {
     lv_obj_clear_flag(ledpanel_cont, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(ledpanel_cont, lv_pct(100), lv_pct(100));
@@ -87,8 +87,8 @@ void LedPanel::init(json &l) {
       is_binary = pwm.is_boolean() ? !pwm.template get<bool>() : true;
     }
 
-    auto lptr = std::make_shared<SliderContainer>(leds_cont, display_name.c_str(), &cancel, "Off",
-      &light_img, is_binary ? "On" : "Max", led_cb, this);
+    auto lptr = std::make_shared<SliderContainer>(leds_cont, display_name.c_str(), &cancel, "Desligar",
+      &light_img, is_binary ? "Ligar" : "Máximo", led_cb, this);
     if (is_binary) {
       lptr->hide_slider();
     }

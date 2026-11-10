@@ -20,6 +20,20 @@ static std::string fmt_hms(int64_t s) {
   return fmt::format("{:02d}:{:02d}", m, sec);
 }
 
+// Estado do Klipper (print_stats.state) -> texto da tela. Só para mostrar: o
+// resto do código continua comparando os valores em inglês ("printing"...).
+// Texto acentuado não pode passar por to_title(), que estraga os acentos.
+static std::string status_text(const std::string &s) {
+  if (s == "printing") return "Imprimindo";
+  if (s == "paused") return "Pausada";
+  if (s == "complete") return "Concluída";
+  if (s == "cancelled") return "Cancelada";
+  if (s == "error") return "Erro";
+  if (s == "standby") return "Em espera";
+  if (s == "n/a") return "--";
+  return KUtils::to_title(s);  // estado desconhecido: vem do Klipper, sem acento
+}
+
 MiniPrintStatus::MiniPrintStatus(lv_obj_t *parent,
 				 lv_event_cb_t cb,
 				 void* user_data)
@@ -64,14 +78,14 @@ MiniPrintStatus::MiniPrintStatus(lv_obj_t *parent,
   // info column: remaining time (hh:mm:ss) prominent, progress % under it.
   // Fixed width so the overlay's right edge stays static as the ETA/percent digit widths
   // change each second (it was SIZE_CONTENT, so the whole box jittered). Width is measured
-  // from the widest string we can ever show - "ETA  88:88:88" at the time font - so it
+  // from the widest string we can ever show - "Falta  88:88:88" at the time font - so it
   // can't clip and tracks the font instead of a magic number. The spare room becomes
   // trailing whitespace via the left-aligned (START) labels below, which pins the text's
-  // left edge ("ETA"/status stay put). The digits themselves still shift a pixel or two
+  // left edge ("Falta"/status stay put). The digits themselves still shift a pixel or two
   // as they count - Montserrat's figures aren't equal-width ('1' is ~95u vs '0' ~171u) -
   // which is accepted; only a monospaced font could remove it, and we keep Montserrat.
   lv_point_t info_w;
-  lv_txt_get_size(&info_w, "ETA  88:88:88", &lv_font_montserrat_16, 0, 0, LV_COORD_MAX, 0);
+  lv_txt_get_size(&info_w, "Falta  88:88:88", &lv_font_montserrat_16, 0, 0, LV_COORD_MAX, 0);
   lv_obj_set_size(info_cont, info_w.x, LV_SIZE_CONTENT);
   lv_obj_clear_flag(info_cont, LV_OBJ_FLAG_SCROLLABLE);
   // Make the whole overlay one tap target. A plain container is clickable by default and
@@ -109,7 +123,7 @@ MiniPrintStatus::MiniPrintStatus(lv_obj_t *parent,
   lv_obj_add_event_cb(chip, cb, LV_EVENT_CLICKED, user_data);
 
   lv_obj_t *chip_label = lv_label_create(chip);
-  lv_label_set_text(chip_label, LV_SYMBOL_PAUSE " Paused");
+  lv_label_set_text(chip_label, LV_SYMBOL_PAUSE " Pausada");
   lv_obj_set_style_text_font(chip_label, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_color(chip_label, lv_color_white(), 0);
   lv_obj_center(chip_label);
@@ -127,8 +141,8 @@ MiniPrintStatus::~MiniPrintStatus() {
 }
 
 void MiniPrintStatus::render() {
-  lv_label_set_text(time_label, fmt::format("ETA  {}", eta).c_str());
-  lv_label_set_text(pct_label, fmt::format("{}  {}%", KUtils::to_title(status), progress).c_str());
+  lv_label_set_text(time_label, fmt::format("Falta  {}", eta).c_str());
+  lv_label_set_text(pct_label, fmt::format("{}  {}%", status_text(status), progress).c_str());
 }
 
 #ifdef SIMULATOR

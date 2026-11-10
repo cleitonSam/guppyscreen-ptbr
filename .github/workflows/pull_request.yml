@@ -1,4 +1,8 @@
 name: validate pull request
+# Desligado no repositório da versão em português (cleitonSam/guppyscreen-ptbr):
+# este fluxo depende do contêiner ballaswag/guppydev e monta 4 variantes que não
+# usamos. Lá, quem confere os pedidos de mudança é o build.yml (a mesma
+# montagem da versão publicada). Só roda no repositório original.
 
 on:
   pull_request:
@@ -6,6 +10,7 @@ on:
 
 jobs:
   build:
+    if: github.repository == 'coreflake1/guppyscreen'
     strategy:
       matrix:
         include:

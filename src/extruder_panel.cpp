@@ -48,22 +48,22 @@ ExtruderPanel::ExtruderPanel(KWebSocketClient &websocket_client,
   , panel_cont(lv_obj_create(lv_scr_act()))
   , spoolman_panel(sm)
   , extruder_temp(ws, panel_cont, &extruder, 150,
-    "Extruder", lv_palette_main(LV_PALETTE_RED), false, true, numpad, "extruder", NULL, NULL)
-  , temp_selector(panel_cont, "Hotend target (°C)",
+    "Bico", lv_palette_main(LV_PALETTE_RED), false, true, numpad, "extruder", NULL, NULL)
+  , temp_selector(panel_cont, "Temperatura do bico (°C)",
     {"180", "200", "220", "240", "260", "280", "300", ""}, 3, &ExtruderPanel::_handle_callback, this)
-  , length_selector(panel_cont, "Extrude / Retract length (mm)",
+  , length_selector(panel_cont, "Comprimento para extrudar / retrair (mm)",
     {"5", "10", "15", "20", "25", "30", "35", ""}, 1, &ExtruderPanel::_handle_callback, this)
-  , speed_selector(panel_cont, "Extrude / Retract speed (mm/s)",
+  , speed_selector(panel_cont, "Velocidade para extrudar / retrair (mm/s)",
     {"1", "2", "5", "10", "25", "35", "50", ""}, 2, &ExtruderPanel::_handle_callback, this)
   , rightside_btns_cont(lv_obj_create(panel_cont))
   , leftside_btns_cont(lv_obj_create(panel_cont))
-  , load_btn(leftside_btns_cont, &load_filament_img, "Load", &ExtruderPanel::_handle_callback, this)
-  , unload_btn(leftside_btns_cont, &unload_filament_img, "Unload", &ExtruderPanel::_handle_callback, this)
-  , cooldown_btn(leftside_btns_cont, &cooldown_img, "Cooldown", &ExtruderPanel::_handle_callback, this)
+  , load_btn(leftside_btns_cont, &load_filament_img, "Carregar", &ExtruderPanel::_handle_callback, this)
+  , unload_btn(leftside_btns_cont, &unload_filament_img, "Descarregar", &ExtruderPanel::_handle_callback, this)
+  , cooldown_btn(leftside_btns_cont, &cooldown_img, "Esfriar", &ExtruderPanel::_handle_callback, this)
   , spoolman_btn(rightside_btns_cont, &spoolman_img, "Spoolman", &ExtruderPanel::_handle_callback, this)
-  , extrude_btn(rightside_btns_cont, &extrude_img, "Extrude", &ExtruderPanel::_handle_callback, this)
-  , retract_btn(rightside_btns_cont, &retract_img, "Retract", &ExtruderPanel::_handle_callback, this)
-  , back_btn(rightside_btns_cont, &back, "Back", &ExtruderPanel::_handle_callback, this)
+  , extrude_btn(rightside_btns_cont, &extrude_img, "Extrudar", &ExtruderPanel::_handle_callback, this)
+  , retract_btn(rightside_btns_cont, &retract_img, "Retrair", &ExtruderPanel::_handle_callback, this)
+  , back_btn(rightside_btns_cont, &back, "Voltar", &ExtruderPanel::_handle_callback, this)
   , load_filament_macro("LOAD_FILAMENT")
   , unload_filament_macro("UNLOAD_FILAMENT")
   , cooldown_macro("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0")
@@ -248,7 +248,7 @@ void ExtruderPanel::build_filament_dialog() {
 
   // header (text swapped per spool state in show_load_filament_dialog)
   fil_title_label = lv_label_create(fil_box);
-  lv_label_set_text(fil_title_label, "Use this filament?");
+  lv_label_set_text(fil_title_label, "Usar este filamento?");
   KUtils::style_dialog_title(fil_title_label);
 
   lv_obj_remove_style_all(fil_content_cont);
@@ -286,26 +286,26 @@ void ExtruderPanel::build_filament_dialog() {
   lv_obj_add_event_cb(fil_yes_btn, &ExtruderPanel::_handle_filament_btns, LV_EVENT_CLICKED, this);
   lv_obj_align(fil_yes_btn, LV_ALIGN_BOTTOM_LEFT, 0, 0);
   lv_obj_t *yl = lv_label_create(fil_yes_btn);
-  lv_label_set_text(yl, "Yes");
+  lv_label_set_text(yl, "Sim");
   lv_obj_center(yl);
 
   lv_obj_set_size(fil_no_btn, 96, LV_SIZE_CONTENT);
   lv_obj_add_event_cb(fil_no_btn, &ExtruderPanel::_handle_filament_btns, LV_EVENT_CLICKED, this);
   lv_obj_align(fil_no_btn, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
   lv_obj_t *nl = lv_label_create(fil_no_btn);
-  lv_label_set_text(nl, "No");
+  lv_label_set_text(nl, "Não");
   lv_obj_center(nl);
 }
 
 void ExtruderPanel::show_load_filament_dialog() {
   json spool = spoolman_panel.get_active_spool();
   if (spool.is_null()) {
-    lv_label_set_text(fil_title_label, "No spool selected - load anyway?");
+    lv_label_set_text(fil_title_label, "Sem carretel ativo. Carregar mesmo assim?");
     lv_obj_add_flag(fil_swatch, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(fil_name_label, "");
     lv_label_set_text(fil_detail_label, "");
   } else {
-    lv_label_set_text(fil_title_label, "Use this filament?");
+    lv_label_set_text(fil_title_label, "Usar este filamento?");
     auto vendor_json = spool["/filament/vendor/name"_json_pointer];
     auto vendor = !vendor_json.is_null() ? vendor_json.template get<std::string>() : "";
     auto name_json = spool["/filament/name"_json_pointer];
@@ -326,7 +326,7 @@ void ExtruderPanel::show_load_filament_dialog() {
     auto remaining_json = spool["/remaining_weight"_json_pointer];
     if (!remaining_json.is_null()) {
       lv_label_set_text(fil_detail_label,
-        fmt::format("{}, {:.0f} g left", material, remaining_json.template get<double>()).c_str());
+        fmt::format("{}, restam {:.0f} g", material, remaining_json.template get<double>()).c_str());
     } else {
       lv_label_set_text(fil_detail_label, material.c_str());
     }
@@ -346,7 +346,7 @@ void ExtruderPanel::handle_filament_btns(lv_event_t *event) {
   lv_obj_add_flag(fil_cont, LV_OBJ_FLAG_HIDDEN);
 
   if (btn == fil_yes_btn) {
-    run_when_hot(PA_LOAD, "Load", "");
+    run_when_hot(PA_LOAD, "Carregamento", "");
   } else if (btn == fil_no_btn) {
     // open Spoolman to pick/fix the active spool; re-show this confirm once a
     // spool is chosen so the user re-confirms before the load starts.
@@ -442,7 +442,7 @@ void ExtruderPanel::update_busy_caption() {
     // Show progress + how to stop, so the slow feed never looks like a hang.
     int done = LOAD_TOTAL_MM - load_remaining_mm;
     lv_label_set_text(busy_label,
-      fmt::format("Loading filament {}/{} mm\nTap Cooldown to stop",
+      fmt::format("Carregando {}/{} mm\nToque em Esfriar para parar",
         done, LOAD_TOTAL_MM).c_str());
     lv_obj_clear_flag(busy_label, LV_OBJ_FLAG_HIDDEN);
   } else if (pending_kind != PA_NONE) {
@@ -450,12 +450,12 @@ void ExtruderPanel::update_busy_caption() {
     // visibly climbs and it's obvious the press registered. (ASCII arrow/dots:
     // the small montserrat font lacks the U+2192 / U+2026 glyphs.)
     lv_label_set_text(busy_label,
-      fmt::format("Heating {}°C -> {}°C\n{} when ready",
+      fmt::format("Aquecendo {}°C -> {}°C\n{} em seguida",
         current_temp, pending_want, action_name).c_str());
     lv_obj_clear_flag(busy_label, LV_OBJ_FLAG_HIDDEN);
   } else if (action_in_flight) {
     lv_label_set_text(busy_label,
-      fmt::format("{} in progress...", action_name).c_str());
+      fmt::format("{}\nem andamento...", action_name).c_str());
     lv_obj_clear_flag(busy_label, LV_OBJ_FLAG_HIDDEN);
   } else {
     lv_obj_add_flag(busy_label, LV_OBJ_FLAG_HIDDEN);
@@ -472,7 +472,7 @@ void ExtruderPanel::arm_safety_timer(uint32_t ms) {
       // leaving the load stuck mid-way with the buttons locked.
       spdlog::warn("load chunk response timeout, stopping load");
       self->finish_load();
-      KUtils::notify_toast("Load timed out.");
+      KUtils::notify_toast("O carregamento demorou demais.");
     } else if (self->action_in_flight) {
       // Response never arrived - assume the ws/klipper lost it and recover.
       spdlog::warn("extruder action response timeout, unlocking buttons");
@@ -481,7 +481,7 @@ void ExtruderPanel::arm_safety_timer(uint32_t ms) {
     } else if (self->pending_kind != PA_NONE) {
       spdlog::warn("extruder heat-up timed out, clearing pending action");
       self->clear_pending();
-      KUtils::notify_toast("Heating timed out.");
+      KUtils::notify_toast("O aquecimento demorou demais.");
     }
   }, ms, this);
   lv_timer_set_repeat_count(safety_timer, 1);
@@ -521,7 +521,7 @@ void ExtruderPanel::maybe_auto_cooldown() {
     return;
   }
   auto_cool_after = false;  // clear first so the cooldown action can't re-trigger
-  action_name = "Cooldown";
+  action_name = "Resfriamento";
   // Wait for all queued extruder moves to FINISH before dropping the heater.
   // Moonraker's gcode.script "done" fires when commands are queued, not when the
   // motion completes -- and _GUPPY_QUIT_MATERIAL has no trailing M400 -- so without
@@ -557,7 +557,7 @@ void ExtruderPanel::begin_load() {
   load_active = true;
   load_stop = false;
   load_remaining_mm = LOAD_TOTAL_MM;
-  action_name = "Load";
+  action_name = "Carregamento";
   refresh_button_state();  // spinner + caption; Cooldown stays live as Stop
   send_load_chunk();
 }
@@ -686,11 +686,11 @@ void ExtruderPanel::handle_callback(lv_event_t *e) {
         // response, so motion ceases within ~one chunk.
         load_stop = true;
         ws.gcode_script(cooldown_macro);
-        KUtils::notify_toast("Stopping load...");
+        KUtils::notify_toast("Parando o carregamento...");
         return;
       }
       clear_pending();
-      action_name = "Cooldown";
+      action_name = "Resfriamento";
       send_action(cooldown_macro);
       return;
     }
@@ -713,7 +713,7 @@ void ExtruderPanel::handle_callback(lv_event_t *e) {
         feed = std::stoi(speed) * 60;
       } catch (const std::exception &) {}
       run_when_hot(retract ? PA_RETRACT : PA_EXTRUDE,
-        retract ? "Retract" : "Extrude",
+        retract ? "Retração" : "Extrusão",
         fmt::format("M83\nG1 E{}{} F{}", retract ? "-" : "", len, feed));
       return;
     }
@@ -725,7 +725,7 @@ void ExtruderPanel::handle_callback(lv_event_t *e) {
       std::string gcode = unload_filament_macro == "_GUPPY_QUIT_MATERIAL"
         ? fmt::format("{} EXTRUDER_TEMP={}", unload_filament_macro, effective_temp())
         : unload_filament_macro;
-      run_when_hot(PA_UNLOAD, "Unload", gcode);
+      run_when_hot(PA_UNLOAD, "Descarregamento", gcode);
       return;
     }
 
@@ -738,7 +738,7 @@ void ExtruderPanel::handle_callback(lv_event_t *e) {
       if (spoolman_enabled) {
         show_load_filament_dialog();
       } else {
-        run_when_hot(PA_LOAD, "Load", "");
+        run_when_hot(PA_LOAD, "Carregamento", "");
       }
       return;
     }
@@ -751,7 +751,7 @@ void ExtruderPanel::sim_show_busy() {
   // disabled, spinner + caption visible. We don't send_action() (no websocket;
   // the safety timer would also fire ACTION_TIMEOUT_MS later) - just stage the
   // pending state so the heat-up caption can be visually verified.
-  action_name = "Extrude";
+  action_name = "Extrusão";
   pending_kind = PA_EXTRUDE;
   pending_want = 220;
   current_temp = 25;

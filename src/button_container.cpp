@@ -38,7 +38,7 @@ ButtonContainer::ButtonContainer(lv_obj_t *parent,
 
   Config *conf = Config::get_instance();
   auto estop = conf->get_json("/prompt_emergency_stop");
-  auto prompt_estop = estop.is_null() ? false : estop.template get<bool>();
+  auto prompt_estop = estop.is_null() ? true : estop.template get<bool>();  // sem a chave: pergunta antes (mais seguro)
 
   if (cb != NULL && !pcb) {
     lv_obj_add_event_cb(btn_cont, &ButtonContainer::_handle_callback, LV_EVENT_PRESSED, this);
@@ -46,7 +46,7 @@ ButtonContainer::ButtonContainer(lv_obj_t *parent,
 
     lv_obj_add_event_cb(btn_cont, cb, LV_EVENT_CLICKED, user_data);
   } else if (cb != NULL && pcb) {
-    if (prompt_text == "Do you want to emergency stop?" && !prompt_estop) {
+    if (prompt_text == "Fazer parada de emergência?" && !prompt_estop) {
       lv_obj_add_event_cb(btn_cont, &ButtonContainer::_handle_callback, LV_EVENT_PRESSED, this);
       lv_obj_add_event_cb(btn_cont, &ButtonContainer::_handle_callback, LV_EVENT_RELEASED, this);
 
@@ -129,7 +129,7 @@ void ButtonContainer::handle_callback(lv_event_t *e) {
 
 void ButtonContainer::handle_prompt() {
   // Safe action on the left, destructive on the right (red).
-  static const char *btns[] = {"Cancel", "Confirm", ""};
+  static const char *btns[] = {"Cancelar", "Confirmar", ""};
 
   lv_obj_t *mbox1 = lv_msgbox_create(NULL, NULL, prompt_text.c_str(), btns, false);
   KUtils::style_dialog_msgbox(mbox1);

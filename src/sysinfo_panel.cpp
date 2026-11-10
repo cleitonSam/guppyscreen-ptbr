@@ -30,6 +30,9 @@ std::vector<std::string> SysInfoPanel::log_levels = {
   "warn"
 };
 
+// ATENÇÃO pt-BR: o theme_dd (lv_dropdown_set_options, no construtor, logo depois de
+// lv_label_set_text(l, "Tema"))
+// mostra os nomes em português NESTA MESMA ORDEM. Mudou aqui, mude lá também.
 std::vector<std::string> SysInfoPanel::themes = {
   "blue",
   "red",
@@ -45,13 +48,13 @@ struct SleepOption {
 };
 
 static const SleepOption sleep_options[] = {
-  {"Never", -1},
-  {"30 Seconds", 30},
-  {"1 Minute", 60},
-  {"5 Minutes", 300},
-  {"10 Minutes", 600},
-  {"30 Minutes", 1800},
-  {"1 Hour", 3600}
+  {"Nunca", -1},
+  {"30 s", 30},
+  {"1 min", 60},
+  {"5 min", 300},
+  {"10 min", 600},
+  {"30 min", 1800},
+  {"1 h", 3600}
 };
 
 // Brightness presets as percentages of the device's max_brightness. 10% is
@@ -63,11 +66,11 @@ struct BrightnessOption {
 };
 
 static const BrightnessOption brightness_options[] = {
-  {"Low (10%)",    10},
-  {"Dim (25%)",    25},
-  {"Medium (50%)", 50},
-  {"Bright (75%)", 75},
-  {"Max (100%)",  100},
+  {"Mín. (10%)",   10},
+  {"Baixo (25%)",  25},
+  {"Médio (50%)",  50},
+  {"Alto (75%)",   75},
+  {"Máx. (100%)", 100},
 };
 
 SysInfoPanel::SysInfoPanel()
@@ -111,8 +114,8 @@ SysInfoPanel::SysInfoPanel()
   , touch_beep_cont(lv_obj_create(right_cont))
   , touch_beep_toggle(lv_switch_create(touch_beep_cont))
 
-  , reset_options_btn(cont, &cancel, "Reset\nOptions", &SysInfoPanel::_handle_callback, this)
-  , back_btn(cont, &back, "Back", &SysInfoPanel::_handle_callback, this)
+  , reset_options_btn(cont, &cancel, "Opções de\nredefinição", &SysInfoPanel::_handle_callback, this)
+  , back_btn(cont, &back, "Voltar", &SysInfoPanel::_handle_callback, this)
 {
   lv_obj_move_background(cont);
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
@@ -133,7 +136,7 @@ SysInfoPanel::SysInfoPanel()
   lv_obj_t *l = lv_label_create(disp_sleep_cont);
   lv_obj_set_size(disp_sleep_cont, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_style_pad_all(disp_sleep_cont, 0, 0);
-  lv_label_set_text(l, "Display Sleep");
+  lv_label_set_text(l, "Apagar tela");
   lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_align(display_sleep_dd, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -167,7 +170,7 @@ SysInfoPanel::SysInfoPanel()
   int b_max = KUtils::backlight_max();
   if (b_max > 0) {
     lv_obj_t *bl_label = lv_label_create(brightness_cont);
-    lv_label_set_text(bl_label, "Brightness");
+    lv_label_set_text(bl_label, "Brilho");
     lv_obj_align(bl_label, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_align(brightness_dd, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -205,7 +208,7 @@ SysInfoPanel::SysInfoPanel()
   lv_obj_set_size(ll_cont, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_style_pad_all(ll_cont, 0, 0);
   l = lv_label_create(ll_cont);
-  lv_label_set_text(l, "Log Level");
+  lv_label_set_text(l, "Nível de registro");
   lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_align(loglevel_dd, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -231,7 +234,7 @@ SysInfoPanel::SysInfoPanel()
   lv_obj_set_style_pad_all(estop_toggle_cont, 0, 0);
 
   l = lv_label_create(estop_toggle_cont);
-  lv_label_set_text(l, "Prompt Emergency Stop");
+  lv_label_set_text(l, "Confirmar parada\nde emergência");
   lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_align(prompt_estop_toggle, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -254,7 +257,7 @@ SysInfoPanel::SysInfoPanel()
   lv_obj_set_style_pad_all(z_icon_toggle_cont, 0, 0);
 
   l = lv_label_create(z_icon_toggle_cont);
-  lv_label_set_text(l, "Invert Z Direction");
+  lv_label_set_text(l, "Inverter direção do Z");
   lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_align(z_icon_toggle, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -280,7 +283,7 @@ SysInfoPanel::SysInfoPanel()
   lv_obj_set_style_pad_all(y_icon_toggle_cont, 0, 0);
 
   l = lv_label_create(y_icon_toggle_cont);
-  lv_label_set_text(l, "Invert Y Direction");
+  lv_label_set_text(l, "Inverter direção do Y");
   lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_align(y_icon_toggle, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -303,11 +306,14 @@ SysInfoPanel::SysInfoPanel()
   lv_obj_set_size(theme_cont, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_style_pad_all(theme_cont, 0, 0);
   l = lv_label_create(theme_cont);
-  lv_label_set_text(l, "Theme Color");
+  lv_label_set_text(l, "Tema");
   lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_align(theme_dd, LV_ALIGN_RIGHT_MID, 0, 0);
 
-  lv_dropdown_set_options(theme_dd, fmt::format("{}", fmt::join(themes, "\n")).c_str());
+  // Nomes das cores mostrados na tela, na MESMA ORDEM do vetor `themes`.
+  // O valor gravado no guppyconfig.json e o nome do arquivo do tema continuam
+  // em inglês (themes[i]): a escolha é feita pela posição na lista.
+  lv_dropdown_set_options(theme_dd, "Azul\nVermelho\nVerde\nRoxo\nRosa\nAmarelo");
 
   v = conf->get_json("/theme");
   if (!v.is_null()) {
@@ -326,7 +332,7 @@ SysInfoPanel::SysInfoPanel()
   lv_obj_set_size(def_temp_cont, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_style_pad_all(def_temp_cont, 0, 0);
   l = lv_label_create(def_temp_cont);
-  lv_label_set_text(l, "Def. Temp");
+  lv_label_set_text(l, "Temp.\npadrão");
   lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_align(def_temp_dd, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_dropdown_set_options(def_temp_dd, "180\n200\n220\n240\n260\n280\n300");
@@ -345,7 +351,7 @@ SysInfoPanel::SysInfoPanel()
   lv_obj_set_size(touch_beep_cont, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_style_pad_all(touch_beep_cont, 0, 0);
   l = lv_label_create(touch_beep_cont);
-  lv_label_set_text(l, "Touch Beep");
+  lv_label_set_text(l, "Som ao tocar");
   lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_align(touch_beep_toggle, LV_ALIGN_RIGHT_MID, 0, 0);
 
@@ -402,12 +408,12 @@ void SysInfoPanel::foreground() {
 
   auto ifaces = KUtils::get_interfaces();
   std::vector<std::string> network_detail;
-  network_detail.push_back("Network");
+  network_detail.push_back("Rede");
   for (auto &iface : ifaces) {
     auto ip = KUtils::interface_ip(iface);
     network_detail.push_back(fmt::format("\t{}: {}", iface, ip));
   }
-  lv_label_set_text(network_label, fmt::format("{}\n\nGuppyScreen\n\tVersion: " GS_VERSION,
+  lv_label_set_text(network_label, fmt::format("{}\n\nGuppyScreen\n\tVersão: " GS_VERSION,
     fmt::join(network_detail, "\n")).c_str());
 }
 
@@ -522,7 +528,7 @@ void SysInfoPanel::show_reset_options() {
 
   lv_obj_t *title = lv_label_create(box);
   KUtils::style_dialog_title(title);
-  lv_label_set_text(title, "Reset Options");
+  lv_label_set_text(title, "Opções de redefinição");
   lv_obj_set_width(title, LV_PCT(100));
 
   auto make_opt_btn = [&](const char *lbl_text, const char *desc_text) -> lv_obj_t * {
@@ -549,25 +555,25 @@ void SysInfoPanel::show_reset_options() {
   };
 
   lv_obj_t *btn1 = make_opt_btn(
-    "Reset GuppyScreen settings",
-    "Deletes display config and sensor layout.\nGuppyScreen restarts with defaults."
+    "Redefinir as configurações da tela",
+    "Apaga as configurações da tela e a disposição dos sensores.\nA tela reinicia com os valores padrão."
   );
 
   lv_obj_t *btn2 = make_opt_btn(
-    "Factory Reset Printer",
-    "Wipes OpenKE, Klipper config, gcodes and\ncalibration. Reboots to stock Creality firmware."
+    "Restaurar a impressora de fábrica",
+    "Apaga o OpenKE, a configuração do Klipper, os arquivos de impressão\ne as calibrações. Reinicia com o firmware original da Creality."
   );
 
   lv_obj_t *btn3 = make_opt_btn(
-    "Reset Touch Calibration",
-    "Clears saved calibration coefficients.\nGuppyScreen restarts and asks you to recalibrate."
+    "Refazer a calibração do toque",
+    "Apaga os valores salvos da calibração do toque.\nA tela reinicia e pede para calibrar de novo."
   );
 
   lv_obj_t *close_btn = lv_btn_create(box);
   lv_obj_set_size(close_btn, LV_PCT(50), LV_SIZE_CONTENT);
   lv_obj_set_style_bg_color(close_btn, lv_palette_darken(LV_PALETTE_GREY, 1), 0);
   lv_obj_t *close_lbl = lv_label_create(close_btn);
-  lv_label_set_text(close_lbl, "Close");
+  lv_label_set_text(close_lbl, "Fechar");
   lv_obj_center(close_lbl);
 
   lv_obj_add_event_cb(close_btn, [](lv_event_t *e) {
@@ -580,8 +586,8 @@ void SysInfoPanel::show_reset_options() {
   lv_obj_add_event_cb(btn1, [](lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     ((SysInfoPanel *)e->user_data)->show_reset_confirm(
-      "Reset GuppyScreen settings?",
-      "Deletes guppyconfig.json and restarts.\nKlipper keeps running.\n\nThis cannot be undone.",
+      "Redefinir as configurações da tela?",
+      "Apaga o guppyconfig.json e reinicia a tela.\nO Klipper continua funcionando.\n\nIsso não pode ser desfeito.",
       []() {
         Config *conf = Config::get_instance();
         fs::remove(conf->get_path());
@@ -594,8 +600,8 @@ void SysInfoPanel::show_reset_options() {
   lv_obj_add_event_cb(btn2, [](lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     ((SysInfoPanel *)e->user_data)->show_reset_confirm(
-      "Factory Reset Printer?",
-      "Wipes OpenKE, Klipper config, gcodes\nand calibration. Reboots to stock.\n\nThis cannot be undone.",
+      "Restaurar a impressora de fábrica?",
+      "Apaga o OpenKE, a configuração do Klipper,\nos arquivos de impressão e as calibrações.\nReinicia com o firmware original.\n\nIsso não pode ser desfeito.",
       []() {
         spdlog::warn("Factory reset printer: executing S58factoryreset reset");
         system("/etc/init.d/S58factoryreset reset");
@@ -606,8 +612,8 @@ void SysInfoPanel::show_reset_options() {
   lv_obj_add_event_cb(btn3, [](lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     ((SysInfoPanel *)e->user_data)->show_reset_confirm(
-      "Reset Touch Calibration?",
-      "Clears saved calibration. GuppyScreen\nwill restart and ask you to recalibrate.",
+      "Refazer a calibração do toque?",
+      "Apaga a calibração salva.\nA tela reinicia e pede para calibrar de novo.",
       []() {
         spdlog::warn("Touch calibration reset requested.");
         Config *conf = Config::get_instance();
@@ -622,7 +628,7 @@ void SysInfoPanel::show_reset_options() {
 
 void SysInfoPanel::show_reset_confirm(const char *title, const char *detail,
                                        const std::function<void()> &cb) {
-  static const char *btns[] = {"Cancel", "Confirm", ""};
+  static const char *btns[] = {"Cancelar", "Confirmar", ""};
 
   lv_obj_t *mbox = lv_msgbox_create(NULL, NULL,
     fmt::format("{}\n\n{}", title, detail).c_str(), btns, false);

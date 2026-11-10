@@ -29,19 +29,19 @@ PrinterSelectContainer::PrinterSelectContainer(PrinterSelectPanel &ps,
   lv_obj_set_style_border_width(cont, 2, 0);
   
   lv_obj_t *l = lv_label_create(cont);
-  lv_label_set_text(l, fmt::format("Name: {}\nIP: {}\nPort: {}", pname, ip, port).c_str());
+  lv_label_set_text(l, fmt::format("Nome: {}\nIP: {}\nPorta: {}", pname, ip, port).c_str());
   lv_obj_set_width(l, LV_PCT(55));
 
   lv_obj_t *btn = lv_btn_create(cont);
   l = lv_label_create(btn);
-  lv_label_set_text(l, "Switch");
+  lv_label_set_text(l, "Trocar");
   lv_obj_center(l);
 
   lv_obj_add_event_cb(btn, [](lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
       PrinterSelectContainer *p = (PrinterSelectContainer*)e->user_data;
-      lv_obj_t *msgbox = p->prompt(fmt::format("Guppy Screen will restart. Do you want to switch to {}?",
+      lv_obj_t *msgbox = p->prompt(fmt::format("A tela vai reiniciar.\nTrocar para {}?",
 					       p->name));
       lv_obj_add_event_cb(msgbox, [](lv_event_t *e) {
 	lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(e));
@@ -78,7 +78,7 @@ PrinterSelectContainer::PrinterSelectContainer(PrinterSelectPanel &ps,
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
       PrinterSelectContainer *p = (PrinterSelectContainer*)e->user_data;
-      lv_obj_t *msgbox = p->prompt(fmt::format("Are you sure you want to delete {}?", p->name));
+      lv_obj_t *msgbox = p->prompt(fmt::format("Excluir {}?", p->name));
       lv_obj_add_event_cb(msgbox, [](lv_event_t *e) {
 	lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(e));
 	uint32_t clicked_btn = lv_msgbox_get_active_btn(obj);
@@ -102,7 +102,7 @@ PrinterSelectContainer::~PrinterSelectContainer() {
 }
 
 lv_obj_t *PrinterSelectContainer::prompt(const std::string &prompt_text) {
-  static const char * btns[] = {"Confirm", "Cancel", ""};
+  static const char * btns[] = {"Confirmar", "Cancelar", ""};
 
   lv_obj_t *mbox1 = lv_msgbox_create(NULL, NULL, prompt_text.c_str(), btns, false);
   KUtils::style_dialog_msgbox(mbox1);
@@ -133,7 +133,7 @@ PrinterSelectPanel::PrinterSelectPanel()
   , moonraker_ip(lv_textarea_create(left))
   , moonraker_port(lv_textarea_create(left))
   , right(lv_obj_create(top))
-  , back_btn(cont, &back, "Back", [](lv_event_t *e) {
+  , back_btn(cont, &back, "Voltar", [](lv_event_t *e) {
     PrinterSelectPanel *panel = (PrinterSelectPanel*)e->user_data;
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
       lv_obj_move_background(panel->cont);
@@ -158,7 +158,7 @@ PrinterSelectPanel::PrinterSelectPanel()
   lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(left, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-  lv_textarea_set_placeholder_text(printer_name, "Printer Name");
+  lv_textarea_set_placeholder_text(printer_name, "Nome da impressora");
   lv_textarea_set_max_length(printer_name, 128);
   lv_textarea_set_one_line(printer_name, true);
   lv_textarea_set_accepted_chars(printer_name,
@@ -171,7 +171,7 @@ PrinterSelectPanel::PrinterSelectPanel()
     p->handle_input(e);
   }, LV_EVENT_ALL, this);
 
-  lv_textarea_set_placeholder_text(moonraker_ip, "Moonraker IP Address");
+  lv_textarea_set_placeholder_text(moonraker_ip, "Endereço IP do Moonraker");
   lv_textarea_set_max_length(moonraker_ip, 45); // ipv6??
   lv_textarea_set_one_line(moonraker_ip, true);
   lv_textarea_set_accepted_chars(moonraker_ip, "0123456789abcdef.:");
@@ -181,7 +181,7 @@ PrinterSelectPanel::PrinterSelectPanel()
   }, LV_EVENT_ALL, this);
 
   lv_textarea_set_text(moonraker_port, "7125");
-  lv_textarea_set_placeholder_text(moonraker_port, "Moonraker Port");
+  lv_textarea_set_placeholder_text(moonraker_port, "Porta do Moonraker");
   lv_textarea_set_one_line(moonraker_port, true);
   lv_textarea_set_max_length(moonraker_port, 5);
   lv_textarea_set_accepted_chars(moonraker_port, "0123456789");
@@ -192,7 +192,7 @@ PrinterSelectPanel::PrinterSelectPanel()
 
   lv_obj_t *btn = lv_btn_create(left);
   lv_obj_t *l = lv_label_create(btn);
-  lv_label_set_text(l, LV_SYMBOL_PLUS " Printer");
+  lv_label_set_text(l, LV_SYMBOL_PLUS " Impressora");
   lv_obj_center(l);
 
   // lv_obj_set_style_bg_img_src(btn, LV_SYMBOL_PLUS, 0);

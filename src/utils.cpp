@@ -59,9 +59,9 @@ namespace KUtils {
     if (homing_prompt_mbox != NULL) {
       return;  // already open - don't stack
     }
-    static const char *btns[] = {"Home", "Cancel", ""};
-    homing_prompt_mbox = lv_msgbox_create(NULL, "Homing required",
-      "The printer must be homed first.", btns, false);
+    static const char *btns[] = {"Ir à origem", "Cancelar", ""};
+    homing_prompt_mbox = lv_msgbox_create(NULL, "Ir à origem primeiro",
+      "Leve a impressora à origem antes.", btns, false);
     style_lock_mbox(homing_prompt_mbox, 90);  // same card + blue buttons as other dialogs
     lv_obj_add_event_cb(homing_prompt_mbox, homing_prompt_cb, LV_EVENT_VALUE_CHANGED, &ws);
   }
@@ -160,7 +160,7 @@ namespace KUtils {
   void notify_locked() {
     static const char *btns[] = {"OK", ""};
     lv_obj_t *mbox = lv_msgbox_create(NULL, NULL,
-      "Unavailable while printing", btns, false);
+      "Indisponível durante a impressão", btns, false);
     lv_obj_add_event_cb(mbox, [](lv_event_t *e) {
       lv_msgbox_close(lv_obj_get_parent(lv_event_get_target(e)));
     }, LV_EVENT_VALUE_CHANGED, NULL);
@@ -197,7 +197,7 @@ namespace KUtils {
     }
 
     auto *heap_cb = new std::function<void()>(cb);
-    static const char *btns[] = {"Confirm", "Cancel", ""};
+    static const char *btns[] = {"Confirmar", "Cancelar", ""};
     lv_obj_t *mbox = lv_msgbox_create(NULL, NULL, msg.c_str(), btns, false);
     lv_obj_add_event_cb(mbox, [](lv_event_t *e) {
       lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(e));
@@ -514,25 +514,30 @@ namespace KUtils {
     }
     if (lower.find("nozzle") != std::string::npos || lower.find("hotend") != std::string::npos
         || lower.find("heatbreak") != std::string::npos || key.rfind("heater_fan ", 0) == 0) {
-      return "Hotend Fan";
+      return "Ventoinha do bico";
     }
     if (lower.find("mainboard") != std::string::npos || lower.find("board") != std::string::npos) {
-      return "Mainboard Fan";
+      return "Ventoinha da placa-mãe";
     }
     if (lower.find("controller") != std::string::npos || key.rfind("controller_fan ", 0) == 0) {
-      return "Controller Fan";
+      return "Ventoinha da eletrônica";
     }
     if (lower.find("part") != std::string::npos || lower.find("fan0") != std::string::npos
         || key == "fan") {
-      return "Part Cooling Fan";
+      return "Ventoinha da peça";
     }
     // fallback: title-case the short name, ensure it reads as a fan
     size_t pos = key.find_last_of(' ');
-    std::string name = to_title(pos != std::string::npos ? key.substr(pos + 1) : key);
-    if (name.find("Fan") == std::string::npos) {
-      name += " Fan";
+    // pt-BR: tira o "Fan" do nome e sempre põe "Ventoinha" na frente
+    // ("fan1" -> "Ventoinha 1", "exhaust_fan" -> "Ventoinha Exhaust").
+    std::string base = to_title(pos != std::string::npos ? key.substr(pos + 1) : key);
+    size_t f = base.find("Fan");
+    if (f != std::string::npos) {
+      base.erase(f, 3);
     }
-    return name;
+    while (!base.empty() && base.front() == ' ') base.erase(0, 1);
+    while (!base.empty() && base.back() == ' ') base.pop_back();
+    return base.empty() ? std::string("Ventoinha") : "Ventoinha " + base;
   }
 
 
@@ -550,7 +555,7 @@ namespace KUtils {
       os << p.tm_hour << "h ";
 
     if (p.tm_min > 0)
-      os << p.tm_min << "m ";
+      os << p.tm_min << "min ";
 
     os << p.tm_sec << "s";
 
@@ -691,7 +696,7 @@ namespace KUtils {
     std::string full_cmd = cmd + " 2>&1";
     FILE *pipe = popen(full_cmd.c_str(), "r");
     if (!pipe) {
-      return {-1, "failed to launch command"};
+      return {-1, "falha ao executar o comando"};
     }
     std::string output;
     char buf[256];

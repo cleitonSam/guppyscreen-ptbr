@@ -40,7 +40,7 @@ NetworkDetailPanel::NetworkDetailPanel(std::mutex &l,
   , ip_val(nullptr)
   , configure_btn(lv_btn_create(cont))
   , forget_btn(lv_btn_create(cont))
-  , back_btn(cont, &back, "Back", &NetworkDetailPanel::_handle_back_btn, this)
+  , back_btn(cont, &back, "Voltar", &NetworkDetailPanel::_handle_back_btn, this)
   , on_configure_static_ip(std::move(on_configure_static_ip_))
   , on_forget(std::move(on_forget_))
 {
@@ -60,9 +60,9 @@ NetworkDetailPanel::NetworkDetailPanel(std::mutex &l,
   lv_obj_set_style_bg_color(info_card, lv_palette_darken(LV_PALETTE_GREY, 4), 0);
   lv_obj_set_flex_flow(info_card, LV_FLEX_FLOW_COLUMN);
 
-  make_info_row(info_card, "Signal", &signal_val);
-  make_info_row(info_card, "Security", &security_val);
-  make_info_row(info_card, "IP address", &ip_val);
+  make_info_row(info_card, "Sinal", &signal_val);
+  make_info_row(info_card, "Segurança", &security_val);
+  make_info_row(info_card, "Endereço IP", &ip_val);
 
   // Fixed width, not 100% - the floating Back button is a 110px-wide box
   // pinned to the bottom-right corner (button_container.cpp), and a
@@ -72,7 +72,7 @@ NetworkDetailPanel::NetworkDetailPanel(std::mutex &l,
   lv_obj_set_size(configure_btn, 320, 42);
   {
     lv_obj_t *l = lv_label_create(configure_btn);
-    lv_label_set_text(l, "Configure Static IP");
+    lv_label_set_text(l, "Configurar IP fixo");
     lv_obj_center(l);
   }
   lv_obj_add_event_cb(configure_btn, &NetworkDetailPanel::_handle_configure_btn, LV_EVENT_CLICKED, this);
@@ -83,7 +83,7 @@ NetworkDetailPanel::NetworkDetailPanel(std::mutex &l,
   lv_obj_set_style_border_color(forget_btn, lv_palette_main(LV_PALETTE_RED), LV_PART_MAIN);
   {
     lv_obj_t *l = lv_label_create(forget_btn);
-    lv_label_set_text(l, "Forget This Network");
+    lv_label_set_text(l, "Esquecer esta rede");
     lv_obj_set_style_text_color(l, lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_center(l);
   }

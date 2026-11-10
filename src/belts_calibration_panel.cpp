@@ -29,15 +29,15 @@ BeltsCalibrationPanel::BeltsCalibrationPanel(KWebSocketClient &c, std::mutex &l)
   , excite_label(lv_label_create(excite_control))
   , excite_dd(lv_dropdown_create(excite_control))
   , button_cont(lv_obj_create(cont))
-  , calibrate_btn(button_cont, &resume, "Shake Belts", &BeltsCalibrationPanel::_handle_callback, this)
-  , excite_btn(button_cont, &inputshaper_img, "Excitate", &BeltsCalibrationPanel::_handle_callback, this)
-  , emergency_btn(button_cont, &emergency, "Stop", &BeltsCalibrationPanel::_handle_callback, this,
-    "Do you want to emergency stop?",
+  , calibrate_btn(button_cont, &resume, "Testar correias", &BeltsCalibrationPanel::_handle_callback, this)
+  , excite_btn(button_cont, &inputshaper_img, "Vibrar", &BeltsCalibrationPanel::_handle_callback, this)
+  , emergency_btn(button_cont, &emergency, "Parar tudo", &BeltsCalibrationPanel::_handle_callback, this,
+    "Fazer parada de emergência?",
     [&c]() {
       spdlog::debug("emergency stop pressed");
       c.send_jsonrpc("printer.emergency_stop");
     })
-  , back_btn(button_cont, &back, "Back", &BeltsCalibrationPanel::_handle_callback, this)
+  , back_btn(button_cont, &back, "Voltar", &BeltsCalibrationPanel::_handle_callback, this)
   , image_fullsized(false)
 {
   lv_obj_move_background(cont);
@@ -65,7 +65,7 @@ BeltsCalibrationPanel::BeltsCalibrationPanel(KWebSocketClient &c, std::mutex &l)
 
   // excite controls
   lv_obj_t *label = lv_label_create(excite_control);
-  lv_label_set_text(label, "Excite Frequency Control");
+  lv_label_set_text(label, "Frequência de vibração");
   lv_obj_align(label, LV_ALIGN_TOP_LEFT, 0, 0);
 
   lv_obj_clear_flag(excite_control, LV_OBJ_FLAG_SCROLLABLE);
@@ -78,7 +78,7 @@ BeltsCalibrationPanel::BeltsCalibrationPanel(KWebSocketClient &c, std::mutex &l)
     LV_EVENT_VALUE_CHANGED, this);
 
   lv_obj_align(excite_label, LV_ALIGN_TOP_RIGHT, 0, 2 * hscale);
-  lv_label_set_text(excite_label, "1 hz");
+  lv_label_set_text(excite_label, "1 Hz");
 
   lv_dropdown_set_options(excite_dd, fmt::format("{}", fmt::join(axes, "\n")).c_str());
   lv_obj_align(excite_dd, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -213,6 +213,6 @@ void BeltsCalibrationPanel::handle_update_slider(lv_event_t *e) {
   if (code == LV_EVENT_VALUE_CHANGED) {
     double hz = (double)lv_slider_get_value(excite_slider);
     lv_slider_set_value(excite_slider, hz, LV_ANIM_OFF);
-    lv_label_set_text(excite_label, fmt::format("{} hz", hz / 10.0).c_str());
+    lv_label_set_text(excite_label, fmt::format("{} Hz", hz / 10.0).c_str());
   }
 }

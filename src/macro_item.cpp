@@ -247,7 +247,7 @@ void MacroItem::handle_send_macro(lv_event_t *e) {
 
     std::string command = fmt::format("{}", fmt::join(kv, " "));
     spdlog::trace("sending macro: {}", command);
-    KUtils::confirm_if_printing("Printer is printing.\nRun this macro anyway?",
+    KUtils::confirm_if_printing("A impressora está imprimindo.\nExecutar esta macro mesmo assim?",
       [this, command]() {
         ws.gcode_script(command);
         // jump to the console so the macro's output/execution is visible

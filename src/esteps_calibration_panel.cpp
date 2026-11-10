@@ -56,24 +56,24 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_style_pad_row(intro_cont, 10, 0);
 
   lv_obj_t *title = lv_label_create(intro_cont);
-  lv_label_set_text(title, "E-Steps Calibration");
+  lv_label_set_text(title, "Calibração da extrusora (E-steps)");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
 
   lv_obj_t *intro_body = lv_label_create(intro_cont);
   lv_label_set_long_mode(intro_body, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(intro_body, LV_PCT(94));
   lv_label_set_text(intro_body,
-    "Checks how much filament the extruder actually pushes vs. what it's told "
-    "to. Fixes prints that look uniformly over- or under-extruded.\n\n"
-    "You'll need a ruler and a small piece of tape. The hotend heats up first "
-    "- this is a direct-drive extruder, so there's no cold test.");
+    "Confere se a extrusora empurra a quantidade certa de filamento. Corrige "
+    "impressões com excesso ou falta de filamento em toda a peça.\n\n"
+    "Separe uma régua e um pedacinho de fita crepe. Primeiro o bico aquece: "
+    "a extrusora fica junto do bico, então não dá para testar a frio.");
   lv_obj_set_style_text_font(intro_body, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(intro_body, LV_TEXT_ALIGN_CENTER, 0);
 
   start_btn = lv_btn_create(intro_cont);
   lv_obj_set_size(start_btn, 220, 46);
   lv_obj_t *sb_lbl = lv_label_create(start_btn);
-  lv_label_set_text(sb_lbl, LV_SYMBOL_OK "  Start");
+  lv_label_set_text(sb_lbl, LV_SYMBOL_OK "  Iniciar");
   lv_obj_set_style_text_font(sb_lbl, &lv_font_montserrat_16, 0);
   lv_obj_center(sb_lbl);
   lv_obj_add_event_cb(start_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -82,7 +82,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_size(intro_back_btn, 140, 36);
   lv_obj_set_style_bg_color(intro_back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *ib_lbl = lv_label_create(intro_back_btn);
-  lv_label_set_text(ib_lbl, LV_SYMBOL_LEFT "  Back");
+  lv_label_set_text(ib_lbl, LV_SYMBOL_LEFT "  Voltar");
   lv_obj_center(ib_lbl);
   lv_obj_add_event_cb(intro_back_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -91,13 +91,13 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_style_pad_row(heating_cont, 12, 0);
 
   lv_obj_t *heating_title = lv_label_create(heating_cont);
-  lv_label_set_text(heating_title, "Heating");
+  lv_label_set_text(heating_title, "Aquecimento");
   lv_obj_set_style_text_font(heating_title, &lv_font_montserrat_16, 0);
 
   heating_status_label = lv_label_create(heating_cont);
   lv_label_set_long_mode(heating_status_label, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(heating_status_label, LV_PCT(90));
-  lv_label_set_text(heating_status_label, "Heating...");
+  lv_label_set_text(heating_status_label, "Aquecendo...");
   lv_obj_set_style_text_font(heating_status_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(heating_status_label, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -108,7 +108,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_size(heating_cancel_btn, 160, 40);
   lv_obj_set_style_bg_color(heating_cancel_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *hc_lbl = lv_label_create(heating_cancel_btn);
-  lv_label_set_text(hc_lbl, LV_SYMBOL_CLOSE "  Cancel");
+  lv_label_set_text(hc_lbl, LV_SYMBOL_CLOSE "  Cancelar");
   lv_obj_center(hc_lbl);
   lv_obj_add_event_cb(heating_cancel_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -118,7 +118,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_style_pad_row(mark_cont, 10, 0);
 
   lv_obj_t *mark_title = lv_label_create(mark_cont);
-  lv_label_set_text(mark_title, "Mark the Filament");
+  lv_label_set_text(mark_title, "Marque o filamento");
   lv_obj_set_style_text_font(mark_title, &lv_font_montserrat_16, 0);
 
   mark_instr_label = lv_label_create(mark_cont);
@@ -142,7 +142,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_height(mark_cancel_btn, 44);
   lv_obj_set_style_bg_color(mark_cancel_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *mc_lbl = lv_label_create(mark_cancel_btn);
-  lv_label_set_text(mc_lbl, LV_SYMBOL_CLOSE "  Cancel");
+  lv_label_set_text(mc_lbl, LV_SYMBOL_CLOSE "  Cancelar");
   lv_obj_center(mc_lbl);
   lv_obj_add_event_cb(mark_cancel_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -150,7 +150,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_flex_grow(extrude_btn, 1);
   lv_obj_set_height(extrude_btn, 44);
   lv_obj_t *ex_lbl = lv_label_create(extrude_btn);
-  lv_label_set_text(ex_lbl, LV_SYMBOL_OK "  Extrude");
+  lv_label_set_text(ex_lbl, LV_SYMBOL_OK "  Extrudar");
   lv_obj_center(ex_lbl);
   lv_obj_add_event_cb(extrude_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -159,13 +159,13 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_style_pad_row(extruding_cont, 12, 0);
 
   lv_obj_t *extruding_title = lv_label_create(extruding_cont);
-  lv_label_set_text(extruding_title, "Extruding");
+  lv_label_set_text(extruding_title, "Extrusão");
   lv_obj_set_style_text_font(extruding_title, &lv_font_montserrat_16, 0);
 
   extruding_status_label = lv_label_create(extruding_cont);
   lv_label_set_long_mode(extruding_status_label, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(extruding_status_label, LV_PCT(90));
-  lv_label_set_text(extruding_status_label, "Extruding... please wait, do not touch the printer.");
+  lv_label_set_text(extruding_status_label, "Extrudando... Aguarde e não mexa na impressora.");
   lv_obj_set_style_text_font(extruding_status_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(extruding_status_label, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -176,7 +176,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_size(extruding_cancel_btn, 160, 40);
   lv_obj_set_style_bg_color(extruding_cancel_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *ec_lbl = lv_label_create(extruding_cancel_btn);
-  lv_label_set_text(ec_lbl, LV_SYMBOL_CLOSE "  Cancel");
+  lv_label_set_text(ec_lbl, LV_SYMBOL_CLOSE "  Cancelar");
   lv_obj_center(ec_lbl);
   lv_obj_add_event_cb(extruding_cancel_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -186,7 +186,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_style_pad_row(measure_cont, 10, 0);
 
   lv_obj_t *measure_title = lv_label_create(measure_cont);
-  lv_label_set_text(measure_title, "Enter the Measurement");
+  lv_label_set_text(measure_title, "Digite a medida");
   lv_obj_set_style_text_font(measure_title, &lv_font_montserrat_16, 0);
 
   measure_instr_label = lv_label_create(measure_cont);
@@ -198,7 +198,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
 
   measure_ta = lv_textarea_create(measure_cont);
   lv_textarea_set_one_line(measure_ta, true);
-  lv_textarea_set_placeholder_text(measure_ta, "mm remaining");
+  lv_textarea_set_placeholder_text(measure_ta, "distância em mm");
   lv_obj_set_width(measure_ta, LV_PCT(60));
   lv_obj_add_event_cb(measure_ta, &EstepsCalibrationPanel::_handle_ta, LV_EVENT_ALL, this);
 
@@ -216,7 +216,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_height(measure_cancel_btn, 44);
   lv_obj_set_style_bg_color(measure_cancel_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *mcx_lbl = lv_label_create(measure_cancel_btn);
-  lv_label_set_text(mcx_lbl, LV_SYMBOL_CLOSE "  Cancel");
+  lv_label_set_text(mcx_lbl, LV_SYMBOL_CLOSE "  Cancelar");
   lv_obj_center(mcx_lbl);
   lv_obj_add_event_cb(measure_cancel_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -224,7 +224,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_flex_grow(measure_apply_btn, 1);
   lv_obj_set_height(measure_apply_btn, 44);
   lv_obj_t *ap_lbl = lv_label_create(measure_apply_btn);
-  lv_label_set_text(ap_lbl, LV_SYMBOL_OK "  Apply");
+  lv_label_set_text(ap_lbl, LV_SYMBOL_OK "  Aplicar");
   lv_obj_center(ap_lbl);
   lv_obj_add_event_cb(measure_apply_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -250,7 +250,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_style_pad_row(result_cont, 6, 0);
 
   lv_obj_t *result_title = lv_label_create(result_cont);
-  lv_label_set_text(result_title, LV_SYMBOL_OK "  Result");
+  lv_label_set_text(result_title, LV_SYMBOL_OK "  Resultado");
   lv_obj_set_style_text_font(result_title, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(result_title, lv_palette_main(LV_PALETTE_GREEN), 0);
 
@@ -264,7 +264,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   verify_again_btn = lv_btn_create(result_cont);
   lv_obj_set_size(verify_again_btn, 240, 40);
   lv_obj_t *va_lbl = lv_label_create(verify_again_btn);
-  lv_label_set_text(va_lbl, LV_SYMBOL_REFRESH "  Verify Again");
+  lv_label_set_text(va_lbl, LV_SYMBOL_REFRESH "  Conferir de novo");
   lv_obj_set_style_text_font(va_lbl, &lv_font_montserrat_14, 0);
   lv_obj_center(va_lbl);
   lv_obj_add_event_cb(verify_again_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -273,7 +273,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_size(done_btn, 240, 36);
   lv_obj_set_style_bg_color(done_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *dn_lbl = lv_label_create(done_btn);
-  lv_label_set_text(dn_lbl, LV_SYMBOL_OK "  Done");
+  lv_label_set_text(dn_lbl, LV_SYMBOL_OK "  Concluir");
   lv_obj_set_style_text_font(dn_lbl, &lv_font_montserrat_12, 0);
   lv_obj_center(dn_lbl);
   lv_obj_add_event_cb(done_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -282,7 +282,7 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   lv_obj_set_size(discard_btn, 240, 32);
   lv_obj_set_style_bg_color(discard_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *ds_lbl = lv_label_create(discard_btn);
-  lv_label_set_text(ds_lbl, LV_SYMBOL_LEFT "  Discard, Keep Previous");
+  lv_label_set_text(ds_lbl, LV_SYMBOL_LEFT "  Descartar e manter o anterior");
   lv_obj_set_style_text_font(ds_lbl, &lv_font_montserrat_12, 0);
   lv_obj_center(ds_lbl);
   lv_obj_add_event_cb(discard_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -329,7 +329,7 @@ void EstepsCalibrationPanel::foreground() {
 
 void EstepsCalibrationPanel::start_calibration() {
   if (KUtils::is_printing()) {
-    KUtils::notify_toast("Can't calibrate e-steps while printing.", 3000);
+    KUtils::notify_toast("Não é possível calibrar a extrusora durante a impressão.", 3000);
     return;
   }
   active = true;
@@ -342,7 +342,7 @@ void EstepsCalibrationPanel::start_calibration() {
 
 void EstepsCalibrationPanel::update_heating_status() {
   if (!have_extruder_temp) {
-    lv_label_set_text(heating_status_label, "Heating the hotend...");
+    lv_label_set_text(heating_status_label, "Aquecendo o bico...");
     return;
   }
   // The hotend may already be hotter than this calibration's target (e.g.
@@ -353,17 +353,17 @@ void EstepsCalibrationPanel::update_heating_status() {
     const double settle_band = 2.0;
     if (extruder_temp < target_temp - settle_band) {
       lv_label_set_text(heating_status_label,
-        fmt::format("Heating to {:.0f}C...\nExtruder: {:.0f}C", target_temp, extruder_temp).c_str());
+        fmt::format("Aquecendo até {:.0f}°C...\nBico: {:.0f}°C", target_temp, extruder_temp).c_str());
     } else if (extruder_temp > target_temp + settle_band) {
       lv_label_set_text(heating_status_label,
-        fmt::format("Cooling to {:.0f}C (was hotter already)...\nExtruder: {:.0f}C", target_temp, extruder_temp).c_str());
+        fmt::format("Esfriando até {:.0f}°C (já estava mais quente)...\nBico: {:.0f}°C", target_temp, extruder_temp).c_str());
     } else {
       lv_label_set_text(heating_status_label,
-        fmt::format("At {:.0f}C, almost ready...\nExtruder: {:.0f}C", target_temp, extruder_temp).c_str());
+        fmt::format("Chegando a {:.0f}°C, quase pronto...\nBico: {:.0f}°C", target_temp, extruder_temp).c_str());
     }
   } else {
     lv_label_set_text(heating_status_label,
-      fmt::format("Heating the hotend...\nExtruder: {:.0f}C", extruder_temp).c_str());
+      fmt::format("Aquecendo o bico...\nBico: {:.0f}°C", extruder_temp).c_str());
   }
 }
 
@@ -371,14 +371,14 @@ void EstepsCalibrationPanel::cancel_active_run() {
   active = false;
   ws.gcode_script("_CALIBRATE_ESTEPS_CANCEL");
   show_stage(INTRO);
-  KUtils::notify_toast("E-Steps calibration cancelled.", 3000);
+  KUtils::notify_toast("Calibração da extrusora cancelada.", 3000);
 }
 
 void EstepsCalibrationPanel::apply_measurement() {
   const char *txt = lv_textarea_get_text(measure_ta);
   std::string s = txt ? std::string(txt) : std::string();
   if (s.empty() || std::atof(s.c_str()) <= 0.0) {
-    KUtils::notify_toast("Enter the measured gap (mm) first.", 3000);
+    KUtils::notify_toast("Digite a distância medida (mm) primeiro.", 3000);
     return;
   }
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
@@ -438,11 +438,11 @@ void EstepsCalibrationPanel::handle_gcode_response(json &j) {
       }
       lv_label_set_text(mark_instr_label,
         fmt::format(
-          "At temp. Measure {:.0f}mm up from where the filament feeds into "
-          "the top of the extruder and wrap a small piece of tape around "
-          "the filament there. Press Extrude once it's marked - you have "
-          "about 2 minutes before this auto-cancels to keep the hotend "
-          "from sitting hot too long.",
+          "Temperatura atingida. A partir de onde o filamento entra no topo "
+          "da extrusora, meça {:.0f} mm para cima e enrole ali um pedacinho de "
+          "fita crepe no filamento. Com a marca feita, toque em Extrudar. Há "
+          "cerca de 2 minutos para isso. Depois, a calibração é cancelada "
+          "sozinha para o bico não ficar quente por muito tempo.",
           mark_mm).c_str());
       show_stage(MARK);
       return;
@@ -456,7 +456,7 @@ void EstepsCalibrationPanel::handle_gcode_response(json &j) {
         double fed = std::stod(line.substr(fed_p + 4));
         double total = std::stod(line.substr(total_p + 6));
         lv_label_set_text(extruding_status_label,
-          fmt::format("Extruding... {:.0f}/{:.0f}mm\nPlease wait, do not touch the printer.", fed, total).c_str());
+          fmt::format("Extrudando... {:.0f}/{:.0f} mm\nAguarde e não mexa na impressora.", fed, total).c_str());
       } catch (const std::exception &ex) {
         spdlog::warn("EstepsCalibrationPanel: failed to parse ESTEPS_PROGRESS from '{}': {}", line, ex.what());
       }
@@ -467,9 +467,9 @@ void EstepsCalibrationPanel::handle_gcode_response(json &j) {
     if (line.find("ESTEPS_DONE") != std::string::npos) {
       lv_label_set_text(measure_instr_label,
         fmt::format(
-          "Grab your ruler. Measure the gap between the extruder entry and "
-          "your tape mark - with {:.0f}mm fed from a {:.0f}mm mark, a perfect "
-          "result measures ~{:.0f}mm here. Enter what you actually measured below.",
+          "Pegue a régua. Meça a distância entre a entrada da extrusora e a "
+          "marca de fita. Com {:.0f} mm extrudados e a marca a {:.0f} mm, o ideal "
+          "é medir cerca de {:.0f} mm. Digite abaixo o valor que mediu.",
           length_mm, mark_mm, mark_mm - length_mm).c_str());
       lv_textarea_set_text(measure_ta, "");
       show_stage(MEASURE);
@@ -505,11 +505,11 @@ void EstepsCalibrationPanel::handle_gcode_response(json &j) {
       bool within_tolerance = std::fabs(actual_mm - commanded_mm) < 0.5;
       lv_label_set_text(result_label,
         fmt::format(
-          "Commanded {:.1f}mm, got {:.1f}mm.\nrotation_distance: {:.4f} -> {:.4f}\n{}",
+          "Foram pedidos {:.1f} mm e saíram {:.1f} mm.\nrotation_distance: {:.4f} -> {:.4f}\n{}",
           commanded_mm, actual_mm, old_rotation_distance, new_rotation_distance,
           within_tolerance
-            ? "Within 0.5mm - looks good, you can stop here."
-            : "More than 0.5mm off target - verify again with the new value.").c_str());
+            ? "Diferença de até 0.5 mm: está bom, pode parar aqui."
+            : "Diferença maior que 0.5 mm: toque em Conferir de novo para testar o valor novo.").c_str());
       show_stage(RESULT);
       return;
     }
@@ -554,7 +554,7 @@ void EstepsCalibrationPanel::handle_callback(lv_event_t *e) {
   if (btn == extrude_btn) {
     active = true;
     show_stage(EXTRUDING);
-    lv_label_set_text(extruding_status_label, "Extruding... 0mm\nPlease wait, do not touch the printer.");
+    lv_label_set_text(extruding_status_label, "Extrudando... 0 mm\nAguarde e não mexa na impressora.");
     ws.gcode_script(fmt::format("_CALIBRATE_ESTEPS_EXTRUDE LENGTH={:.1f} SPEED={:.1f} MARK={:.1f}",
                                 length_mm, speed_mm_min, mark_mm));
     return;
@@ -573,7 +573,7 @@ void EstepsCalibrationPanel::handle_callback(lv_event_t *e) {
 
   if (btn == done_btn) {
     ws.gcode_script("M104 S0");
-    KUtils::notify_toast("E-Steps calibration saved.", 3000);
+    KUtils::notify_toast("Calibração da extrusora salva.", 3000);
     lv_obj_move_background(panel_cont);
     return;
   }
@@ -583,7 +583,7 @@ void EstepsCalibrationPanel::handle_callback(lv_event_t *e) {
       ws.gcode_script(fmt::format("SET_EXTRUDER_ROTATION_DISTANCE DISTANCE={:.4f}", original_rotation_distance));
     }
     ws.gcode_script("M104 S0");
-    KUtils::notify_toast("Discarded - restored the previous rotation_distance.", 4000);
+    KUtils::notify_toast("Descartado. O rotation_distance anterior foi restaurado.", 4000);
     lv_obj_move_background(panel_cont);
     return;
   }

@@ -353,7 +353,7 @@ json State::get_display_leds() {
       if (e == "output_pin LED") {
         display_leds["output_pin LED"] = {
           {"id", "output_pin LED"},
-          {"display_name", "LED"}
+          {"display_name", "Luz"}
         };
       }
     }
@@ -362,7 +362,7 @@ json State::get_display_leds() {
       size_t pos = e.find_last_of(' ');
       std::string display_name = KUtils::to_title(pos != std::string::npos
         ? e.substr(pos + 1)
-        : "LED");
+        : "Luz");
       display_leds[e] = {
   {"id", e},
   {"display_name", display_name}

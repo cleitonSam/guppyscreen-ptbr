@@ -82,24 +82,24 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_style_pad_row(intro_cont, 10, 0);
 
   lv_obj_t *title = lv_label_create(intro_cont);
-  lv_label_set_text(title, "Recalibration Wizard");
+  lv_label_set_text(title, "Assistente de recalibração");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
 
   lv_obj_t *intro_body = lv_label_create(intro_cont);
   lv_label_set_long_mode(intro_body, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(intro_body, LV_PCT(94));
   lv_label_set_text(intro_body,
-    "Just changed your bed, nozzle, or BLTouch mount? Re-establish a safe "
-    "baseline before printing again.\n\n"
-    "You'll do one paper-test Z-offset check, then a fresh bed mesh happens "
-    "automatically. Nothing is saved until you review and confirm at the end.");
+    "Trocou a mesa, o bico ou o suporte do CR Touch? Refaça a calibração "
+    "básica antes de imprimir de novo.\n\n"
+    "Primeiro, o teste do papel acerta a altura do bico. Depois, a impressora "
+    "mede a malha da mesa sozinha. Nada é salvo antes de revisar e confirmar no fim.");
   lv_obj_set_style_text_font(intro_body, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(intro_body, LV_TEXT_ALIGN_CENTER, 0);
 
   start_btn = lv_btn_create(intro_cont);
   lv_obj_set_size(start_btn, 220, 46);
   lv_obj_t *sb_lbl = lv_label_create(start_btn);
-  lv_label_set_text(sb_lbl, LV_SYMBOL_OK "  Start");
+  lv_label_set_text(sb_lbl, LV_SYMBOL_OK "  Iniciar");
   lv_obj_set_style_text_font(sb_lbl, &lv_font_montserrat_16, 0);
   lv_obj_center(sb_lbl);
   lv_obj_add_event_cb(start_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -108,7 +108,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_size(intro_back_btn, 140, 36);
   lv_obj_set_style_bg_color(intro_back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *ib_lbl = lv_label_create(intro_back_btn);
-  lv_label_set_text(ib_lbl, LV_SYMBOL_LEFT "  Back");
+  lv_label_set_text(ib_lbl, LV_SYMBOL_LEFT "  Voltar");
   lv_obj_center(ib_lbl);
   lv_obj_add_event_cb(intro_back_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
@@ -127,7 +127,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_flex_align(hdr, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   lv_obj_t *step_lbl = lv_label_create(hdr);
-  lv_label_set_text(step_lbl, "Step 1 of 2: Z-Offset");
+  lv_label_set_text(step_lbl, "Etapa 1 de 2: altura do bico");
   lv_obj_set_style_text_font(step_lbl, &lv_font_montserrat_16, 0);
 
   z_label = lv_label_create(hdr);
@@ -137,7 +137,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   instr_label = lv_label_create(probe_cont);
   lv_label_set_long_mode(instr_label, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(instr_label, LV_PCT(100));
-  lv_label_set_text(instr_label, "Homing and probing...");
+  lv_label_set_text(instr_label, "Indo à origem e medindo...");
   lv_obj_set_style_text_font(instr_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(instr_label, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -180,7 +180,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_height(abort_btn, 44);
   lv_obj_set_style_bg_color(abort_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *ab_lbl = lv_label_create(abort_btn);
-  lv_label_set_text(ab_lbl, LV_SYMBOL_CLOSE "  Abort");
+  lv_label_set_text(ab_lbl, LV_SYMBOL_CLOSE "  Abortar");
   lv_obj_set_style_text_font(ab_lbl, &lv_font_montserrat_16, 0);
   lv_obj_center(ab_lbl);
   lv_obj_add_event_cb(abort_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -189,7 +189,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_flex_grow(accept_btn, 1);
   lv_obj_set_height(accept_btn, 44);
   lv_obj_t *ac_lbl = lv_label_create(accept_btn);
-  lv_label_set_text(ac_lbl, LV_SYMBOL_OK "  Accept");
+  lv_label_set_text(ac_lbl, LV_SYMBOL_OK "  Aceitar");
   lv_obj_set_style_text_font(ac_lbl, &lv_font_montserrat_16, 0);
   lv_obj_center(ac_lbl);
   lv_obj_add_event_cb(accept_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -200,13 +200,13 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_style_pad_row(mesh_cont, 12, 0);
 
   lv_obj_t *mesh_title = lv_label_create(mesh_cont);
-  lv_label_set_text(mesh_title, "Step 2 of 2: Bed Mesh");
+  lv_label_set_text(mesh_title, "Etapa 2 de 2: malha da mesa");
   lv_obj_set_style_text_font(mesh_title, &lv_font_montserrat_16, 0);
 
   mesh_status_label = lv_label_create(mesh_cont);
   lv_label_set_long_mode(mesh_status_label, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(mesh_status_label, LV_PCT(90));
-  lv_label_set_text(mesh_status_label, "Mapping bed... this takes about a minute, no input needed.");
+  lv_label_set_text(mesh_status_label, "Medindo a mesa... leva cerca de 1 minuto. Não precisa tocar em nada.");
   lv_obj_set_style_text_font(mesh_status_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(mesh_status_label, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -220,7 +220,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_style_pad_row(done_cont, 5, 0);
 
   lv_obj_t *done_title = lv_label_create(done_cont);
-  lv_label_set_text(done_title, LV_SYMBOL_OK "  Ready to review");
+  lv_label_set_text(done_title, LV_SYMBOL_OK "  Pronto para revisar");
   lv_obj_set_style_text_font(done_title, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(done_title, lv_palette_main(LV_PALETTE_GREEN), 0);
 
@@ -234,7 +234,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   save_btn = lv_btn_create(done_cont);
   lv_obj_set_size(save_btn, 240, 40);
   lv_obj_t *sv_lbl = lv_label_create(save_btn);
-  lv_label_set_text(sv_lbl, LV_SYMBOL_SAVE "  Save & Restart");
+  lv_label_set_text(sv_lbl, LV_SYMBOL_SAVE "  Salvar e reiniciar");
   lv_obj_set_style_text_font(sv_lbl, &lv_font_montserrat_14, 0);
   lv_obj_center(sv_lbl);
   lv_obj_add_event_cb(save_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -245,7 +245,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_t *sr_lbl = lv_label_create(sensor_refine_btn);
   lv_label_set_long_mode(sr_lbl, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(sr_lbl, 220);
-  lv_label_set_text(sr_lbl, "Refine with Load Sensor (optional)");
+  lv_label_set_text(sr_lbl, "Refinar com o sensor de pressão");
   lv_obj_set_style_text_font(sr_lbl, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_align(sr_lbl, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_center(sr_lbl);
@@ -255,7 +255,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_size(done_back_btn, 140, 32);
   lv_obj_set_style_bg_color(done_back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *db_lbl = lv_label_create(done_back_btn);
-  lv_label_set_text(db_lbl, LV_SYMBOL_LEFT "  Discard");
+  lv_label_set_text(db_lbl, LV_SYMBOL_LEFT "  Descartar");
   lv_obj_set_style_text_font(db_lbl, &lv_font_montserrat_12, 0);
   lv_obj_center(db_lbl);
   lv_obj_add_event_cb(done_back_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -266,13 +266,13 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_style_pad_row(sensor_cont, 12, 0);
 
   lv_obj_t *sensor_title = lv_label_create(sensor_cont);
-  lv_label_set_text(sensor_title, "Refining with Load Sensor");
+  lv_label_set_text(sensor_title, "Refinando com o sensor de pressão");
   lv_obj_set_style_text_font(sensor_title, &lv_font_montserrat_16, 0);
 
   sensor_status_label = lv_label_create(sensor_cont);
   lv_label_set_long_mode(sensor_status_label, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(sensor_status_label, LV_PCT(90));
-  lv_label_set_text(sensor_status_label, "Homing, wiping, and probing...\nDo not touch the printer.");
+  lv_label_set_text(sensor_status_label, "Indo à origem, limpando o bico e medindo...\nNão mexa na impressora.");
   lv_obj_set_style_text_font(sensor_status_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(sensor_status_label, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -286,7 +286,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_style_pad_row(sensor_choice_cont, 6, 0);
 
   lv_obj_t *choice_title = lv_label_create(sensor_choice_cont);
-  lv_label_set_text(choice_title, LV_SYMBOL_WARNING "  Choose a Value to Keep");
+  lv_label_set_text(choice_title, LV_SYMBOL_WARNING "  Escolha qual valor manter");
   lv_obj_set_style_text_font(choice_title, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(choice_title, lv_palette_main(LV_PALETTE_ORANGE), 0);
 
@@ -300,7 +300,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   keep_paper_btn = lv_btn_create(sensor_choice_cont);
   lv_obj_set_size(keep_paper_btn, 260, 40);
   lv_obj_t *kp_lbl = lv_label_create(keep_paper_btn);
-  lv_label_set_text(kp_lbl, "Keep Paper Value");
+  lv_label_set_text(kp_lbl, "Manter valor do papel");
   lv_obj_set_style_text_font(kp_lbl, &lv_font_montserrat_14, 0);
   lv_obj_center(kp_lbl);
   lv_obj_add_event_cb(keep_paper_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -308,7 +308,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   use_sensor_btn = lv_btn_create(sensor_choice_cont);
   lv_obj_set_size(use_sensor_btn, 260, 42);
   lv_obj_t *us_lbl = lv_label_create(use_sensor_btn);
-  lv_label_set_text(us_lbl, "Use Sensor Value");
+  lv_label_set_text(us_lbl, "Usar valor do sensor");
   lv_obj_set_style_text_font(us_lbl, &lv_font_montserrat_14, 0);
   lv_obj_center(us_lbl);
   lv_obj_add_event_cb(use_sensor_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -317,7 +317,7 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   lv_obj_set_size(discard_all_btn, 260, 36);
   lv_obj_set_style_bg_color(discard_all_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
   lv_obj_t *da_lbl = lv_label_create(discard_all_btn);
-  lv_label_set_text(da_lbl, "Discard Both, Keep Original");
+  lv_label_set_text(da_lbl, "Descartar os dois e manter o original");
   lv_obj_set_style_text_font(da_lbl, &lv_font_montserrat_12, 0);
   lv_obj_center(da_lbl);
   lv_obj_add_event_cb(discard_all_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -368,7 +368,7 @@ void RecalibrationWizardPanel::foreground() {
 
 void RecalibrationWizardPanel::start_wizard() {
   if (KUtils::is_printing()) {
-    KUtils::notify_toast("Can't recalibrate while printing.", 3000);
+    KUtils::notify_toast("Não é possível recalibrar durante a impressão.", 3000);
     return;
   }
 
@@ -381,7 +381,7 @@ void RecalibrationWizardPanel::start_wizard() {
   probe_active = false;
   have_z = false;
   lv_label_set_text(z_label, "Z -");
-  lv_label_set_text(instr_label, "Homing and probing...");
+  lv_label_set_text(instr_label, "Indo à origem e medindo...");
   show_stage(ZOFFSET);
   update_probe_ui();
   // No auto-cancel timer here (2026-07-08 decision) - this step is manual and
@@ -409,15 +409,15 @@ void RecalibrationWizardPanel::update_probe_ui() {
   if (en) {
     if (have_z) lv_label_set_text(z_label, fmt::format("Z {:.3f}", last_z).c_str());
     else        lv_label_set_text(z_label, "Z -");
-    lv_label_set_text(instr_label, "Slide paper under the nozzle. Jog down until it just drags, then Accept.");
+    lv_label_set_text(instr_label, "Coloque uma folha de papel embaixo do bico. Abaixe até o papel arrastar de leve e toque em Aceitar.");
   } else {
-    lv_label_set_text(instr_label, "Homing and probing...");
+    lv_label_set_text(instr_label, "Indo à origem e medindo...");
   }
 }
 
 void RecalibrationWizardPanel::start_mesh() {
   show_stage(MESH);
-  lv_label_set_text(mesh_status_label, "Mapping bed... this takes about a minute, no input needed.");
+  lv_label_set_text(mesh_status_label, "Medindo a mesa... leva cerca de 1 minuto. Não precisa tocar em nada.");
   ws.gcode_script("BED_MESH_CALIBRATE");
 }
 
@@ -504,7 +504,7 @@ void RecalibrationWizardPanel::sensor_timeout_cb(lv_timer_t *t) {
   auto *self = (RecalibrationWizardPanel *)t->user_data;
   self->sensor_timeout_timer = NULL;
   if (!self->sensor_step_active) return;
-  self->sensor_refine_failed("no response from printer within 4 minutes");
+  self->sensor_refine_failed("a impressora não respondeu em 8 minutos");
 }
 
 void RecalibrationWizardPanel::sensor_refine_failed(const char *reason) {
@@ -517,25 +517,25 @@ void RecalibrationWizardPanel::sensor_refine_failed(const char *reason) {
   }
   show_stage(INTRO);
   KUtils::notify_toast(
-    fmt::format("Sensor refine failed ({}). Restored previous settings - please redo from Start.", reason).c_str(),
+    fmt::format("Falha ao refinar com o sensor ({}). As configurações anteriores foram restauradas. Toque em Iniciar para refazer.", reason).c_str(),
     6000);
 }
 
 void RecalibrationWizardPanel::update_sensor_status_text() {
   std::string temp_str = have_sensor_temps
-    ? fmt::format("\nNozzle: {:.0f}C   Bed: {:.0f}C", sensor_extruder_temp, sensor_bed_temp)
+    ? fmt::format("\nBico: {:.0f}°C   Mesa: {:.0f}°C", sensor_extruder_temp, sensor_bed_temp)
     : "";
   lv_label_set_text(sensor_status_label,
-    fmt::format("Homing, wiping, and probing...{}\nDo not touch the printer.", temp_str).c_str());
+    fmt::format("Indo à origem, limpando o bico e medindo...{}\nNão mexa na impressora.", temp_str).c_str());
 }
 
 void RecalibrationWizardPanel::start_sensor_refine() {
   if (KUtils::is_printing()) {
-    KUtils::notify_toast("Can't recalibrate while printing.", 3000);
+    KUtils::notify_toast("Não é possível recalibrar durante a impressão.", 3000);
     return;
   }
   if (!backup_printer_cfg()) {
-    KUtils::notify_toast("Could not back up printer.cfg - skipping sensor refine for safety.", 4000);
+    KUtils::notify_toast("Não foi possível guardar uma cópia do printer.cfg. Por segurança, o refino com o sensor não foi feito.", 4000);
     return;
   }
 
@@ -564,11 +564,11 @@ void RecalibrationWizardPanel::finish_sensor_reading() {
 
   lv_label_set_text(sensor_choice_label,
     fmt::format(
-      "Paper test: {:.3f}mm   |   Sensor: {:.3f}mm   |   Diff: {:.3f}mm\n{}",
+      "Teste do papel: {:.3f} mm  |  Sensor: {:.3f} mm  |  Diferença: {:.3f} mm\n{}",
       new_z_offset, sensor_reading, diff,
       sensor_recommended
-        ? "Close agreement - sensor reading (green) is usually the more precise pick."
-        : "Bigger gap than normal (0.1mm) - paper test (green) is the safer pick.").c_str());
+        ? "Valores parecidos: a leitura do sensor (verde) costuma ser a mais precisa."
+        : "Diferença maior que o normal (0.1 mm): o teste do papel (verde) é a escolha mais segura.").c_str());
 
   // Recommended button: clear any local override so it falls back to the
   // theme's own live bg_color_primary (tracks theme changes with no
@@ -587,12 +587,12 @@ void RecalibrationWizardPanel::finish_sensor_reading() {
 void RecalibrationWizardPanel::apply_sensor_choice(bool use_sensor) {
   double chosen = use_sensor ? sensor_reading : new_z_offset;
   if (!patch_z_offset_value(chosen)) {
-    KUtils::notify_toast("Failed to write z_offset to printer.cfg - please check manually before printing.", 6000);
+    KUtils::notify_toast("Falha ao gravar a altura do bico (z_offset) no printer.cfg. Confira o arquivo antes de imprimir.", 6000);
     lv_obj_move_background(panel_cont);
     return;
   }
   ws.gcode_script("FIRMWARE_RESTART");
-  KUtils::notify_toast(fmt::format("Saving {:.3f}mm... Klipper will restart.", chosen).c_str(), 3000);
+  KUtils::notify_toast(fmt::format("Salvando {:.3f} mm... O Klipper vai reiniciar.", chosen).c_str(), 3000);
   lv_obj_move_background(panel_cont);
 }
 
@@ -600,12 +600,12 @@ void RecalibrationWizardPanel::apply_discard_all() {
   // Reverts to whatever printer.cfg had before this whole wizard run started -
   // both the paper-test z_offset/mesh and the sensor's readings are abandoned.
   if (!restore_printer_cfg_backup()) {
-    KUtils::notify_toast("No backup available to restore - printer.cfg left as the sensor last saved it.", 6000);
+    KUtils::notify_toast("Não há cópia para restaurar. O printer.cfg ficou como o sensor salvou por último.", 6000);
     lv_obj_move_background(panel_cont);
     return;
   }
   ws.gcode_script("FIRMWARE_RESTART");
-  KUtils::notify_toast("Discarding this recalibration... Klipper will restart with your original settings.", 4000);
+  KUtils::notify_toast("Descartando esta recalibração... O Klipper vai reiniciar com as configurações originais.", 4000);
   lv_obj_move_background(panel_cont);
 }
 
@@ -665,7 +665,7 @@ void RecalibrationWizardPanel::handle_gcode_response(json &j) {
       if (line.find("Calibration aborted") != std::string::npos) {
         active = false;
         show_stage(INTRO);
-        KUtils::notify_toast("Recalibration aborted.", 3000);
+        KUtils::notify_toast("Recalibração abortada.", 3000);
         return;
       }
     }
@@ -674,8 +674,8 @@ void RecalibrationWizardPanel::handle_gcode_response(json &j) {
       active = false;
       lv_label_set_text(done_summary_label,
         fmt::format(
-          "Z-offset: {:.3f}mm -> {:.3f}mm\nBed mesh: updated. Nothing saved yet.\n"
-          "Save & Restart now, OR Refine first (has its own Save - don't press both).",
+          "Altura do bico: {:.3f} mm -> {:.3f} mm\nMalha da mesa: atualizada. Nada foi salvo ainda.\n"
+          "Escolha uma opção: Salvar e reiniciar agora ou refinar antes (opcional).",
           old_z_offset, new_z_offset).c_str());
       show_stage(DONE);
       return;
@@ -750,7 +750,7 @@ void RecalibrationWizardPanel::handle_callback(lv_event_t *e) {
 
   if (btn == save_btn) {
     ws.gcode_script("SAVE_CONFIG");
-    KUtils::notify_toast("Saving... Klipper will restart.", 3000);
+    KUtils::notify_toast("Salvando... O Klipper vai reiniciar.", 3000);
     lv_obj_move_background(panel_cont);
     return;
   }

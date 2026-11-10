@@ -19,8 +19,8 @@ SpoolmanPanel::SpoolmanPanel(KWebSocketClient &c, std::mutex &l)
   , controls(lv_obj_create(cont))
   , switch_cont(lv_obj_create(controls))
   , show_archived(lv_switch_create(switch_cont))
-  , reload_btn(controls, &refresh_img, "Reload", &SpoolmanPanel::_handle_callback, this)
-  , back_btn(controls, &back, "Back", &SpoolmanPanel::_handle_callback, this)
+  , reload_btn(controls, &refresh_img, "Recarregar", &SpoolmanPanel::_handle_callback, this)
+  , back_btn(controls, &back, "Voltar", &SpoolmanPanel::_handle_callback, this)
   , active_id(-1)
   , sorted_by(SORTED_BY_ID)
 {
@@ -60,7 +60,7 @@ SpoolmanPanel::SpoolmanPanel(KWebSocketClient &c, std::mutex &l)
   // switch
   lv_obj_set_width(switch_cont, LV_PCT(50)); // push right
   lv_obj_t *label = lv_label_create(switch_cont);
-  lv_label_set_text(label, "Show Archived");
+  lv_label_set_text(label, "Mostrar arquivados");
   lv_obj_align(label, LV_ALIGN_BOTTOM_LEFT, 0, -10);
   lv_obj_align(show_archived, LV_ALIGN_LEFT_MID, 30, -10);
   lv_obj_clear_state(show_archived, LV_STATE_CHECKED);
@@ -170,10 +170,10 @@ void SpoolmanPanel::request_select_for_print(std::function<void()> cb) {
 void SpoolmanPanel::populate_spools(std::vector<json> &sorted_spools) {
   if (!spools.empty()) {
     lv_table_set_cell_value(spool_table, 0, 0, "ID");
-    lv_table_set_cell_value(spool_table, 0, 1, "Name");
-    lv_table_set_cell_value(spool_table, 0, 2, "MAT");
-    lv_table_set_cell_value(spool_table, 0, 4, "Remain\nWeight");
-    lv_table_set_cell_value(spool_table, 0, 5, "Remain\nLength");
+    lv_table_set_cell_value(spool_table, 0, 1, "Nome");
+    lv_table_set_cell_value(spool_table, 0, 2, "Tipo");
+    lv_table_set_cell_value(spool_table, 0, 4, "Peso\nrestante");
+    lv_table_set_cell_value(spool_table, 0, 5, "Compr.\nrestante");
 
     bool skip_archive = !lv_obj_has_state(show_archived, LV_STATE_CHECKED);
 
@@ -227,7 +227,7 @@ void SpoolmanPanel::populate_spools(std::vector<json> &sorted_spools) {
 
       if (is_active) {
 	lv_table_add_cell_ctrl(spool_table, row_idx, 6, LV_TABLE_CELL_CTRL_MERGE_RIGHT);
-	lv_table_set_cell_value(spool_table, row_idx, 6, "(active)");
+	lv_table_set_cell_value(spool_table, row_idx, 6, "(ativo)");
       } else {
 	if (is_archived) {
 	  lv_table_set_cell_value(spool_table, row_idx, 6, "");
