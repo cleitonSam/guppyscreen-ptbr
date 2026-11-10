@@ -50,6 +50,12 @@ std::string tirar_embrulho(const std::string &s) {
   }
   size_t a = t.find('"', t.find(':', k + 5) + 1);
   size_t b = t.rfind('"');
+  // a Creality às vezes manda depois um "values": [...] (e sem escapar as
+  // aspas do texto): o texto termina antes dele
+  size_t v = t.find("\", \"values\"", a == std::string::npos ? 0 : a + 1);
+  if (v != std::string::npos) {
+    b = v;
+  }
   if (a == std::string::npos || b == std::string::npos || b <= a) {
     return t;
   }
@@ -125,6 +131,13 @@ Aviso traduzir(const std::string &linha) {
   }
 
   // passageiro ou repetido por outro caminho
+  // aceleração no formato do PrusaSlicer (M204 P/T): o Klipper da Creality só
+  // avisa e segue; um arquivo manda centenas deles. Não é erro.
+  if (tem(t, "Invalid M204 command")) {
+    a.nivel = IGNORAR;
+    return a;
+  }
+
   if (tem(t, "is not ready") || tem(t, "attempting to connect") ||
       t == "Printer is shutdown" || tem(t, "Klippy Disconnected") ||
       tem(t, "Klipper state: Shutdown")) {

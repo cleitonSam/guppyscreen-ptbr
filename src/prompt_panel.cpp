@@ -1,4 +1,5 @@
 #include "prompt_panel.h"
+#include "avisos_pt.h"
 #include "state.h"
 #include "utils.h"
 #include "marca.h"
@@ -196,22 +197,19 @@ void PromptPanel::consume(json &j) {
   //     must not trigger a toast - checking for "// {" specifically (not just
   //     "// ") is what distinguishes a structured error notice from ordinary
   //     human-readable chatter.
-  bool is_error_notice = resp.rfind("!! ", 0) == 0;
-  if (!is_error_notice && resp.rfind("// {", 0) == 0) {
-    is_error_notice = true;
+  // O "!! " já vira aviso traduzido no NotificationManager (aqui só
+  // duplicava, em inglês). O "// {json}" da Creality (comando desconhecido,
+  // M204 no formato do PrusaSlicer...) passa pelo mesmo tradutor: o que é
+  // inofensivo não aparece, o resto aparece em português.
+  if (resp.rfind("!! ", 0) == 0) {
+    return;
   }
-  if (is_error_notice) {
-    std::string msg = resp.substr(3);
-    try {
-      auto ej = json::parse(msg);
-      if (ej.contains("msg") && ej["msg"].is_string()) {
-        msg = ej["msg"].template get<std::string>();
-      }
-    } catch (...) {
-      // not JSON - show the raw text as-is
+  if (resp.rfind("// {", 0) == 0) {
+    AvisosPt::Aviso a = AvisosPt::traduzir(resp.substr(3));
+    if (a.nivel != AvisosPt::IGNORAR && !a.texto.empty()) {
+      std::lock_guard<std::mutex> guard(lv_lock);
+      KUtils::notify_toast(a.texto);
     }
-    std::lock_guard<std::mutex> guard(lv_lock);
-    KUtils::notify_toast(msg);
     return;
   }
 

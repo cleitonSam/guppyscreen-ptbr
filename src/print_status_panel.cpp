@@ -1,4 +1,6 @@
 #include "print_status_panel.h"
+
+#include <cstdlib>
 #include "finetune_panel.h"
 #include "marca.h"
 #include "navegacao.h"
@@ -101,6 +103,37 @@ PrintStatusPanel::PrintStatusPanel(KWebSocketClient &websocket_client,
   lv_label_set_recolor(decorrido_label, true);
   total_label = rotulo_fixo(status_cont, "", Marca::f12(), Marca::GRAFITE,
                             276, 120, 140, LV_TEXT_ALIGN_RIGHT);
+
+  // preparo: no mesmo lugar do progresso (148,58 a 416,136), escondido
+  preparo_cont = lv_obj_create(status_cont);
+  lv_obj_set_pos(preparo_cont, 148, 58);
+  lv_obj_set_size(preparo_cont, 268, 78);
+  lv_obj_set_style_bg_opa(preparo_cont, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(preparo_cont, 0, 0);
+  lv_obj_set_style_pad_all(preparo_cont, 0, 0);
+  lv_obj_clear_flag(preparo_cont, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(preparo_cont, LV_OBJ_FLAG_CLICKABLE);
+  preparo_titulo = rotulo_fixo(preparo_cont, "", Marca::f12(), Marca::GRAFITE,
+                               0, 0, 268, LV_TEXT_ALIGN_LEFT);
+  preparo_etapa = rotulo_fixo(preparo_cont, "", Marca::f20(), Marca::PAPEL,
+                              0, 18, 268, LV_TEXT_ALIGN_LEFT);
+  preparo_detalhe = rotulo_fixo(preparo_cont, "", Marca::f12(), Marca::GRAFITE,
+                                0, 46, 268, LV_TEXT_ALIGN_LEFT);
+  for (int i = 0; i < ETAPAS; i++) {
+    // 6 traços de 40 x 6 com 5 px entre eles (6*40 + 5*5 = 265)
+    lv_obj_t *p = lv_obj_create(preparo_cont);
+    lv_obj_set_pos(p, i * 45, 68);
+    lv_obj_set_size(p, 40, 6);
+    lv_obj_set_style_radius(p, 3, 0);
+    lv_obj_set_style_border_width(p, 0, 0);
+    lv_obj_set_style_pad_all(p, 0, 0);
+    lv_obj_set_style_bg_opa(p, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(p, lv_color_hex(Marca::PRETO_3), 0);
+    lv_obj_clear_flag(p, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(p, LV_OBJ_FLAG_SCROLLABLE);
+    preparo_pontos[i] = p;
+  }
+  lv_obj_add_flag(preparo_cont, LV_OBJ_FLAG_HIDDEN);
 
   // 4 cartões 96 x 56 em y = 144
   bico       = criar_cartao_info(8,   "Bico", "--");
@@ -248,6 +281,7 @@ void PrintStatusPanel::reset() {
   arquivo_atual.clear();
   extruder_target = -1;
   heater_bed_target = -1;
+  fase_atual.clear();
 
   // impressão nova: os botões voltam a responder
   lv_obj_clear_state(pause_btn, LV_STATE_DISABLED);
@@ -333,6 +367,89 @@ void PrintStatusPanel::populate() {
 
   json info = s->get_data("/printer_state/print_stats/info"_json_pointer);
   update_layers(info);
+
+  // tela ligada no meio do preparo: pega a etapa atual
+  auto msg = s->get_data("/printer_state/display_status/message"_json_pointer);
+  if (msg.is_string() && msg.template get<std::string>().rfind("FASE:", 0) == 0) {
+    fase_atual = msg.template get<std::string>().substr(5);
+  }
+  atualizar_preparo();
+}
+
+void PrintStatusPanel::atualizar_preparo() {
+  State *s = State::get_instance();
+  auto num = [s](const char *p) {
+    auto v = s->get_data(json::json_pointer(p));
+    return v.is_number() ? v.template get<double>() : 0.0;
+  };
+  auto pst = s->get_data("/printer_state/print_stats/state"_json_pointer);
+  std::string estado = pst.is_string() ? pst.template get<std::string>() : "";
+  bool preparando = (estado == "printing" || estado == "paused") && current_filament_used <= 0.0;
+
+  lv_obj_t *progresso[] = {progress_label, falta_titulo, falta_label, progress_bar,
+                           decorrido_label, total_label};
+  if (preparando != preparo_visivel) {
+    preparo_visivel = preparando;
+    for (lv_obj_t *o : progresso) {
+      if (preparando) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+      else lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (preparando) lv_obj_clear_flag(preparo_cont, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(preparo_cont, LV_OBJ_FLAG_HIDDEN);
+    if (estado == "printing" || estado == "paused") {
+      mostrar_estado(estado);
+    }
+  }
+  if (!preparando) {
+    return;
+  }
+
+  double bt = num("/printer_state/heater_bed/temperature");
+  double bt_alvo = num("/printer_state/heater_bed/target");
+  double et = num("/printer_state/extruder/temperature");
+  double et_alvo = num("/printer_state/extruder/target");
+  bool mesa_esquentando = bt_alvo > 0 && bt < bt_alvo - 1.5;
+  bool bico_esquentando = et_alvo >= 170 && et < et_alvo - 2;
+
+  int etapa;
+  std::string nome, detalhe;
+  if (fase_atual == "assentar") {
+    etapa = 3; nome = "Mesa assentando";
+    detalhe = "Uns 2 minutos, para a medição sair certa";
+  } else if (fase_atual == "mede") {
+    etapa = 4; nome = "Medindo a mesa";
+    detalhe = "Cada ponto é medido duas vezes";
+  } else if (fase_atual == "confere") {
+    etapa = 5; nome = "Conferindo a medição";
+    detalhe = "Medindo o centro da mesa de novo";
+  } else if (fase_atual == "ok" || fase_atual == "corrigiu") {
+    etapa = 6;
+    if (bico_esquentando) {
+      nome = "Aquecendo o bico";
+      detalhe = fmt::format("{} / {} °C · medição conferida", (int)et, (int)et_alvo);
+    } else {
+      nome = "Começando a imprimir";
+      detalhe = fase_atual == "corrigiu" ? "Medição conferida, altura do bico corrigida"
+                                         : "Medição conferida";
+    }
+  } else if (mesa_esquentando) {
+    etapa = 1; nome = "Aquecendo a mesa";
+    detalhe = fmt::format("{} / {} °C", (int)bt, (int)bt_alvo);
+  } else if (bico_esquentando) {
+    etapa = 6; nome = "Aquecendo o bico";
+    detalhe = fmt::format("{} / {} °C", (int)et, (int)et_alvo);
+  } else {
+    etapa = 2; nome = "Zerando os eixos";
+    detalhe = "Preparando para medir a mesa";
+  }
+
+  Marca::texto(preparo_titulo, fmt::format("Preparando a impressão · etapa {} de {}", etapa, ETAPAS).c_str());
+  Marca::texto(preparo_etapa, nome.c_str());
+  Marca::texto(preparo_detalhe, detalhe.c_str());
+  for (int i = 0; i < ETAPAS; i++) {
+    lv_obj_set_style_bg_color(preparo_pontos[i],
+                              lv_color_hex(i < etapa ? Marca::LIMAO : Marca::PRETO_3), 0);
+  }
 }
 
 void PrintStatusPanel::ler_cartoes_do_estado() {
@@ -368,7 +485,7 @@ void PrintStatusPanel::mostrar_estado(const std::string &st) {
     lv_obj_add_flag(pause_btn, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(resume_btn, LV_OBJ_FLAG_HIDDEN);
   } else {
-    Marca::chip_estado(chip, Marca::Estado::IMPRIMINDO, "Imprimindo");
+    Marca::chip_estado(chip, Marca::Estado::IMPRIMINDO, preparo_visivel ? "Preparando" : "Imprimindo");
     lv_obj_set_width(chip, 112);
     lv_obj_add_flag(resume_btn, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(pause_btn, LV_OBJ_FLAG_HIDDEN);
@@ -588,6 +705,13 @@ void PrintStatusPanel::consume(json &j) {
   // camadas
   v = j["/params/0/print_stats/info"_json_pointer];
   update_layers(v);
+
+  // etapa do preparo (M117 FASE:xxx da trava da mesa)
+  v = j["/params/0/display_status/message"_json_pointer];
+  if (v.is_string() && v.template get<std::string>().rfind("FASE:", 0) == 0) {
+    fase_atual = v.template get<std::string>().substr(5);
+  }
+  atualizar_preparo();
 }
 
 void PrintStatusPanel::handle_callback(lv_event_t *event) {
@@ -853,10 +977,26 @@ void PrintStatusPanel::sim_setup_mock_data() {
       {"current_object", "benchy_1"}
     }}
   }}}};
+  // GS_PREPARO=mede|confere|assentar|ok|mesa|bico|zerando: impressão ainda
+  // no preparo (antes do primeiro filamento), para ver a faixa de etapas
+  const char *preparo = std::getenv("GS_PREPARO");
+  if (preparo != nullptr) {
+    std::string f = preparo;
+    mock["params"][0]["print_stats"]["filament_used"] = 0.0;
+    mock["params"][0]["print_stats"]["print_duration"] = 0.0;
+    mock["params"][0]["virtual_sdcard"]["progress"] = 0.0;
+    mock["params"][0]["heater_bed"] = {{"temperature", f == "mesa" ? 48 : 70}, {"target", 70}};
+    mock["params"][0]["extruder"] = {{"temperature", f == "bico" ? 186 : 150}, {"target", f == "bico" ? 240 : 150}};
+    std::string msg = (f == "mesa" || f == "zerando" || f == "bico") ? "" : "FASE:" + f;
+    mock["params"][0]["display_status"] = {{"message", msg}};
+  }
   State::get_instance()->consume(mock);
   // consume() faz reset() + populate() (nome novo) e abre o acompanhamento
   // (passagem para "printing").
   consume(mock);
+  if (preparo != nullptr) {
+    return;
+  }
 
   // reset() (inside consume) cleared the slicer estimate and metadata, so only
   // the file method had data above. Inject a slicer estimate + filament total

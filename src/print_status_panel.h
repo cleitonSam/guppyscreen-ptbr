@@ -69,6 +69,10 @@ class PrintStatusPanel : public NotifyConsumer {
   void atualizar_resumo();                      // texto do cabeçalho do Ajuste fino
   void atualizar_ventoinha();
   void ler_cartoes_do_estado();                 // valores iniciais dos 4 cartões
+  // Preparo (antes da primeira camada): no lugar do progresso, mostra a etapa
+  // (aquecendo a mesa, zerando, esperando assentar, medindo, conferindo,
+  // aquecendo o bico). Some quando sai o primeiro filamento.
+  void atualizar_preparo();
   void confirmar_cancelar();
 
   KWebSocketClient &ws;
@@ -92,6 +96,16 @@ class PrintStatusPanel : public NotifyConsumer {
   lv_obj_t *progress_bar;
   lv_obj_t *decorrido_label;
   lv_obj_t *total_label;
+
+  // preparo: cartão no lugar do progresso
+  lv_obj_t *preparo_cont;
+  lv_obj_t *preparo_titulo;
+  lv_obj_t *preparo_etapa;
+  lv_obj_t *preparo_detalhe;
+  static constexpr int ETAPAS = 6;
+  lv_obj_t *preparo_pontos[ETAPAS];
+  bool preparo_visivel = false;
+  std::string fase_atual;   // "FASE:xxx" do M117 da trava (sem o prefixo)
 
   // cartões
   Cartao bico;
