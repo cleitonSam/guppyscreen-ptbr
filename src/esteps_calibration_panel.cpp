@@ -1,6 +1,8 @@
 #include "esteps_calibration_panel.h"
 #include "state.h"
 #include "utils.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "spdlog/spdlog.h"
 
 #include <cstdlib>
@@ -10,6 +12,74 @@
 // esteps_calibration.cfg header), so nothing else stops a forgotten heater -
 // same 2-minute backstop the underlying macro already enforces on its own via
 // _CALIBRATE_ESTEPS_TIMEOUT; this is just the UI side of that same guarantee.
+
+// ---- Peças visuais das etapas (só aparência, nenhum comando) ---------------
+// Cada etapa ocupa a área abaixo do cabeçalho: 424 x 228 em (0,44), em
+// coluna, com 8 px de margem. Texto à esquerda, botões de 44 px embaixo.
+static void montar_etapa(lv_obj_t *c) {
+  lv_obj_set_pos(c, 0, 44);
+  lv_obj_set_size(c, Marca::CONT_L, Marca::TELA_A - 44);
+  lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_border_width(c, 0, 0);
+  lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_hor(c, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_top(c, 4, 0);
+  lv_obj_set_style_pad_bottom(c, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(c, 8, 0);
+  lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+}
+
+// Contêiner sem desenho (transparente), largura toda, em linha.
+static lv_obj_t *linha(lv_obj_t *pai, lv_coord_t altura) {
+  lv_obj_t *r = lv_obj_create(pai);
+  lv_obj_set_size(r, LV_PCT(100), altura);
+  lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(r, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_border_width(r, 0, 0);
+  lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_all(r, 0, 0);
+  lv_obj_set_style_pad_column(r, 8, 0);
+  lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  return r;
+}
+
+// Título da etapa (f16 PAPEL). Com selo_txt, vem antes um selo de 24 px
+// (fundo OK ou ALERTA, símbolo PAPEL): a palavra do estado fica ao lado.
+static lv_obj_t *titulo_etapa(lv_obj_t *pai, const char *txt,
+                              uint32_t selo_fundo = Marca::PRETO_3, const char *selo_txt = nullptr) {
+  lv_obj_t *r = linha(pai, LV_SIZE_CONTENT);
+  if (selo_txt != nullptr) {
+    Marca::criar_selo(r, 24, selo_fundo, Marca::PAPEL, selo_txt);
+  }
+  return Marca::criar_rotulo(r, txt, Marca::f16(), Marca::PAPEL);
+}
+
+// Texto da etapa (quebra linha). cresce = ocupa o espaço que sobra e empurra
+// os botões para baixo.
+static lv_obj_t *texto_etapa(lv_obj_t *pai, const char *txt, const lv_font_t *f, bool cresce) {
+  lv_obj_t *l = Marca::criar_rotulo(pai, txt, f, Marca::PAPEL);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(l, LV_PCT(100));
+  if (cresce) lv_obj_set_flex_grow(l, 1);
+  return l;
+}
+
+// Botão de 44 px. largura 0 = divide a linha com os outros botões.
+static lv_obj_t *botao(lv_obj_t *pai, const char *txt, Marca::Tipo t,
+                       lv_event_cb_t cb, void *ud, lv_coord_t largura = 0,
+                       const lv_font_t *f = nullptr) {
+  lv_obj_t *b = Marca::criar_botao(pai, txt, t, f);
+  if (largura != 0) {
+    lv_obj_set_size(b, largura, 44);
+  } else {
+    lv_obj_set_height(b, 44);
+    lv_obj_set_flex_grow(b, 1);
+  }
+  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, ud);
+  return b;
+}
 
 EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_client, std::mutex &l)
   : NotifyConsumer(l)
@@ -37,255 +107,105 @@ EstepsCalibrationPanel::EstepsCalibrationPanel(KWebSocketClient &websocket_clien
   , have_original_rd(false)
   , original_rotation_distance(0.0)
 {
-  lv_obj_move_background(panel_cont);
-  lv_obj_set_size(panel_cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(panel_cont, 0, 0);
+  // Subtela (56,0 424x272) com cabeçalho. O voltar do cabeçalho é o antigo
+  // "Voltar" da introdução e só aparece nela (show_stage).
+  Navegacao::subtela(panel_cont);
+  Marca::Cabecalho cab = Marca::criar_cabecalho(panel_cont, "Calibração da extrusora (E-steps)",
+                                                &EstepsCalibrationPanel::_handle_callback, this);
+  lv_obj_set_width(cab.titulo, 366);   // nada à direita: o título usa a largura toda
+  intro_back_btn = cab.voltar;
 
-  auto fill = [](lv_obj_t *c) {
-    lv_obj_set_size(c, LV_PCT(100), LV_PCT(100));
-    lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_border_width(c, 0, 0);
-    lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(c, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  };
+  lv_event_cb_t cb = &EstepsCalibrationPanel::_handle_callback;
 
   // ---------- INTRO ----------
-  fill(intro_cont);
-  lv_obj_set_style_pad_all(intro_cont, 10, 0);
-  lv_obj_set_style_pad_row(intro_cont, 10, 0);
-
-  lv_obj_t *title = lv_label_create(intro_cont);
-  lv_label_set_text(title, "Calibração da extrusora (E-steps)");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-
-  lv_obj_t *intro_body = lv_label_create(intro_cont);
-  lv_label_set_long_mode(intro_body, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(intro_body, LV_PCT(94));
-  lv_label_set_text(intro_body,
+  montar_etapa(intro_cont);
+  texto_etapa(intro_cont,
     "Confere se a extrusora empurra a quantidade certa de filamento. Corrige "
     "impressões com excesso ou falta de filamento em toda a peça.\n\n"
     "Separe uma régua e um pedacinho de fita crepe. Primeiro o bico aquece: "
-    "a extrusora fica junto do bico, então não dá para testar a frio.");
-  lv_obj_set_style_text_font(intro_body, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(intro_body, LV_TEXT_ALIGN_CENTER, 0);
-
-  start_btn = lv_btn_create(intro_cont);
-  lv_obj_set_size(start_btn, 220, 46);
-  lv_obj_t *sb_lbl = lv_label_create(start_btn);
-  lv_label_set_text(sb_lbl, LV_SYMBOL_OK "  Iniciar");
-  lv_obj_set_style_text_font(sb_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_center(sb_lbl);
-  lv_obj_add_event_cb(start_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  intro_back_btn = lv_btn_create(intro_cont);
-  lv_obj_set_size(intro_back_btn, 140, 36);
-  lv_obj_set_style_bg_color(intro_back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *ib_lbl = lv_label_create(intro_back_btn);
-  lv_label_set_text(ib_lbl, LV_SYMBOL_LEFT "  Voltar");
-  lv_obj_center(ib_lbl);
-  lv_obj_add_event_cb(intro_back_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
+    "a extrusora fica junto do bico, então não dá para testar a frio.",
+    Marca::f14(), true);
+  start_btn = botao(intro_cont, LV_SYMBOL_OK "  Iniciar", Marca::Tipo::DESTAQUE, cb, this,
+                    LV_PCT(100), Marca::f16());
 
   // ---------- HEATING ----------
-  fill(heating_cont);
-  lv_obj_set_style_pad_row(heating_cont, 12, 0);
-
-  lv_obj_t *heating_title = lv_label_create(heating_cont);
-  lv_label_set_text(heating_title, "Aquecimento");
-  lv_obj_set_style_text_font(heating_title, &lv_font_montserrat_16, 0);
-
-  heating_status_label = lv_label_create(heating_cont);
-  lv_label_set_long_mode(heating_status_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(heating_status_label, LV_PCT(90));
-  lv_label_set_text(heating_status_label, "Aquecendo...");
-  lv_obj_set_style_text_font(heating_status_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(heating_status_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  lv_obj_t *heating_spinner = lv_spinner_create(heating_cont, 1000, 60);
-  lv_obj_set_size(heating_spinner, 50, 50);
-
-  heating_cancel_btn = lv_btn_create(heating_cont);
-  lv_obj_set_size(heating_cancel_btn, 160, 40);
-  lv_obj_set_style_bg_color(heating_cancel_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *hc_lbl = lv_label_create(heating_cancel_btn);
-  lv_label_set_text(hc_lbl, LV_SYMBOL_CLOSE "  Cancelar");
-  lv_obj_center(hc_lbl);
-  lv_obj_add_event_cb(heating_cancel_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  // Sem girador: a linha de estado mostra a temperatura (mais leve).
+  montar_etapa(heating_cont);
+  titulo_etapa(heating_cont, "Aquecimento");
+  heating_status_label = texto_etapa(heating_cont, "Aquecendo...", Marca::f14(), true);
+  heating_cancel_btn = botao(heating_cont, LV_SYMBOL_CLOSE "  Cancelar", Marca::Tipo::NORMAL, cb, this,
+                             LV_PCT(100));
 
   // ---------- MARK ----------
-  fill(mark_cont);
-  lv_obj_set_style_pad_all(mark_cont, 10, 0);
-  lv_obj_set_style_pad_row(mark_cont, 10, 0);
+  montar_etapa(mark_cont);
+  titulo_etapa(mark_cont, "Marque o filamento");
+  mark_instr_label = texto_etapa(mark_cont, "", Marca::f14(), true);
 
-  lv_obj_t *mark_title = lv_label_create(mark_cont);
-  lv_label_set_text(mark_title, "Marque o filamento");
-  lv_obj_set_style_text_font(mark_title, &lv_font_montserrat_16, 0);
-
-  mark_instr_label = lv_label_create(mark_cont);
-  lv_label_set_long_mode(mark_instr_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(mark_instr_label, LV_PCT(94));
-  lv_label_set_text(mark_instr_label, "");
-  lv_obj_set_style_text_font(mark_instr_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(mark_instr_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  lv_obj_t *mark_act = lv_obj_create(mark_cont);
-  lv_obj_set_width(mark_act, LV_PCT(94));
-  lv_obj_set_height(mark_act, LV_SIZE_CONTENT);
-  lv_obj_clear_flag(mark_act, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_border_width(mark_act, 0, 0);
-  lv_obj_set_style_pad_all(mark_act, 0, 0);
-  lv_obj_set_style_pad_column(mark_act, 6, 0);
-  lv_obj_set_flex_flow(mark_act, LV_FLEX_FLOW_ROW);
-
-  mark_cancel_btn = lv_btn_create(mark_act);
-  lv_obj_set_flex_grow(mark_cancel_btn, 1);
-  lv_obj_set_height(mark_cancel_btn, 44);
-  lv_obj_set_style_bg_color(mark_cancel_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *mc_lbl = lv_label_create(mark_cancel_btn);
-  lv_label_set_text(mc_lbl, LV_SYMBOL_CLOSE "  Cancelar");
-  lv_obj_center(mc_lbl);
-  lv_obj_add_event_cb(mark_cancel_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  extrude_btn = lv_btn_create(mark_act);
-  lv_obj_set_flex_grow(extrude_btn, 1);
-  lv_obj_set_height(extrude_btn, 44);
-  lv_obj_t *ex_lbl = lv_label_create(extrude_btn);
-  lv_label_set_text(ex_lbl, LV_SYMBOL_OK "  Extrudar");
-  lv_obj_center(ex_lbl);
-  lv_obj_add_event_cb(extrude_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  lv_obj_t *mark_act = linha(mark_cont, 44);
+  mark_cancel_btn = botao(mark_act, LV_SYMBOL_CLOSE "  Cancelar", Marca::Tipo::NORMAL, cb, this, 136);
+  extrude_btn = botao(mark_act, LV_SYMBOL_OK "  Extrudar", Marca::Tipo::DESTAQUE, cb, this);
 
   // ---------- EXTRUDING ----------
-  fill(extruding_cont);
-  lv_obj_set_style_pad_row(extruding_cont, 12, 0);
-
-  lv_obj_t *extruding_title = lv_label_create(extruding_cont);
-  lv_label_set_text(extruding_title, "Extrusão");
-  lv_obj_set_style_text_font(extruding_title, &lv_font_montserrat_16, 0);
-
-  extruding_status_label = lv_label_create(extruding_cont);
-  lv_label_set_long_mode(extruding_status_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(extruding_status_label, LV_PCT(90));
-  lv_label_set_text(extruding_status_label, "Extrudando... Aguarde e não mexa na impressora.");
-  lv_obj_set_style_text_font(extruding_status_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(extruding_status_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  lv_obj_t *extruding_spinner = lv_spinner_create(extruding_cont, 1000, 60);
-  lv_obj_set_size(extruding_spinner, 50, 50);
-
-  extruding_cancel_btn = lv_btn_create(extruding_cont);
-  lv_obj_set_size(extruding_cancel_btn, 160, 40);
-  lv_obj_set_style_bg_color(extruding_cancel_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *ec_lbl = lv_label_create(extruding_cancel_btn);
-  lv_label_set_text(ec_lbl, LV_SYMBOL_CLOSE "  Cancelar");
-  lv_obj_center(ec_lbl);
-  lv_obj_add_event_cb(extruding_cancel_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  // Sem girador: a linha de estado mostra quantos mm já saíram.
+  montar_etapa(extruding_cont);
+  titulo_etapa(extruding_cont, "Extrusão");
+  extruding_status_label = texto_etapa(extruding_cont,
+    "Extrudando... Aguarde e não mexa na impressora.", Marca::f14(), true);
+  extruding_cancel_btn = botao(extruding_cont, LV_SYMBOL_CLOSE "  Cancelar", Marca::Tipo::NORMAL, cb, this,
+                               LV_PCT(100));
 
   // ---------- MEASURE ----------
-  fill(measure_cont);
-  lv_obj_set_style_pad_all(measure_cont, 10, 0);
-  lv_obj_set_style_pad_row(measure_cont, 10, 0);
+  // O campo fica na primeira linha (y 48..92): o teclado próprio abre embaixo
+  // (y 92..272) e não cobre o que está sendo digitado.
+  montar_etapa(measure_cont);
+  lv_obj_t *measure_top = linha(measure_cont, Marca::TOQUE);
+  lv_obj_set_flex_align(measure_top, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  Marca::criar_rotulo(measure_top, "Digite a medida", Marca::f16(), Marca::PAPEL);
 
-  lv_obj_t *measure_title = lv_label_create(measure_cont);
-  lv_label_set_text(measure_title, "Digite a medida");
-  lv_obj_set_style_text_font(measure_title, &lv_font_montserrat_16, 0);
-
-  measure_instr_label = lv_label_create(measure_cont);
-  lv_label_set_long_mode(measure_instr_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(measure_instr_label, LV_PCT(94));
-  lv_label_set_text(measure_instr_label, "");
-  lv_obj_set_style_text_font(measure_instr_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(measure_instr_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  measure_ta = lv_textarea_create(measure_cont);
+  measure_ta = lv_textarea_create(measure_top);
   lv_textarea_set_one_line(measure_ta, true);
   lv_textarea_set_placeholder_text(measure_ta, "distância em mm");
-  lv_obj_set_width(measure_ta, LV_PCT(60));
+  lv_obj_set_style_text_font(measure_ta, Marca::f16(), 0);
+  lv_obj_set_style_pad_hor(measure_ta, 10, 0);
+  lv_obj_set_style_pad_ver(measure_ta, 12, 0);
+  lv_obj_set_size(measure_ta, 200, Marca::TOQUE);
   lv_obj_add_event_cb(measure_ta, &EstepsCalibrationPanel::_handle_ta, LV_EVENT_ALL, this);
 
-  lv_obj_t *measure_act = lv_obj_create(measure_cont);
-  lv_obj_set_width(measure_act, LV_PCT(94));
-  lv_obj_set_height(measure_act, LV_SIZE_CONTENT);
-  lv_obj_clear_flag(measure_act, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_border_width(measure_act, 0, 0);
-  lv_obj_set_style_pad_all(measure_act, 0, 0);
-  lv_obj_set_style_pad_column(measure_act, 6, 0);
-  lv_obj_set_flex_flow(measure_act, LV_FLEX_FLOW_ROW);
+  measure_instr_label = texto_etapa(measure_cont, "", Marca::f14(), true);
 
-  measure_cancel_btn = lv_btn_create(measure_act);
-  lv_obj_set_flex_grow(measure_cancel_btn, 1);
-  lv_obj_set_height(measure_cancel_btn, 44);
-  lv_obj_set_style_bg_color(measure_cancel_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *mcx_lbl = lv_label_create(measure_cancel_btn);
-  lv_label_set_text(mcx_lbl, LV_SYMBOL_CLOSE "  Cancelar");
-  lv_obj_center(mcx_lbl);
-  lv_obj_add_event_cb(measure_cancel_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  measure_apply_btn = lv_btn_create(measure_act);
-  lv_obj_set_flex_grow(measure_apply_btn, 1);
-  lv_obj_set_height(measure_apply_btn, 44);
-  lv_obj_t *ap_lbl = lv_label_create(measure_apply_btn);
-  lv_label_set_text(ap_lbl, LV_SYMBOL_OK "  Aplicar");
-  lv_obj_center(ap_lbl);
-  lv_obj_add_event_cb(measure_apply_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  lv_obj_t *measure_act = linha(measure_cont, 44);
+  measure_cancel_btn = botao(measure_act, LV_SYMBOL_CLOSE "  Cancelar", Marca::Tipo::NORMAL, cb, this, 136);
+  measure_apply_btn = botao(measure_act, LV_SYMBOL_OK "  Aplicar", Marca::Tipo::DESTAQUE, cb, this);
 
   // Own decimal numeric keyboard (the shared Numpad is integer-only), same
-  // construction as skew_correction_panel.cpp's.
+  // construction as skew_correction_panel.cpp's. Fica dentro da subtela,
+  // embaixo do campo (424 x 180 em y = 92); o OK em limão.
   kb = lv_keyboard_create(panel_cont);
   static const char *kb_map[] = {"1", "2", "3", "\n",
                                  "4", "5", "6", "\n",
                                  "7", "8", "9", "\n",
                                  LV_SYMBOL_BACKSPACE, "0", ".", LV_SYMBOL_OK, NULL};
-  static const lv_btnmatrix_ctrl_t kb_ctrl[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+  static const lv_btnmatrix_ctrl_t kb_ctrl[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                                                (lv_btnmatrix_ctrl_t)(LV_BTNMATRIX_CTRL_CHECKED | 1)};
   lv_keyboard_set_map(kb, LV_KEYBOARD_MODE_USER_1, kb_map, kb_ctrl);
   lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_USER_1);
   lv_obj_add_flag(kb, LV_OBJ_FLAG_IGNORE_LAYOUT);
-  lv_obj_set_size(kb, LV_PCT(100), LV_PCT(52));
+  lv_obj_set_size(kb, Marca::CONT_L, 180);
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_text_font(kb, Marca::f20(), LV_PART_ITEMS);
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_event_cb(kb, &EstepsCalibrationPanel::_handle_kb, LV_EVENT_ALL, this);
 
   // ---------- RESULT ----------
-  fill(result_cont);
-  lv_obj_set_style_pad_all(result_cont, 8, 0);
-  lv_obj_set_style_pad_row(result_cont, 6, 0);
+  montar_etapa(result_cont);
+  titulo_etapa(result_cont, "Resultado", Marca::OK, LV_SYMBOL_OK);
+  result_label = texto_etapa(result_cont, "", Marca::f14(), true);
 
-  lv_obj_t *result_title = lv_label_create(result_cont);
-  lv_label_set_text(result_title, LV_SYMBOL_OK "  Resultado");
-  lv_obj_set_style_text_font(result_title, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(result_title, lv_palette_main(LV_PALETTE_GREEN), 0);
-
-  result_label = lv_label_create(result_cont);
-  lv_label_set_long_mode(result_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(result_label, LV_PCT(94));
-  lv_label_set_text(result_label, "");
-  lv_obj_set_style_text_font(result_label, &lv_font_montserrat_12, 0);
-  lv_obj_set_style_text_align(result_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  verify_again_btn = lv_btn_create(result_cont);
-  lv_obj_set_size(verify_again_btn, 240, 40);
-  lv_obj_t *va_lbl = lv_label_create(verify_again_btn);
-  lv_label_set_text(va_lbl, LV_SYMBOL_REFRESH "  Conferir de novo");
-  lv_obj_set_style_text_font(va_lbl, &lv_font_montserrat_14, 0);
-  lv_obj_center(va_lbl);
-  lv_obj_add_event_cb(verify_again_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  done_btn = lv_btn_create(result_cont);
-  lv_obj_set_size(done_btn, 240, 36);
-  lv_obj_set_style_bg_color(done_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *dn_lbl = lv_label_create(done_btn);
-  lv_label_set_text(dn_lbl, LV_SYMBOL_OK "  Concluir");
-  lv_obj_set_style_text_font(dn_lbl, &lv_font_montserrat_12, 0);
-  lv_obj_center(dn_lbl);
-  lv_obj_add_event_cb(done_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  discard_btn = lv_btn_create(result_cont);
-  lv_obj_set_size(discard_btn, 240, 32);
-  lv_obj_set_style_bg_color(discard_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *ds_lbl = lv_label_create(discard_btn);
-  lv_label_set_text(ds_lbl, LV_SYMBOL_LEFT "  Descartar e manter o anterior");
-  lv_obj_set_style_text_font(ds_lbl, &lv_font_montserrat_12, 0);
-  lv_obj_center(ds_lbl);
-  lv_obj_add_event_cb(discard_btn, &EstepsCalibrationPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  lv_obj_t *result_act = linha(result_cont, 44);
+  done_btn = botao(result_act, LV_SYMBOL_OK "  Concluir", Marca::Tipo::NORMAL, cb, this);
+  verify_again_btn = botao(result_act, LV_SYMBOL_REFRESH "  Conferir de novo", Marca::Tipo::DESTAQUE, cb, this);
+  discard_btn = botao(result_cont, LV_SYMBOL_LEFT "  Descartar e manter o anterior", Marca::Tipo::NORMAL,
+                      cb, this, LV_PCT(100));
 
   show_stage(INTRO);
 
@@ -314,9 +234,27 @@ void EstepsCalibrationPanel::show_stage(Stage s) {
     case MEASURE:   lv_obj_clear_flag(measure_cont, LV_OBJ_FLAG_HIDDEN); break;
     case RESULT:    lv_obj_clear_flag(result_cont, LV_OBJ_FLAG_HIDDEN); break;
   }
+  // O voltar do cabeçalho substitui o antigo "Voltar" da introdução: só
+  // aparece nela. Nas outras etapas saem pelos botões delas (Cancelar,
+  // Concluir, Descartar), como antes.
+  if (s == INTRO) lv_obj_clear_flag(intro_back_btn, LV_OBJ_FLAG_HIDDEN);
+  else            lv_obj_add_flag(intro_back_btn, LV_OBJ_FLAG_HIDDEN);
+}
+
+void EstepsCalibrationPanel::encerrar() {
+  lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+  show_stage(INTRO);
+  Navegacao::fechar(panel_cont);
 }
 
 void EstepsCalibrationPanel::foreground() {
+  // Agora a coluna da esquerda deixa sair da tela no meio da calibração.
+  // Com o bico quente ou uma medida pendente, voltar para a mesma etapa
+  // (com o Cancelar / Concluir / Descartar à mão) em vez de recomeçar.
+  if (stage != INTRO) {
+    Navegacao::abrir(panel_cont);
+    return;
+  }
   active = false;
   have_extruder_temp = false;
   have_target_temp = false;
@@ -324,7 +262,7 @@ void EstepsCalibrationPanel::foreground() {
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
   lv_textarea_set_text(measure_ta, "");
   show_stage(INTRO);
-  lv_obj_move_foreground(panel_cont);
+  Navegacao::abrir(panel_cont);
 }
 
 void EstepsCalibrationPanel::start_calibration() {
@@ -536,7 +474,7 @@ void EstepsCalibrationPanel::handle_callback(lv_event_t *e) {
   lv_obj_t *btn = lv_event_get_current_target(e);
 
   if (btn == intro_back_btn) {
-    lv_obj_move_background(panel_cont);
+    Navegacao::fechar(panel_cont);
     return;
   }
 
@@ -574,7 +512,7 @@ void EstepsCalibrationPanel::handle_callback(lv_event_t *e) {
   if (btn == done_btn) {
     ws.gcode_script("M104 S0");
     KUtils::notify_toast("Calibração da extrusora salva.", 3000);
-    lv_obj_move_background(panel_cont);
+    encerrar();
     return;
   }
 
@@ -584,7 +522,7 @@ void EstepsCalibrationPanel::handle_callback(lv_event_t *e) {
     }
     ws.gcode_script("M104 S0");
     KUtils::notify_toast("Descartado. O rotation_distance anterior foi restaurado.", 4000);
-    lv_obj_move_background(panel_cont);
+    encerrar();
     return;
   }
 }

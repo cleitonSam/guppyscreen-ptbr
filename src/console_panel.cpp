@@ -1,4 +1,6 @@
 #include "console_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "state.h"
 #include "utils.h"
 #include "spdlog/spdlog.h"
@@ -8,8 +10,6 @@
 #include <cstring>
 
 LV_FONT_DECLARE(dejavusans_mono_14);
-LV_IMG_DECLARE(arrow_up);
-LV_IMG_DECLARE(arrow_down);
 
 static const int POOL_SIZE = 60;
 static const int MAX_CONSOLE_LINES = 100;
@@ -68,18 +68,27 @@ static bool matches_keys(const std::string &cmd, const char *keys) {
   return false;
 }
 
+// Botão NORMAL da marca com um símbolo de fonte no meio.
+static void botao_simbolo(lv_obj_t *btn, const char *simbolo, Marca::Tipo t) {
+  lv_obj_set_style_pad_all(btn, 0, 0);
+  lv_obj_t *lbl = lv_label_create(btn);
+  lv_label_set_text(lbl, simbolo);
+  lv_obj_set_style_text_font(lbl, Marca::f20(), 0);
+  lv_obj_center(lbl);
+  Marca::estilo_botao(btn, t);
+}
+
 ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock, lv_obj_t *parent)
   : ws(websocket_client)
   , lv_lock(lock)
+  , subtela(parent)
   , console_cont(lv_obj_create(parent))
+  , titulo(NULL)
   , term_view(lv_obj_create(console_cont))
   , output(lv_textarea_create(term_view))
   , input_bar(lv_obj_create(term_view))
   , input(lv_textarea_create(input_bar))
   , cmd_view(lv_obj_create(console_cont))
-  , subhdr(lv_obj_create(cmd_view))
-  , back_btn(lv_btn_create(subhdr))
-  , title_label(lv_label_create(subhdr))
   , cmd_body(lv_obj_create(cmd_view))
   , cat_cont(lv_obj_create(cmd_body))
   , list_cont(lv_obj_create(cmd_body))
@@ -96,114 +105,97 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   , highlight_index(-1)
   , active_cat(-1)
 {
-  lv_obj_set_size(console_cont, LV_PCT(100), LV_PCT(100));
+  // cabeçalho da marca (y 0..44); o voltar sobe um nível (handle_back)
+  Marca::Cabecalho cab = Marca::criar_cabecalho(subtela, "Console",
+                                                &ConsolePanel::_handle_back, this);
+  titulo = cab.titulo;
+  lv_obj_set_width(titulo, 360);
+
+  // o resto ocupa y 44..272 (424 x 228)
+  lv_obj_set_pos(console_cont, 0, Marca::TOQUE);
+  lv_obj_set_size(console_cont, Marca::CONT_L, Marca::TELA_A - Marca::TOQUE);
   lv_obj_set_style_pad_all(console_cont, 0, 0);
   lv_obj_set_flex_flow(console_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(console_cont, 0, 0);
+  lv_obj_clear_flag(console_cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_text_font(console_cont, &dejavusans_mono_14, LV_STATE_DEFAULT);
 
   // ================= TERMINAL VIEW =================
   lv_obj_set_flex_grow(term_view, 1);
   lv_obj_set_width(term_view, LV_PCT(100));
   lv_obj_set_style_pad_all(term_view, 0, 0);
-  lv_obj_set_style_pad_row(term_view, 0, 0);
+  lv_obj_set_style_pad_hor(term_view, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(term_view, Marca::VAO, 0);
+  lv_obj_set_style_pad_bottom(term_view, Marca::MARGEM, 0);
   lv_obj_set_style_border_width(term_view, 0, 0);
   lv_obj_set_flex_flow(term_view, LV_FLEX_FLOW_COLUMN);
   lv_obj_clear_flag(term_view, LV_OBJ_FLAG_SCROLLABLE);
 
-  // output log (read-only-ish, full width)
+  // saída (cartão PRETO_2, largura toda, rola na vertical sem inércia)
   lv_obj_set_flex_grow(output, 1);
   lv_obj_set_width(output, LV_PCT(100));
+  lv_obj_set_style_bg_color(output, lv_color_hex(Marca::PRETO_2), 0);
   lv_obj_set_style_border_width(output, 0, 0);
+  lv_obj_set_style_radius(output, Marca::RAIO, 0);
+  lv_obj_set_style_text_color(output, lv_color_hex(Marca::PAPEL), 0);
   lv_textarea_set_cursor_click_pos(output, false);
   lv_obj_clear_flag(output, LV_OBJ_FLAG_CLICK_FOCUSABLE);
+  lv_obj_clear_flag(output, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+  lv_obj_clear_flag(output, LV_OBJ_FLAG_SCROLL_ELASTIC);
   lv_obj_set_scrollbar_mode(output, LV_SCROLLBAR_MODE_AUTO);
 
-  // input bar: [ {} ] [ input ........ ] [x] [> Send]
+  // barra de digitar: [ lista ] [ campo ........ ] [x] [enviar]
   lv_obj_set_size(input_bar, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(input_bar, 5, 0);
+  lv_obj_set_style_pad_all(input_bar, 0, 0);
   lv_obj_set_style_pad_column(input_bar, 6, 0);
   lv_obj_set_style_border_width(input_bar, 0, 0);
   lv_obj_set_flex_flow(input_bar, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(input_bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(input_bar, LV_OBJ_FLAG_SCROLLABLE);
 
-  // slightly larger touch targets across the input bar
-  const lv_coord_t BAR_BTN_W = 54;
-  const lv_coord_t BAR_H = 46;
+  // botões 48 x 44
+  const lv_coord_t BAR_BTN_W = 48;
+  const lv_coord_t BAR_H = Marca::TOQUE;
 
-  // open the command browser (left of the input)
+  // abre a lista de comandos (à esquerda do campo)
   lv_obj_t *cmds_btn = lv_btn_create(input_bar);
   lv_obj_set_size(cmds_btn, BAR_BTN_W, BAR_H);
-  lv_obj_set_style_bg_color(cmds_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *cmds_lbl = lv_label_create(cmds_btn);
-  lv_obj_set_style_text_font(cmds_lbl, &lv_font_montserrat_20, 0);
-  lv_label_set_text(cmds_lbl, LV_SYMBOL_LIST);
-  lv_obj_center(cmds_lbl);
+  botao_simbolo(cmds_btn, LV_SYMBOL_LIST, Marca::Tipo::NORMAL);
   lv_obj_add_event_cb(cmds_btn, &ConsolePanel::_handle_open_commands, LV_EVENT_CLICKED, this);
   lv_obj_move_to_index(cmds_btn, 0);  // leftmost
 
-  // input grows to fill; set height AFTER set_one_line (which forces content height)
+  // campo cresce; altura DEPOIS de set_one_line (que força a altura do conteúdo)
   lv_obj_set_flex_grow(input, 1);
   lv_textarea_set_one_line(input, true);
-  lv_obj_set_style_text_font(input, &lv_font_montserrat_16, LV_PART_MAIN);  // scale text to the taller field (20 overflowed with long commands)
+  lv_obj_set_style_text_font(input, Marca::f16(), LV_PART_MAIN);
+  lv_obj_set_style_pad_ver(input, 12, LV_PART_MAIN);   // (44 - 2 de borda - 18 da linha) / 2
   lv_obj_set_height(input, BAR_H);
   lv_textarea_set_placeholder_text(input, "digite o G-code...");
   lv_obj_add_event_cb(input, &ConsolePanel::_handle_input_kb, LV_EVENT_ALL, this);
 
   lv_obj_t *clear_btn = lv_btn_create(input_bar);
   lv_obj_set_size(clear_btn, BAR_BTN_W, BAR_H);
-  lv_obj_set_style_bg_color(clear_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *clear_lbl = lv_label_create(clear_btn);
-  lv_obj_set_style_text_font(clear_lbl, &lv_font_montserrat_20, 0);
-  lv_label_set_text(clear_lbl, LV_SYMBOL_CLOSE);
-  lv_obj_center(clear_lbl);
+  botao_simbolo(clear_btn, LV_SYMBOL_CLOSE, Marca::Tipo::NORMAL);
   lv_obj_add_event_cb(clear_btn, &ConsolePanel::_handle_clear, LV_EVENT_CLICKED, this);
 
+  // enviar: a ação principal da tela (limão com símbolo preto)
   lv_obj_t *send_btn = lv_btn_create(input_bar);
   lv_obj_set_size(send_btn, BAR_BTN_W, BAR_H);
-  lv_obj_t *send_lbl = lv_label_create(send_btn);
-  lv_obj_set_style_text_font(send_lbl, &lv_font_montserrat_20, 0);
-  lv_label_set_text(send_lbl, LV_SYMBOL_NEW_LINE);
-  lv_obj_center(send_lbl);
+  botao_simbolo(send_btn, LV_SYMBOL_NEW_LINE, Marca::Tipo::DESTAQUE);
   lv_obj_add_event_cb(send_btn, &ConsolePanel::_handle_send, LV_EVENT_CLICKED, this);
 
   // ================= COMMANDS VIEW =================
   lv_obj_set_flex_grow(cmd_view, 1);
   lv_obj_set_width(cmd_view, LV_PCT(100));
   lv_obj_set_style_pad_all(cmd_view, 0, 0);
-  lv_obj_set_style_pad_row(cmd_view, 0, 0);
+  lv_obj_set_style_pad_bottom(cmd_view, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(cmd_view, 4, 0);
   lv_obj_set_style_border_width(cmd_view, 0, 0);
   lv_obj_set_flex_flow(cmd_view, LV_FLEX_FLOW_COLUMN);
   lv_obj_clear_flag(cmd_view, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(cmd_view, LV_OBJ_FLAG_HIDDEN);
 
-  // ---- sub-header: [ < Back ]  <title> ---- (always shown in the browser;
-  // the back button is hidden at the category level)
-  lv_obj_set_size(subhdr, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(subhdr, 4, 0);
-  lv_obj_set_style_pad_column(subhdr, 8, 0);
-  lv_obj_set_style_border_width(subhdr, 0, 0);
-  lv_obj_set_flex_flow(subhdr, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(subhdr, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(subhdr, LV_OBJ_FLAG_SCROLLABLE);
-
-  // a clearly-tappable "< Back" pill
-  lv_obj_set_height(back_btn, 34);
-  lv_obj_set_style_bg_color(back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_set_style_pad_hor(back_btn, 14, LV_PART_MAIN);
-  lv_obj_t *back_lbl = lv_label_create(back_btn);
-  lv_label_set_text(back_lbl, LV_SYMBOL_LEFT "  Voltar");
-  lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, 0);
-  lv_obj_center(back_lbl);
-  lv_obj_add_event_cb(back_btn, &ConsolePanel::_handle_back, LV_EVENT_CLICKED, this);
-
-  lv_obj_set_flex_grow(title_label, 1);
-  lv_label_set_long_mode(title_label, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_font(title_label, &lv_font_montserrat_16, 0);
-  lv_label_set_text(title_label, "");
-
-  // ---- body: (category list | command list) + nav column ----
+  // ---- corpo: (categorias | comandos) + coluna de navegação ----
   lv_obj_set_flex_grow(cmd_body, 1);
   lv_obj_set_width(cmd_body, LV_PCT(100));
   lv_obj_set_style_pad_all(cmd_body, 0, 0);
@@ -212,87 +204,89 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   lv_obj_set_flex_flow(cmd_body, LV_FLEX_FLOW_ROW);
   lv_obj_clear_flag(cmd_body, LV_OBJ_FLAG_SCROLLABLE);
 
-  // level-1 category container
+  // categorias (nível 1)
   lv_obj_set_flex_grow(cat_cont, 1);
   lv_obj_set_height(cat_cont, LV_PCT(100));
   lv_obj_set_style_pad_all(cat_cont, 0, 0);
-  lv_obj_set_style_pad_right(cat_cont, 8, 0);
+  lv_obj_set_style_pad_left(cat_cont, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_right(cat_cont, 10, 0);
   lv_obj_set_style_border_width(cat_cont, 0, 0);
   lv_obj_set_flex_flow(cat_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(cat_cont, 0, 0);
+  lv_obj_set_scroll_dir(cat_cont, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(cat_cont, LV_SCROLLBAR_MODE_OFF);
   lv_obj_clear_flag(cat_cont, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_clear_flag(cat_cont, LV_OBJ_FLAG_SCROLL_MOMENTUM);
 
-  // level-2 command list (pooled rows)
+  // comandos da categoria (nível 2, linhas reaproveitadas)
   lv_obj_set_flex_grow(list_cont, 1);
   lv_obj_set_height(list_cont, LV_PCT(100));
   lv_obj_set_style_pad_all(list_cont, 0, 0);
-  lv_obj_set_style_pad_right(list_cont, 8, 0);
+  lv_obj_set_style_pad_left(list_cont, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_right(list_cont, 10, 0);
   lv_obj_set_style_border_width(list_cont, 0, 0);
   lv_obj_set_flex_flow(list_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(list_cont, 0, 0);
+  lv_obj_set_scroll_dir(list_cont, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(list_cont, LV_SCROLLBAR_MODE_OFF);
   lv_obj_clear_flag(list_cont, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_clear_flag(list_cont, LV_OBJ_FLAG_SCROLL_MOMENTUM);
   lv_obj_add_flag(list_cont, LV_OBJ_FLAG_HIDDEN);
 
   lv_label_set_text(empty_label, "");
   lv_obj_add_flag(empty_label, LV_OBJ_FLAG_IGNORE_LAYOUT);
   lv_obj_set_width(empty_label, LV_PCT(90));
   lv_obj_set_style_text_align(empty_label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(empty_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(empty_label, Marca::f14(), 0);
+  lv_obj_set_style_text_color(empty_label, lv_color_hex(Marca::GRAFITE), 0);
   lv_obj_center(empty_label);
   lv_obj_add_flag(empty_label, LV_OBJ_FLAG_HIDDEN);
 
-  // nav column: up / ok / down
-  lv_obj_set_size(nav_cont, 48, LV_PCT(100));
-  lv_obj_set_style_pad_all(nav_cont, 2, 0);
-  lv_obj_set_style_pad_row(nav_cont, 4, 0);
+  // coluna de navegação: subir / OK / descer (48 de largura)
+  lv_obj_set_size(nav_cont, 56, LV_PCT(100));
+  lv_obj_set_style_pad_all(nav_cont, 0, 0);
+  lv_obj_set_style_pad_right(nav_cont, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(nav_cont, Marca::VAO, 0);
   lv_obj_set_style_border_width(nav_cont, 0, 0);
   lv_obj_set_flex_flow(nav_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(nav_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(nav_cont, LV_OBJ_FLAG_SCROLLABLE);
 
-  auto style_nav = [](lv_obj_t *b) {
+  auto style_nav = [](lv_obj_t *b, const char *simbolo) {
     lv_obj_set_width(b, LV_PCT(100));
     lv_obj_set_flex_grow(b, 1);
-    lv_obj_set_style_bg_color(b, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
+    botao_simbolo(b, simbolo, Marca::Tipo::NORMAL);
   };
-  style_nav(up_btn);
-  lv_obj_t *up_img = lv_img_create(up_btn);
-  lv_img_set_src(up_img, &arrow_up);
-  lv_obj_center(up_img);
+  style_nav(up_btn, LV_SYMBOL_UP);
   lv_obj_add_event_cb(up_btn, &ConsolePanel::_handle_nav, LV_EVENT_CLICKED, this);
 
-  style_nav(ok_btn);
-  lv_obj_t *ok_lbl = lv_label_create(ok_btn);
-  lv_label_set_text(ok_lbl, LV_SYMBOL_OK);
-  lv_obj_set_style_text_font(ok_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
-  lv_obj_center(ok_lbl);
+  style_nav(ok_btn, LV_SYMBOL_OK);
   lv_obj_add_event_cb(ok_btn, &ConsolePanel::_handle_nav, LV_EVENT_CLICKED, this);
 
-  style_nav(down_btn);
-  lv_obj_t *down_img = lv_img_create(down_btn);
-  lv_img_set_src(down_img, &arrow_down);
-  lv_obj_center(down_img);
+  style_nav(down_btn, LV_SYMBOL_DOWN);
   lv_obj_add_event_cb(down_btn, &ConsolePanel::_handle_nav, LV_EVENT_CLICKED, this);
 
-  // footer (only shown when the list is truncated)
+  // rodapé (só quando a lista foi cortada)
   lv_obj_set_width(footer_label, LV_PCT(100));
-  lv_obj_set_style_text_font(footer_label, &lv_font_montserrat_10, 0);
+  lv_obj_set_style_text_font(footer_label, Marca::f12(), 0);
   lv_obj_set_style_text_align(footer_label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_color(footer_label, lv_palette_main(LV_PALETTE_GREY), 0);
+  lv_obj_set_style_text_color(footer_label, lv_color_hex(Marca::GRAFITE), 0);
   lv_obj_add_flag(footer_label, LV_OBJ_FLAG_HIDDEN);
 
-  // filter box (level 2 only)
-  lv_obj_set_size(filter, LV_PCT(100), LV_SIZE_CONTENT);
+  // filtro (só no nível 2), 44 de altura, com margem lateral
+  lv_obj_set_size(filter, Marca::CONT_L - 2 * Marca::MARGEM, Marca::TOQUE);
+  lv_obj_set_style_translate_x(filter, Marca::MARGEM, 0);
   lv_textarea_set_one_line(filter, true);
+  lv_obj_set_style_text_font(filter, Marca::f14(), LV_PART_MAIN);
+  lv_obj_set_style_pad_ver(filter, 13, LV_PART_MAIN);   // (44 - 2 de borda - 16 da linha) / 2
+  lv_obj_set_height(filter, Marca::TOQUE);
   lv_textarea_set_placeholder_text(filter, "filtrar...");
   lv_obj_add_flag(filter, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_event_cb(filter, &ConsolePanel::_handle_filter_kb, LV_EVENT_ALL, this);
 
-  // shared keyboard
+  // teclado compartilhado, dentro da subtela (entra embaixo)
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_style_text_font(kb, &lv_font_montserrat_10, LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(kb, Marca::f14(), LV_STATE_DEFAULT);
 
   // pool of reusable command rows
   for (int i = 0; i < POOL_SIZE; i++) {
@@ -474,6 +468,7 @@ void ConsolePanel::show_mode(Mode m) {
   mode = m;
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
   if (m == TERMINAL) {
+    Marca::texto(titulo, "Console");
     lv_obj_clear_flag(term_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cmd_view, LV_OBJ_FLAG_HIDDEN);
   } else {
@@ -529,10 +524,8 @@ void ConsolePanel::build_keyword_cats() {
 void ConsolePanel::show_categories() {
   level = CATEGORY;
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
-  // back at the top level exits to the terminal
-  lv_obj_clear_flag(subhdr, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(back_btn, LV_OBJ_FLAG_HIDDEN);
-  lv_label_set_text(title_label, "Comandos");
+  // voltar aqui leva ao terminal
+  Marca::texto(titulo, "Comandos");
   lv_obj_add_flag(filter, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_flag(footer_label, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_flag(list_cont, LV_OBJ_FLAG_HIDDEN);
@@ -563,15 +556,19 @@ void ConsolePanel::show_categories() {
 void ConsolePanel::rebuild_category_rows() {
   lv_obj_clean(cat_cont);
   for (const auto &c : display_cats) {
+    // linha de 44: nome (quantidade) f14 + seta GRAFITE; separador PRETO_3
     lv_obj_t *row = lv_obj_create(cat_cont);
-    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_size(row, LV_PCT(100), Marca::TOQUE);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(row, 0, 0);
     lv_obj_set_style_pad_hor(row, 8, 0);
-    lv_obj_set_style_pad_ver(row, 9, 0);
     lv_obj_set_style_pad_column(row, 6, 0);
     lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
     lv_obj_set_style_border_width(row, 1, 0);
+    lv_obj_set_style_border_color(row, lv_color_hex(Marca::PRETO_3), 0);
+    lv_obj_set_style_radius(row, Marca::RAIO_MINI, 0);
+    lv_obj_set_style_bg_color(row, lv_color_hex(Marca::PRETO_3), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
@@ -579,12 +576,14 @@ void ConsolePanel::rebuild_category_rows() {
 
     lv_obj_t *name = lv_label_create(row);
     lv_obj_set_flex_grow(name, 1);
+    lv_obj_set_style_text_font(name, Marca::f14(), 0);
     lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
     lv_label_set_text_fmt(name, "%s (%d)", c.label.c_str(), (int)c.cmds.size());
 
     lv_obj_t *chev = lv_label_create(row);
     lv_label_set_text(chev, LV_SYMBOL_RIGHT);
-    lv_obj_set_style_text_color(chev, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_set_style_text_font(chev, Marca::f12(), 0);
+    lv_obj_set_style_text_color(chev, lv_color_hex(Marca::GRAFITE), 0);
   }
 }
 
@@ -605,11 +604,9 @@ void ConsolePanel::enter_category(int idx) {
   active_cat = idx;
   level = COMMAND_LIST;
 
-  lv_label_set_text(title_label, display_cats[idx].label.c_str());
+  Marca::texto(titulo, display_cats[idx].label.c_str());
   lv_textarea_set_text(filter, "");
 
-  lv_obj_clear_flag(subhdr, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(back_btn, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(filter, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(list_cont, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_flag(cat_cont, LV_OBJ_FLAG_HIDDEN);
@@ -622,11 +619,16 @@ void ConsolePanel::handle_back(lv_event_t *e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
     return;
   }
-  // back walks up one level: command list -> categories -> terminal
-  if (level == COMMAND_LIST) {
-    show_categories();
+  // voltar sobe um nível: comandos -> categorias -> terminal -> fecha a subtela
+  if (mode == COMMANDS) {
+    if (level == COMMAND_LIST) {
+      show_categories();
+    } else {
+      show_mode(TERMINAL);
+    }
   } else {
-    show_mode(TERMINAL);
+    lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+    Navegacao::fechar(subtela);
   }
 }
 
@@ -735,12 +737,12 @@ void ConsolePanel::set_highlight(int idx) {
 
   lv_obj_t *obj = nav_obj(idx);
   if (level == CATEGORY) {
-    lv_obj_set_style_bg_color(obj, lv_palette_lighten(LV_PALETTE_GREY, 1), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_30, LV_PART_MAIN);
+    // linha escolhida: fundo PRETO_3 liso
+    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
   } else {
     visible_items[idx]->set_highlight(true);
   }
-  lv_obj_scroll_to_view(obj, LV_ANIM_ON);
+  lv_obj_scroll_to_view(obj, LV_ANIM_OFF);
 }
 
 void ConsolePanel::move_highlight(int delta) {

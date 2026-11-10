@@ -60,6 +60,9 @@ class RecalibrationWizardPanel : public NotifyConsumer {
   struct Jog { const char *label; lv_obj_t *btn; };
 
   void show_stage(Stage s);
+  // Fecha a subtela e deixa o assistente pronto para começar de novo
+  // (só nos caminhos que já fechavam a tela: salvar, descartar, escolher).
+  void encerrar();
   void start_wizard();
   void start_mesh();
   void update_probe_ui();
@@ -89,7 +92,7 @@ class RecalibrationWizardPanel : public NotifyConsumer {
 
   // intro
   lv_obj_t *start_btn;
-  lv_obj_t *intro_back_btn;
+  lv_obj_t *intro_back_btn;   // = voltar do cabeçalho (só aparece na introdução)
   // probe (z-offset)
   lv_obj_t *z_label;
   lv_obj_t *instr_label;

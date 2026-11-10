@@ -11,8 +11,8 @@
 
 // Top-down bed map of the current print's objects (Klipper exclude_object).
 // Tap an object to exclude it; the currently-printing one is highlighted and
-// already-excluded ones are crossed out. Launched from the print status panel
-// only while a print with labelled objects is active.
+// already-excluded ones are crossed out. Subtela "Objetos" (Proposta B), aberta
+// pelo botão "Objetos" do Ajuste fino só quando a impressão tem objetos.
 class ExcludeObjectPanel : public NotifyConsumer {
  public:
   ExcludeObjectPanel(KWebSocketClient &ws, std::mutex &l);
@@ -43,10 +43,10 @@ class ExcludeObjectPanel : public NotifyConsumer {
   lv_obj_t *panel_cont;
   lv_obj_t *canvas;
   lv_color_t *canvas_buf;
-  lv_obj_t *info_cont;       // right-hand column: title, legend, back
-  lv_obj_t *title_label;
-  lv_obj_t *status_label;
-  ButtonContainer back_btn;
+  lv_obj_t *back_btn;         // voltar do cabeçalho
+  lv_obj_t *count_label;      // direita do cabeçalho: "Objetos: 3, excluídos: 1"
+  lv_obj_t *legend_cont;      // legenda (3 linhas: quadradinho + palavra)
+  lv_obj_t *status_label;     // aviso quando não há objetos
 
   bool is_foreground = false;
   bool cancel_on_confirm = false;    // true when tapped object is the last one
@@ -64,6 +64,7 @@ class ExcludeObjectPanel : public NotifyConsumer {
   lv_point_t to_px(double mx, double my);
   void confirm_exclude(const std::string &name);
   void do_exclude();
+  bool visivel();             // subtela na frente de tudo?
 };
 
 #endif // __EXCLUDE_OBJECT_PANEL_H__

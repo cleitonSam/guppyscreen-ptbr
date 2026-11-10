@@ -1,12 +1,18 @@
 #ifndef __TREE_H__
 #define __TREE_H__
 
+#include <cstddef>
+#include <cstdint>
+#include <map>
 #include <sstream>
+#include <string>
 #include <vector>
 #include <iterator>
 
-#include "file_panel.h"
+#include "hv/json.hpp"
 #include "spdlog/spdlog.h"
+
+using json = nlohmann::json;
 
 struct Tree {
 Tree(const std::string &filename, const std::string &path, uint32_t modified)
@@ -29,7 +35,7 @@ Tree(const std::string &filename, const std::string &path, uint32_t modified)
     // folders
     return children.empty();
   }
-  
+
   Tree& find_or_create(const std::string &value, const std::string &path, uint32_t modified) {
     if (modified > date_modified) {
       date_modified = modified;
@@ -47,6 +53,12 @@ Tree(const std::string &filename, const std::string &path, uint32_t modified)
   }
 
   void add_path(const std::vector<std::string>& paths, const std::string &path, uint32_t modified) {
+    add_path(paths, path, modified, 0);
+  }
+
+  // Igual ao de cima, e guarda o tamanho (bytes) no arquivo (a última parte).
+  void add_path(const std::vector<std::string>& paths, const std::string &path, uint32_t modified,
+                size_t file_size) {
     if (paths.empty()) {
       return;
     }
@@ -62,6 +74,7 @@ Tree(const std::string &filename, const std::string &path, uint32_t modified)
 
       cur_node = &(cur_node->find_or_create(p, cur_path, modified));
     }
+    cur_node->size = file_size;
   }
 
   Tree *find_path(const std::vector<std::string>& paths) {
@@ -80,7 +93,32 @@ Tree(const std::string &filename, const std::string &path, uint32_t modified)
     }
     return cur_node->is_leaf() ? this : cur_node;
   }
-  
+
+  // Acha o nó exato (arquivo ou pasta) pelo caminho; nullptr se não existe.
+  Tree *find_node(const std::vector<std::string>& paths) {
+    if (paths.empty()) {
+      return nullptr;
+    }
+
+    Tree *cur_node = this;
+    for (const auto &p : paths) {
+      const auto &entry = cur_node->children.find(p);
+      if (entry == cur_node->children.cend()) {
+        return nullptr;
+      }
+      cur_node = &entry->second;
+    }
+    return cur_node;
+  }
+
+  // Chama f(nó) para todos os nós abaixo deste (não inclui este).
+  template <typename F>
+  void for_each_node(F f) {
+    for (auto &e : children) {
+      f(e.second);
+      e.second.for_each_node(f);
+    }
+  }
 
   Tree *get_child(const std::string child) {
     const auto &e = children.find(child);
@@ -88,7 +126,7 @@ Tree(const std::string &filename, const std::string &path, uint32_t modified)
       // spdlog::debug("get_child {}, result = {}", child, e->second.name);
       return &e->second;
     }
-    
+
     return NULL;
   }
 
@@ -125,7 +163,7 @@ Tree(const std::string &filename, const std::string &path, uint32_t modified)
     }
     return NULL;
   }
-  
+
   std::string name;
   std::string full_path;
   uint32_t date_modified;
@@ -133,6 +171,15 @@ Tree(const std::string &filename, const std::string &path, uint32_t modified)
   bool has_metadata;
   Tree *parent;
   std::map<std::string, Tree> children;
+
+  // Lista de arquivos (Proposta B): só os arquivos que já apareceram na tela
+  // pedem metadados; a miniatura pequena (<= 160 px) fica guardada aqui.
+  size_t size = 0;                 // bytes (do server.files.list)
+  bool metadata_requested = false; // já pediu server.files.metadata (não pede de novo)
+  bool thumb_checked = false;      // já escolheu a miniatura da lista
+  std::string thumb_path;          // vazio = sem miniatura pequena (fica o ícone)
+  size_t thumb_w = 0;
+  size_t thumb_h = 0;
 };
 
 #endif // __TREE_H__

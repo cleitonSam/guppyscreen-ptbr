@@ -2,26 +2,44 @@
 #include "utils.h"
 #include "state.h"
 #include "config.h"
+#include "marca.h"
 #include "spdlog/spdlog.h"
 
 #include <algorithm>
 #include <cstdio>
 
+// Aviso "Aguardando a impressora iniciar..." / "Bem-vindo..." (Proposta B).
+// Mora em lv_layer_top(): nem o acompanhamento automático nem a navegação o
+// escondem. É uma faixa PRETO_2 raio 12 sem borda, encostada embaixo da área
+// de conteúdo (x = 56 + 8, largura 408, 8 px da borda de baixo), com texto
+// f14 PAPEL. Fica embaixo, e não no alto, para não tapar a barra de abas de
+// Configurações (o "Bem-vindo" pede para ir lá adicionar a impressora).
+// A coluna da esquerda fica livre. Mostrar/esconder só com LV_OBJ_FLAG_HIDDEN.
 InitPanel::InitPanel(MainPanel &mp, BedMeshPanel &bmp, FilamentRunoutPanel &frp, std::mutex& l)
-  : cont(lv_obj_create(lv_scr_act()))
+  : cont(lv_obj_create(lv_layer_top()))
   , label(lv_label_create(cont))
   , main_panel(mp)
   , bedmesh_panel(bmp)
   , filament_runout_panel(frp)
   , lv_lock(l)
 {
-  lv_obj_set_size(cont, LV_PCT(55), LV_SIZE_CONTENT);
-  lv_obj_align(cont, LV_ALIGN_TOP_MID, 0, 15);  
-  
+  lv_obj_set_size(cont, Marca::CONT_L - 2 * Marca::MARGEM, LV_SIZE_CONTENT);
+  lv_obj_align(cont, LV_ALIGN_BOTTOM_LEFT, Marca::NAV_L + Marca::MARGEM, -Marca::MARGEM);
+  lv_obj_set_style_min_height(cont, Marca::TOQUE, 0);
+
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_bg_color(cont, lv_palette_darken(LV_PALETTE_GREY, 1), 0);
-  
+  lv_obj_set_style_bg_color(cont, lv_color_hex(Marca::PRETO_2), 0);
+  lv_obj_set_style_bg_opa(cont, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(cont, Marca::RAIO, 0);
+  lv_obj_set_style_border_width(cont, 0, 0);
+  lv_obj_set_style_shadow_width(cont, 0, 0);
+  lv_obj_set_style_pad_hor(cont, 12, 0);
+  lv_obj_set_style_pad_ver(cont, 12, 0);
+
   lv_obj_set_size(label, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_font(label, Marca::f14(), 0);
+  lv_obj_set_style_text_color(label, lv_color_hex(Marca::PAPEL), 0);
 
   Config *conf = Config::get_instance();
   if (!conf->get_json("/default_printer").is_null()) {

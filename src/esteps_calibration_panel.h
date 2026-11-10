@@ -51,6 +51,9 @@ class EstepsCalibrationPanel : public NotifyConsumer {
   enum Stage { INTRO, HEATING, MARK, EXTRUDING, MEASURE, RESULT };
 
   void show_stage(Stage s);
+  // Fecha a subtela e deixa pronta para começar de novo (só nos caminhos que
+  // já fechavam a tela: Concluir e Descartar).
+  void encerrar();
   void start_calibration();
   void update_heating_status();
   void apply_measurement();
@@ -68,7 +71,7 @@ class EstepsCalibrationPanel : public NotifyConsumer {
 
   // intro
   lv_obj_t *start_btn;
-  lv_obj_t *intro_back_btn;
+  lv_obj_t *intro_back_btn;   // = voltar do cabeçalho (só aparece na introdução)
   // heating
   lv_obj_t *heating_status_label;
   lv_obj_t *heating_cancel_btn;

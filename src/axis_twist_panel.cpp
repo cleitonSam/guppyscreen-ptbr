@@ -1,6 +1,8 @@
 #include "axis_twist_panel.h"
 #include "state.h"
 #include "utils.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "spdlog/spdlog.h"
 
 #include <cmath>
@@ -20,6 +22,74 @@ bool AxisTwistPanel::is_enabled() {
   return !cfg.is_null();
 }
 
+// ---- Peças visuais das etapas (só aparência, nenhum comando) ---------------
+// Cada etapa ocupa a área abaixo do cabeçalho: 424 x 228 em (0,44), em
+// coluna, com 8 px de margem. Texto à esquerda, botões de 44 px embaixo.
+static void montar_etapa(lv_obj_t *c) {
+  lv_obj_set_pos(c, 0, 44);
+  lv_obj_set_size(c, Marca::CONT_L, Marca::TELA_A - 44);
+  lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_border_width(c, 0, 0);
+  lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_hor(c, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_top(c, 4, 0);
+  lv_obj_set_style_pad_bottom(c, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(c, 8, 0);
+  lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+}
+
+// Contêiner sem desenho (transparente), largura toda, em linha.
+static lv_obj_t *linha(lv_obj_t *pai, lv_coord_t altura) {
+  lv_obj_t *r = lv_obj_create(pai);
+  lv_obj_set_size(r, LV_PCT(100), altura);
+  lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(r, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_border_width(r, 0, 0);
+  lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_all(r, 0, 0);
+  lv_obj_set_style_pad_column(r, 8, 0);
+  lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  return r;
+}
+
+// Título da etapa (f16 PAPEL). Com selo_txt, vem antes um selo de 24 px
+// (fundo OK ou ALERTA, símbolo PAPEL): a palavra do estado fica ao lado.
+static lv_obj_t *titulo_etapa(lv_obj_t *pai, const char *txt,
+                              uint32_t selo_fundo = Marca::PRETO_3, const char *selo_txt = nullptr) {
+  lv_obj_t *r = linha(pai, LV_SIZE_CONTENT);
+  if (selo_txt != nullptr) {
+    Marca::criar_selo(r, 24, selo_fundo, Marca::PAPEL, selo_txt);
+  }
+  return Marca::criar_rotulo(r, txt, Marca::f16(), Marca::PAPEL);
+}
+
+// Texto da etapa (quebra linha). cresce = ocupa o espaço que sobra e empurra
+// os botões para baixo.
+static lv_obj_t *texto_etapa(lv_obj_t *pai, const char *txt, const lv_font_t *f, bool cresce) {
+  lv_obj_t *l = Marca::criar_rotulo(pai, txt, f, Marca::PAPEL);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(l, LV_PCT(100));
+  if (cresce) lv_obj_set_flex_grow(l, 1);
+  return l;
+}
+
+// Botão de 44 px. largura 0 = divide a linha com os outros botões.
+static lv_obj_t *botao(lv_obj_t *pai, const char *txt, Marca::Tipo t,
+                       lv_event_cb_t cb, void *ud, lv_coord_t largura = 0,
+                       const lv_font_t *f = nullptr) {
+  lv_obj_t *b = Marca::criar_botao(pai, txt, t, f);
+  if (largura != 0) {
+    lv_obj_set_size(b, largura, 44);
+  } else {
+    lv_obj_set_height(b, 44);
+    lv_obj_set_flex_grow(b, 1);
+  }
+  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, ud);
+  return b;
+}
+
 AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l)
   : NotifyConsumer(l)
   , ws(websocket_client)
@@ -36,192 +106,72 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   , accepted(0)
   , total(5)
 {
-  lv_obj_move_background(panel_cont);
-  lv_obj_set_size(panel_cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(panel_cont, 0, 0);
+  // Subtela (56,0 424x272) com cabeçalho. O voltar do cabeçalho faz o papel
+  // dos três "Voltar" antigos (introdução, concluída e "não ativada"); some
+  // só durante a medição, que sai pelo Abortar (show_stage).
+  Navegacao::subtela(panel_cont);
+  Marca::Cabecalho cab = Marca::criar_cabecalho(panel_cont, "Compensação da torção do eixo X",
+                                                &AxisTwistPanel::_handle_callback, this);
+  lv_obj_set_width(cab.titulo, 366);   // nada à direita: o título usa a largura toda
+  intro_back_btn = cab.voltar;
+  done_back_btn = cab.voltar;
+  empty_back_btn = cab.voltar;
 
-  auto fill = [](lv_obj_t *c) {
-    lv_obj_set_size(c, LV_PCT(100), LV_PCT(100));
-    lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_border_width(c, 0, 0);
-    lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
-  };
+  lv_event_cb_t cb = &AxisTwistPanel::_handle_callback;
 
   // ---------- INTRO ----------
-  fill(intro_cont);
-  lv_obj_set_flex_align(intro_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_all(intro_cont, 10, 0);
-  lv_obj_set_style_pad_row(intro_cont, 10, 0);
-
-  lv_obj_t *title = lv_label_create(intro_cont);
-  lv_label_set_text(title, "Compensação da torção do eixo X");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-
-  lv_obj_t *intro_body = lv_label_create(intro_cont);
-  lv_label_set_long_mode(intro_body, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(intro_body, LV_PCT(94));
-  lv_label_set_text(intro_body,
+  montar_etapa(intro_cont);
+  texto_etapa(intro_cont,
     "Corrige a primeira camada esmagada de um lado e alta do outro, que a malha da mesa não resolve.\n\n"
     "São 5 pontos ao longo do eixo X. Em cada um, abaixe o bico até a folha de papel "
     "arrastar de leve e toque em Aceitar. O bico deve estar limpo; não precisa aquecer. "
-    "A impressora vai à origem e limpa a malha sozinha.");
-  lv_obj_set_style_text_font(intro_body, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(intro_body, LV_TEXT_ALIGN_CENTER, 0);
-
-  start_btn = lv_btn_create(intro_cont);
-  lv_obj_set_size(start_btn, 220, 46);
-  lv_obj_t *sb_lbl = lv_label_create(start_btn);
-  lv_label_set_text(sb_lbl, LV_SYMBOL_OK "  Iniciar calibração");
-  lv_obj_set_style_text_font(sb_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_center(sb_lbl);
-  lv_obj_add_event_cb(start_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  intro_back_btn = lv_btn_create(intro_cont);
-  lv_obj_set_size(intro_back_btn, 140, 36);
-  lv_obj_set_style_bg_color(intro_back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *ib_lbl = lv_label_create(intro_back_btn);
-  lv_label_set_text(ib_lbl, LV_SYMBOL_LEFT "  Voltar");
-  lv_obj_center(ib_lbl);
-  lv_obj_add_event_cb(intro_back_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
+    "A impressora vai à origem e limpa a malha sozinha.",
+    Marca::f14(), true);
+  start_btn = botao(intro_cont, LV_SYMBOL_OK "  Iniciar calibração", Marca::Tipo::DESTAQUE, cb, this,
+                    LV_PCT(100), Marca::f16());
 
   // ---------- PROBING ----------
-  fill(probe_cont);
-  lv_obj_set_style_pad_all(probe_cont, 6, 0);
-  lv_obj_set_style_pad_row(probe_cont, 5, 0);
+  montar_etapa(probe_cont);
+  lv_obj_set_style_pad_row(probe_cont, 6, 0);
 
   // header row: point (left) + Z (right)
-  lv_obj_t *hdr = lv_obj_create(probe_cont);
-  lv_obj_set_width(hdr, LV_PCT(100));
-  lv_obj_set_height(hdr, LV_SIZE_CONTENT);
-  lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_border_width(hdr, 0, 0);
-  lv_obj_set_style_pad_all(hdr, 0, 0);
-  lv_obj_set_flex_flow(hdr, LV_FLEX_FLOW_ROW);
+  lv_obj_t *hdr = linha(probe_cont, LV_SIZE_CONTENT);
   lv_obj_set_flex_align(hdr, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  point_label = Marca::criar_rotulo(hdr, "Ponto 1 de 5", Marca::f16(), Marca::PAPEL);
+  z_label = Marca::criar_rotulo(hdr, "Z -", Marca::f20(), Marca::PAPEL);
 
-  point_label = lv_label_create(hdr);
-  lv_label_set_text(point_label, "Ponto 1 de 5");
-  lv_obj_set_style_text_font(point_label, &lv_font_montserrat_16, 0);
-
-  z_label = lv_label_create(hdr);
-  lv_label_set_text(z_label, "Z -");
-  lv_obj_set_style_text_font(z_label, &lv_font_montserrat_20, 0);
-
-  instr_label = lv_label_create(probe_cont);
-  lv_label_set_long_mode(instr_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(instr_label, LV_PCT(100));
-  lv_label_set_text(instr_label, "Abaixe até o papel arrastar de leve e toque em Aceitar.");
-  lv_obj_set_style_text_font(instr_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(instr_label, LV_TEXT_ALIGN_CENTER, 0);
+  instr_label = texto_etapa(probe_cont, "Abaixe até o papel arrastar de leve e toque em Aceitar.",
+                            Marca::f14(), true);
 
   // two jog rows of 4 buttons (down steps, then up steps)
-  auto make_jog_row = [&](int start_idx) {
-    lv_obj_t *r = lv_obj_create(probe_cont);
-    lv_obj_set_width(r, LV_PCT(100));
-    lv_obj_set_height(r, LV_SIZE_CONTENT);
-    lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_border_width(r, 0, 0);
-    lv_obj_set_style_pad_all(r, 0, 0);
-    lv_obj_set_style_pad_column(r, 5, 0);
-    lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+  for (int start_idx = 0; start_idx < 8; start_idx += 4) {
+    lv_obj_t *r = linha(probe_cont, 44);
     for (int i = start_idx; i < start_idx + 4; i++) {
-      lv_obj_t *b = lv_btn_create(r);
-      lv_obj_set_flex_grow(b, 1);
-      lv_obj_set_height(b, 40);
-      lv_obj_set_style_bg_color(b, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-      lv_obj_t *lbl = lv_label_create(b);
-      lv_label_set_text(lbl, JOG_LABELS[i]);
-      lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
-      lv_obj_center(lbl);
-      lv_obj_add_event_cb(b, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
+      lv_obj_t *b = botao(r, JOG_LABELS[i], Marca::Tipo::NORMAL, cb, this, 0, Marca::f16());
       jogs[i] = { JOG_LABELS[i], b };
     }
-  };
-  make_jog_row(0);  // -1 .. -0.01
-  make_jog_row(4);  // +0.01 .. +1
+  }
 
   // action row: Abort | Accept
-  lv_obj_t *act = lv_obj_create(probe_cont);
-  lv_obj_set_width(act, LV_PCT(100));
-  lv_obj_set_height(act, LV_SIZE_CONTENT);
-  lv_obj_clear_flag(act, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_border_width(act, 0, 0);
-  lv_obj_set_style_pad_all(act, 0, 0);
-  lv_obj_set_style_pad_column(act, 6, 0);
-  lv_obj_set_flex_flow(act, LV_FLEX_FLOW_ROW);
-
-  abort_btn = lv_btn_create(act);
-  lv_obj_set_flex_grow(abort_btn, 1);
-  lv_obj_set_height(abort_btn, 44);
-  lv_obj_set_style_bg_color(abort_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *ab_lbl = lv_label_create(abort_btn);
-  lv_label_set_text(ab_lbl, LV_SYMBOL_CLOSE "  Abortar");
-  lv_obj_set_style_text_font(ab_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_center(ab_lbl);
-  lv_obj_add_event_cb(abort_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  accept_btn = lv_btn_create(act);
-  lv_obj_set_flex_grow(accept_btn, 1);
-  lv_obj_set_height(accept_btn, 44);
-  lv_obj_t *ac_lbl = lv_label_create(accept_btn);
-  lv_label_set_text(ac_lbl, LV_SYMBOL_OK "  Aceitar");
-  lv_obj_set_style_text_font(ac_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_center(ac_lbl);
-  lv_obj_add_event_cb(accept_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  lv_obj_t *act = linha(probe_cont, 44);
+  abort_btn  = botao(act, LV_SYMBOL_CLOSE "  Abortar", Marca::Tipo::NORMAL, cb, this, 0, Marca::f16());
+  accept_btn = botao(act, LV_SYMBOL_OK "  Aceitar", Marca::Tipo::DESTAQUE, cb, this, 0, Marca::f16());
 
   // ---------- DONE ----------
-  fill(done_cont);
-  lv_obj_set_flex_align(done_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_all(done_cont, 10, 0);
-  lv_obj_set_style_pad_row(done_cont, 10, 0);
-
-  lv_obj_t *done_title = lv_label_create(done_cont);
-  lv_label_set_text(done_title, LV_SYMBOL_OK "  Calibração concluída");
-  lv_obj_set_style_text_font(done_title, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(done_title, lv_palette_main(LV_PALETTE_GREEN), 0);
-
-  done_offsets_label = lv_label_create(done_cont);
-  lv_label_set_long_mode(done_offsets_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(done_offsets_label, LV_PCT(94));
-  lv_label_set_text(done_offsets_label,
-    "Confira os valores e toque em Salvar e reiniciar para gravar no printer.cfg.");
-  lv_obj_set_style_text_font(done_offsets_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(done_offsets_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  save_btn = lv_btn_create(done_cont);
-  lv_obj_set_size(save_btn, 240, 46);
-  lv_obj_t *sv_lbl = lv_label_create(save_btn);
-  lv_label_set_text(sv_lbl, LV_SYMBOL_SAVE "  Salvar e reiniciar");
-  lv_obj_set_style_text_font(sv_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_center(sv_lbl);
-  lv_obj_add_event_cb(save_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  done_back_btn = lv_btn_create(done_cont);
-  lv_obj_set_size(done_back_btn, 140, 36);
-  lv_obj_set_style_bg_color(done_back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *db_lbl = lv_label_create(done_back_btn);
-  lv_label_set_text(db_lbl, LV_SYMBOL_LEFT "  Voltar");
-  lv_obj_center(db_lbl);
-  lv_obj_add_event_cb(done_back_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  montar_etapa(done_cont);
+  titulo_etapa(done_cont, "Calibração concluída", Marca::OK, LV_SYMBOL_OK);
+  done_offsets_label = texto_etapa(done_cont,
+    "Confira os valores e toque em Salvar e reiniciar para gravar no printer.cfg.", Marca::f14(), true);
+  save_btn = botao(done_cont, LV_SYMBOL_SAVE "  Salvar e reiniciar", Marca::Tipo::DESTAQUE, cb, this,
+                   LV_PCT(100), Marca::f16());
 
   // ---------- EMPTY (not configured) ----------
-  fill(empty_cont);
-  lv_obj_set_flex_align(empty_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(empty_cont, 16, 0);
-  lv_obj_t *empty_lbl = lv_label_create(empty_cont);
-  lv_label_set_text(empty_lbl,
+  montar_etapa(empty_cont);
+  texto_etapa(empty_cont,
     "A compensação da torção do eixo X não está ativada.\n\n"
     "Adicione a seção [axis_twist_compensation]\n"
-    "ao printer.cfg e reinicie o Klipper.");
-  lv_obj_set_style_text_align(empty_lbl, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(empty_lbl, &lv_font_montserrat_16, 0);
-  empty_back_btn = lv_btn_create(empty_cont);
-  lv_obj_set_size(empty_back_btn, 140, 40);
-  lv_obj_t *eb_lbl = lv_label_create(empty_back_btn);
-  lv_label_set_text(eb_lbl, LV_SYMBOL_LEFT "  Voltar");
-  lv_obj_center(eb_lbl);
-  lv_obj_add_event_cb(empty_back_btn, &AxisTwistPanel::_handle_callback, LV_EVENT_CLICKED, this);
+    "ao printer.cfg e reinicie o Klipper.",
+    Marca::f14(), true);
 
   show_stage(INTRO);
 
@@ -247,6 +197,14 @@ void AxisTwistPanel::show_stage(Stage s) {
     case PROBING: lv_obj_clear_flag(probe_cont, LV_OBJ_FLAG_HIDDEN); break;
     case DONE:    lv_obj_clear_flag(done_cont, LV_OBJ_FLAG_HIDDEN); break;
   }
+  // O voltar do cabeçalho some só durante a medição (sai pelo Abortar).
+  if (s == PROBING) lv_obj_add_flag(intro_back_btn, LV_OBJ_FLAG_HIDDEN);
+  else              lv_obj_clear_flag(intro_back_btn, LV_OBJ_FLAG_HIDDEN);
+}
+
+void AxisTwistPanel::encerrar() {
+  show_stage(INTRO);
+  Navegacao::fechar(panel_cont);
 }
 
 void AxisTwistPanel::foreground() {
@@ -254,7 +212,15 @@ void AxisTwistPanel::foreground() {
     lv_obj_t *all[4] = { intro_cont, probe_cont, done_cont, empty_cont };
     for (auto *c : all) lv_obj_add_flag(c, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(empty_cont, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_move_foreground(panel_cont);
+    lv_obj_clear_flag(intro_back_btn, LV_OBJ_FLAG_HIDDEN);
+    Navegacao::abrir(panel_cont);
+    return;
+  }
+  // Agora a coluna da esquerda deixa sair da tela no meio da medição.
+  // Medindo (Aceitar/Abortar pendentes) ou com o resultado ainda não salvo:
+  // volta para a mesma etapa em vez de recomeçar.
+  if (stage == PROBING || stage == DONE) {
+    Navegacao::abrir(panel_cont);
     return;
   }
   // fresh entry -> intro
@@ -262,7 +228,7 @@ void AxisTwistPanel::foreground() {
   accepted = 0;
   have_z = false;
   show_stage(INTRO);
-  lv_obj_move_foreground(panel_cont);
+  Navegacao::abrir(panel_cont);
 }
 
 void AxisTwistPanel::start_calibration() {
@@ -362,7 +328,9 @@ void AxisTwistPanel::handle_callback(lv_event_t *e) {
   lv_obj_t *btn = lv_event_get_current_target(e);
 
   if (btn == intro_back_btn || btn == empty_back_btn || btn == done_back_btn) {
-    lv_obj_move_background(panel_cont);
+    // Mesmo efeito dos "Voltar" antigos (sai sem salvar); a próxima entrada
+    // começa na introdução, como antes.
+    encerrar();
     return;
   }
 
@@ -388,7 +356,7 @@ void AxisTwistPanel::handle_callback(lv_event_t *e) {
   if (btn == save_btn) {
     ws.gcode_script("SAVE_CONFIG");
     KUtils::notify_toast("Salvando... O Klipper vai reiniciar.", 3000);
-    lv_obj_move_background(panel_cont);
+    encerrar();
     return;
   }
 

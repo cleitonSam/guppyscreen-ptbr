@@ -1,10 +1,11 @@
 #include "tmc_tune_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "state.h"
 #include "spdlog/spdlog.h"
 
 #include <utility>
 
-LV_IMG_DECLARE(back);
 LV_IMG_DECLARE(sd_img);
 
 static std::map<std::string, int> goal_idx_map = {
@@ -42,12 +43,13 @@ AutoTmcContainer::AutoTmcContainer(const std::list<std::string> &motors,
   , configured_sensorless_thrs(sgthrs)
   , sg_range(sg_min_max)
 {
+  // Um cartão por motor (PRETO_2, raio 12), pad 8; linhas de 44 com o nome no alto.
+  Marca::cartao(cont);
   lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_border_side(cont, LV_BORDER_SIDE_BOTTOM, 0);
-  lv_obj_set_style_border_width(cont, 2, 0);
-  lv_obj_set_style_pad_all(cont, 0, 0);
-  lv_obj_set_style_pad_bottom(cont, 20, 0);
-  
+  lv_obj_set_style_pad_all(cont, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(cont, 6, 0);
+  lv_obj_set_style_pad_column(cont, Marca::VAO, 0);
+
   lv_dropdown_clear_options(motors_dd);
 
   size_t index = 0;
@@ -57,11 +59,13 @@ AutoTmcContainer::AutoTmcContainer(const std::list<std::string> &motors,
     lv_dropdown_add_option(motors_dd, s.substr(s.find(' ') + 1).c_str(), index++);
   }
 
-  lv_obj_set_width(motors_dd, LV_PCT(60));
+  lv_obj_set_size(motors_dd, LV_PCT(60), Marca::TOQUE);
+  lv_obj_set_style_text_font(motors_dd, Marca::f14(), 0);
   lv_dropdown_set_selected(motors_dd, motor_idx);
 
-  lv_obj_set_width(tuning_goal_dd, LV_PCT(40));
-  
+  lv_obj_set_size(tuning_goal_dd, LV_PCT(40), Marca::TOQUE);
+  lv_obj_set_style_text_font(tuning_goal_dd, Marca::f14(), 0);
+
   lv_dropdown_set_options(tuning_goal_dd,
 			  "auto\n"
 			  "silent\n"
@@ -70,11 +74,15 @@ AutoTmcContainer::AutoTmcContainer(const std::list<std::string> &motors,
 
   lv_dropdown_set_selected(tuning_goal_dd, goal_idx);
 
+  // "-" 44 x 44 | valor 64 x 44 | "+" 44 x 44, posições fixas (164 x 44)
   lv_obj_set_style_pad_all(spinbox_cont, 0, 0);
-  // lv_obj_set_style_border_width(spinbox_cont, 2, 0);
-  lv_obj_center(sensorless_threshold);
+  lv_obj_clear_flag(spinbox_cont, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_pos(sensorless_threshold, 50, 0);
+  lv_obj_set_size(sensorless_threshold, 64, Marca::TOQUE);
+  lv_obj_set_style_text_font(sensorless_threshold, Marca::f14(), 0);
+  lv_obj_set_style_text_align(sensorless_threshold, LV_TEXT_ALIGN_CENTER, 0);
 
-  lv_obj_set_size(spinbox_cont, LV_PCT(40), LV_SIZE_CONTENT);
+  lv_obj_set_size(spinbox_cont, 164, Marca::TOQUE);
   lv_spinbox_set_range(sensorless_threshold, sg_range.first, sg_range.second);
   lv_spinbox_set_value(sensorless_threshold, sgthrs);
   lv_spinbox_set_step(sensorless_threshold, 5);
@@ -84,10 +92,9 @@ AutoTmcContainer::AutoTmcContainer(const std::list<std::string> &motors,
   lv_obj_set_style_bg_opa(sensorless_threshold, LV_OPA_0, LV_PART_CURSOR);
   lv_textarea_set_cursor_click_pos(sensorless_threshold, false);
 
-  int32_t h = lv_obj_get_height(sensorless_threshold);
   lv_obj_t * btn = lv_btn_create(spinbox_cont);
-  lv_obj_set_size(btn, h, h);
-  lv_obj_align_to(btn, sensorless_threshold, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
+  lv_obj_set_pos(btn, 120, 0);
+  lv_obj_set_size(btn, 44, Marca::TOQUE);
   lv_obj_set_style_bg_img_src(btn, LV_SYMBOL_PLUS, 0);
   lv_obj_add_event_cb(btn, [](lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
@@ -97,8 +104,8 @@ AutoTmcContainer::AutoTmcContainer(const std::list<std::string> &motors,
   }, LV_EVENT_ALL, sensorless_threshold);
 
   btn = lv_btn_create(spinbox_cont);
-  lv_obj_set_size(btn, h, h);
-  lv_obj_align_to(btn, sensorless_threshold, LV_ALIGN_OUT_LEFT_MID, -5, 0);
+  lv_obj_set_pos(btn, 0, 0);
+  lv_obj_set_size(btn, 44, Marca::TOQUE);
   lv_obj_set_style_bg_img_src(btn, LV_SYMBOL_MINUS, 0);
   lv_obj_add_event_cb(btn, [](lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
@@ -108,36 +115,44 @@ AutoTmcContainer::AutoTmcContainer(const std::list<std::string> &motors,
   }, LV_EVENT_ALL, sensorless_threshold);
 
 
-  static lv_coord_t grid_main_row3_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t grid_main_row_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  // linhas pelo conteúdo (o cartão tem altura pelo conteúdo)
+  static lv_coord_t grid_main_row3_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
+  static lv_coord_t grid_main_row_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
   static lv_coord_t grid_main_col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(2), LV_GRID_TEMPLATE_LAST};
 
+  // rótulos das linhas: 12 G ("Objetivo do ajuste" mede 111 px; a coluna tem ~128)
+  auto rotulo = [this](const char *txt) {
+    lv_obj_t *l = lv_label_create(cont);
+    lv_label_set_text(l, txt);
+    lv_obj_set_style_text_font(l, Marca::f12(), 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(Marca::GRAFITE), 0);
+    return l;
+  };
 
   if (!has_sg) {
     lv_obj_add_flag(spinbox_cont, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_grid_dsc_array(cont, grid_main_col_dsc, grid_main_row3_dsc);
   } else {
     lv_obj_set_grid_dsc_array(cont, grid_main_col_dsc, grid_main_row_dsc);
-    
-    lv_obj_t *label = lv_label_create(cont);
-    lv_label_set_text(label, "Limiar sensorless");
-    lv_obj_set_grid_cell(label, LV_GRID_ALIGN_START, 0, 1, LV_GRID_ALIGN_CENTER, 3, 1); 
+
+    lv_obj_t *label = rotulo("Limiar sensorless");
+    lv_obj_set_grid_cell(label, LV_GRID_ALIGN_START, 0, 1, LV_GRID_ALIGN_CENTER, 3, 1);
     lv_obj_set_grid_cell(spinbox_cont, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 3, 1);
   }
 
+  // nome do motor (f14 PAPEL), na linha de cima
   lv_obj_t *label = lv_label_create(cont);
   lv_label_set_text(label, name.c_str());
-  
+  lv_obj_set_style_text_font(label, Marca::f14(), 0);
+
   // row 1
   lv_obj_set_grid_cell(label, LV_GRID_ALIGN_START, 0, 2, LV_GRID_ALIGN_CENTER, 0, 1);
 
-  label = lv_label_create(cont);
-  lv_label_set_text(label, "Motor");
+  label = rotulo("Motor");
   lv_obj_set_grid_cell(label, LV_GRID_ALIGN_START, 0, 1, LV_GRID_ALIGN_CENTER, 1, 1);
   lv_obj_set_grid_cell(motors_dd, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 1, 1);
 
-  label = lv_label_create(cont);
-  lv_label_set_text(label, "Objetivo do ajuste");
+  label = rotulo("Objetivo do ajuste");
   lv_obj_set_grid_cell(label, LV_GRID_ALIGN_START, 0, 1, LV_GRID_ALIGN_CENTER, 2, 1);
   lv_obj_set_grid_cell(tuning_goal_dd, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 2, 1);
 
@@ -174,39 +189,41 @@ TmcTunePanel::TmcTunePanel(KWebSocketClient &c)
   , cont(lv_obj_create(lv_scr_act()))
   , controls_cont(lv_obj_create(cont))
   , btns_cont(lv_obj_create(cont))
-  , save_btn(btns_cont, &sd_img, "Salvar e\nreiniciar", [](lv_event_t *e) {
+  , save_btn(btns_cont, &sd_img, "Salvar e reiniciar", [](lv_event_t *e) {
     TmcTunePanel *panel = (TmcTunePanel*)e->user_data;
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
       panel->save_config();
     }
   }, this)
-  , back_btn(btns_cont, &back, "Voltar", [](lv_event_t *e) {
-    TmcTunePanel *panel = (TmcTunePanel*)e->user_data;
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-      panel->background();
-    }
-  }, this)
 {
   motor_parser._delim = ":";
-  lv_obj_move_background(cont);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
-  lv_obj_set_style_pad_all(cont, 0, 0);
-  lv_obj_set_style_pad_row(cont, 0, 0);
 
-  lv_obj_set_height(controls_cont, LV_PCT(100)); 
-  lv_obj_set_flex_grow(controls_cont, 1);
+  // Subtela (Proposta B), coordenadas da subtela:
+  //   cabeçalho "Autoajuste dos motores" com voltar (fecha a subtela)
+  //   lista dos motores (8,52) 408 x 152, um cartão por motor, rola na vertical sem inércia
+  //   "Salvar e reiniciar" DESTAQUE 408 x 48 em (8,212), f16
+  Navegacao::subtela(cont);
+  Marca::Cabecalho cab = Marca::criar_cabecalho(cont, "Autoajuste dos motores");
+  lv_obj_set_width(cab.titulo, 366);  // 243 px na f20; o lado direito não é usado
 
+  lv_obj_set_pos(controls_cont, Marca::MARGEM, 52);
+  lv_obj_set_size(controls_cont, Marca::CONT_L - 2 * Marca::MARGEM, 152);
+  lv_obj_set_style_pad_all(controls_cont, 0, 0);
+  lv_obj_set_style_pad_row(controls_cont, Marca::VAO, 0);
   lv_obj_set_flex_flow(controls_cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_scroll_dir(controls_cont, LV_DIR_VER);
+  lv_obj_clear_flag(controls_cont, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+  lv_obj_clear_flag(controls_cont, LV_OBJ_FLAG_SCROLL_ELASTIC);
 
-  lv_obj_set_flex_flow(btns_cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_pos(btns_cont, Marca::MARGEM, 212);
+  lv_obj_set_size(btns_cont, Marca::CONT_L - 2 * Marca::MARGEM, 48);
   lv_obj_set_style_pad_all(btns_cont, 0, 0);
-  lv_obj_set_style_pad_top(btns_cont, 5, 0);
-  lv_obj_set_size(btns_cont, LV_SIZE_CONTENT, LV_PCT(100)); 
-  lv_obj_set_flex_align(btns_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
-  lv_obj_add_flag(back_btn.get_container(), LV_OBJ_FLAG_FLOATING);  
-  lv_obj_align(back_btn.get_container(), LV_ALIGN_BOTTOM_RIGHT, 0, -20);
-  
+  lv_obj_clear_flag(btns_cont, LV_OBJ_FLAG_SCROLLABLE);
+
+  save_btn.sem_icone();
+  save_btn.set_fonte(Marca::f16());
+  lv_obj_set_size(save_btn.get_container(), LV_PCT(100), 48);
+  save_btn.set_tipo(Marca::Tipo::DESTAQUE);
 }
 
 TmcTunePanel::~TmcTunePanel() {
@@ -318,11 +335,11 @@ void TmcTunePanel::init(json &j, fs::path &kp) {
 }
 
 void TmcTunePanel::foreground() {
-  lv_obj_move_foreground(cont);
+  Navegacao::abrir(cont);
 }
 
 void TmcTunePanel::background() {
-  lv_obj_move_background(cont);
+  Navegacao::fechar(cont);
 }
 
 void TmcTunePanel::save_config() {

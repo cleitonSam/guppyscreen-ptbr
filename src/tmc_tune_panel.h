@@ -58,11 +58,11 @@ class TmcTunePanel {
   
  private:
   KWebSocketClient &ws;
-  lv_obj_t *cont;
-  lv_obj_t *controls_cont;
-  lv_obj_t *btns_cont;
+  lv_obj_t *cont;           // subtela (Navegacao::subtela), 424 x 272
+  lv_obj_t *controls_cont;  // lista dos motores (8,52) 408 x 152
+  lv_obj_t *btns_cont;      // faixa do "Salvar e reiniciar" (8,212) 408 x 48
   ButtonContainer save_btn;
-  ButtonContainer back_btn;
+  // "Voltar" saiu: é o do cabeçalho (Marca::criar_cabecalho).
   IniParser motor_parser;
 
   std::map<std::string, int> motor_index;

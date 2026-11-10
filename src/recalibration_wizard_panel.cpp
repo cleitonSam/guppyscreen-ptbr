@@ -1,6 +1,8 @@
 #include "recalibration_wizard_panel.h"
 #include "state.h"
 #include "utils.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "spdlog/spdlog.h"
 
 #include <cmath>
@@ -36,6 +38,74 @@ static const uint32_t SENSOR_TIMEOUT_MS = 480000;
 // NOT auto-apply either value, the user always picks (2026-07-08 decision).
 static const double SENSOR_AGREEMENT_THRESHOLD_MM = 0.1;
 
+// ---- Peças visuais das etapas (só aparência, nenhum comando) ---------------
+// Cada etapa ocupa a área abaixo do cabeçalho: 424 x 228 em (0,44), em
+// coluna, com 8 px de margem. Texto à esquerda, botões de 44 px embaixo.
+static void montar_etapa(lv_obj_t *c) {
+  lv_obj_set_pos(c, 0, 44);
+  lv_obj_set_size(c, Marca::CONT_L, Marca::TELA_A - 44);
+  lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_border_width(c, 0, 0);
+  lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_hor(c, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_top(c, 4, 0);
+  lv_obj_set_style_pad_bottom(c, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(c, 8, 0);
+  lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+}
+
+// Contêiner sem desenho (transparente), largura toda, em linha.
+static lv_obj_t *linha(lv_obj_t *pai, lv_coord_t altura) {
+  lv_obj_t *r = lv_obj_create(pai);
+  lv_obj_set_size(r, LV_PCT(100), altura);
+  lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(r, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_border_width(r, 0, 0);
+  lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_all(r, 0, 0);
+  lv_obj_set_style_pad_column(r, 8, 0);
+  lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  return r;
+}
+
+// Título da etapa (f16 PAPEL). Com selo_txt, vem antes um selo de 24 px
+// (fundo OK ou ALERTA, símbolo PAPEL): a palavra do estado fica ao lado.
+static lv_obj_t *titulo_etapa(lv_obj_t *pai, const char *txt,
+                              uint32_t selo_fundo = Marca::PRETO_3, const char *selo_txt = nullptr) {
+  lv_obj_t *r = linha(pai, LV_SIZE_CONTENT);
+  if (selo_txt != nullptr) {
+    Marca::criar_selo(r, 24, selo_fundo, Marca::PAPEL, selo_txt);
+  }
+  return Marca::criar_rotulo(r, txt, Marca::f16(), Marca::PAPEL);
+}
+
+// Texto da etapa (quebra linha). cresce = ocupa o espaço que sobra e empurra
+// os botões para baixo.
+static lv_obj_t *texto_etapa(lv_obj_t *pai, const char *txt, const lv_font_t *f, bool cresce) {
+  lv_obj_t *l = Marca::criar_rotulo(pai, txt, f, Marca::PAPEL);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(l, LV_PCT(100));
+  if (cresce) lv_obj_set_flex_grow(l, 1);
+  return l;
+}
+
+// Botão de 44 px. largura 0 = divide a linha com os outros botões.
+static lv_obj_t *botao(lv_obj_t *pai, const char *txt, Marca::Tipo t,
+                       lv_event_cb_t cb, void *ud, lv_coord_t largura = 0,
+                       const lv_font_t *f = nullptr) {
+  lv_obj_t *b = Marca::criar_botao(pai, txt, t, f);
+  if (largura != 0) {
+    lv_obj_set_size(b, largura, 44);
+  } else {
+    lv_obj_set_height(b, 44);
+    lv_obj_set_flex_grow(b, 1);
+  }
+  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, ud);
+  return b;
+}
+
 RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_client, std::mutex &l)
   : NotifyConsumer(l)
   , ws(websocket_client)
@@ -63,264 +133,86 @@ RecalibrationWizardPanel::RecalibrationWizardPanel(KWebSocketClient &websocket_c
   , sensor_bed_temp(0.0)
   , have_sensor_temps(false)
 {
-  lv_obj_move_background(panel_cont);
-  lv_obj_set_size(panel_cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(panel_cont, 0, 0);
+  // Subtela (56,0 424x272) com cabeçalho. O voltar do cabeçalho é o antigo
+  // "Voltar" da introdução e só aparece nela (show_stage).
+  Navegacao::subtela(panel_cont);
+  Marca::Cabecalho cab = Marca::criar_cabecalho(panel_cont, "Assistente de recalibração",
+                                                &RecalibrationWizardPanel::_handle_callback, this);
+  lv_obj_set_width(cab.titulo, 366);   // nada à direita: o título usa a largura toda
+  intro_back_btn = cab.voltar;
 
-  auto fill = [](lv_obj_t *c) {
-    lv_obj_set_size(c, LV_PCT(100), LV_PCT(100));
-    lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_border_width(c, 0, 0);
-    lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
-  };
+  lv_event_cb_t cb = &RecalibrationWizardPanel::_handle_callback;
 
   // ---------- INTRO ----------
-  fill(intro_cont);
-  lv_obj_set_flex_align(intro_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_all(intro_cont, 10, 0);
-  lv_obj_set_style_pad_row(intro_cont, 10, 0);
-
-  lv_obj_t *title = lv_label_create(intro_cont);
-  lv_label_set_text(title, "Assistente de recalibração");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-
-  lv_obj_t *intro_body = lv_label_create(intro_cont);
-  lv_label_set_long_mode(intro_body, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(intro_body, LV_PCT(94));
-  lv_label_set_text(intro_body,
+  montar_etapa(intro_cont);
+  texto_etapa(intro_cont,
     "Trocou a mesa, o bico ou o suporte do CR Touch? Refaça a calibração "
     "básica antes de imprimir de novo.\n\n"
     "Primeiro, o teste do papel acerta a altura do bico. Depois, a impressora "
-    "mede a malha da mesa sozinha. Nada é salvo antes de revisar e confirmar no fim.");
-  lv_obj_set_style_text_font(intro_body, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(intro_body, LV_TEXT_ALIGN_CENTER, 0);
-
-  start_btn = lv_btn_create(intro_cont);
-  lv_obj_set_size(start_btn, 220, 46);
-  lv_obj_t *sb_lbl = lv_label_create(start_btn);
-  lv_label_set_text(sb_lbl, LV_SYMBOL_OK "  Iniciar");
-  lv_obj_set_style_text_font(sb_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_center(sb_lbl);
-  lv_obj_add_event_cb(start_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  intro_back_btn = lv_btn_create(intro_cont);
-  lv_obj_set_size(intro_back_btn, 140, 36);
-  lv_obj_set_style_bg_color(intro_back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *ib_lbl = lv_label_create(intro_back_btn);
-  lv_label_set_text(ib_lbl, LV_SYMBOL_LEFT "  Voltar");
-  lv_obj_center(ib_lbl);
-  lv_obj_add_event_cb(intro_back_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
+    "mede a malha da mesa sozinha. Nada é salvo antes de revisar e confirmar no fim.",
+    Marca::f14(), true);
+  start_btn = botao(intro_cont, LV_SYMBOL_OK "  Iniciar", Marca::Tipo::DESTAQUE, cb, this,
+                    LV_PCT(100), Marca::f16());
 
   // ---------- ZOFFSET (PROBE_CALIBRATE) ----------
-  fill(probe_cont);
-  lv_obj_set_style_pad_all(probe_cont, 6, 0);
-  lv_obj_set_style_pad_row(probe_cont, 5, 0);
+  montar_etapa(probe_cont);
+  lv_obj_set_style_pad_row(probe_cont, 6, 0);
 
-  lv_obj_t *hdr = lv_obj_create(probe_cont);
-  lv_obj_set_width(hdr, LV_PCT(100));
-  lv_obj_set_height(hdr, LV_SIZE_CONTENT);
-  lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_border_width(hdr, 0, 0);
-  lv_obj_set_style_pad_all(hdr, 0, 0);
-  lv_obj_set_flex_flow(hdr, LV_FLEX_FLOW_ROW);
+  lv_obj_t *hdr = linha(probe_cont, LV_SIZE_CONTENT);
   lv_obj_set_flex_align(hdr, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  Marca::criar_rotulo(hdr, "Etapa 1 de 2: altura do bico", Marca::f16(), Marca::PAPEL);
+  z_label = Marca::criar_rotulo(hdr, "Z -", Marca::f20(), Marca::PAPEL);
 
-  lv_obj_t *step_lbl = lv_label_create(hdr);
-  lv_label_set_text(step_lbl, "Etapa 1 de 2: altura do bico");
-  lv_obj_set_style_text_font(step_lbl, &lv_font_montserrat_16, 0);
+  instr_label = texto_etapa(probe_cont, "Indo à origem e medindo...", Marca::f14(), true);
 
-  z_label = lv_label_create(hdr);
-  lv_label_set_text(z_label, "Z -");
-  lv_obj_set_style_text_font(z_label, &lv_font_montserrat_20, 0);
-
-  instr_label = lv_label_create(probe_cont);
-  lv_label_set_long_mode(instr_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(instr_label, LV_PCT(100));
-  lv_label_set_text(instr_label, "Indo à origem e medindo...");
-  lv_obj_set_style_text_font(instr_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(instr_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  auto make_jog_row = [&](int start_idx) {
-    lv_obj_t *r = lv_obj_create(probe_cont);
-    lv_obj_set_width(r, LV_PCT(100));
-    lv_obj_set_height(r, LV_SIZE_CONTENT);
-    lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_border_width(r, 0, 0);
-    lv_obj_set_style_pad_all(r, 0, 0);
-    lv_obj_set_style_pad_column(r, 5, 0);
-    lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+  // two jog rows of 4 buttons (down steps, then up steps)
+  for (int start_idx = 0; start_idx < 8; start_idx += 4) {
+    lv_obj_t *r = linha(probe_cont, 44);
     for (int i = start_idx; i < start_idx + 4; i++) {
-      lv_obj_t *b = lv_btn_create(r);
-      lv_obj_set_flex_grow(b, 1);
-      lv_obj_set_height(b, 40);
-      lv_obj_set_style_bg_color(b, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-      lv_obj_t *lbl = lv_label_create(b);
-      lv_label_set_text(lbl, JOG_LABELS[i]);
-      lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
-      lv_obj_center(lbl);
-      lv_obj_add_event_cb(b, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
+      lv_obj_t *b = botao(r, JOG_LABELS[i], Marca::Tipo::NORMAL, cb, this, 0, Marca::f16());
       jogs[i] = { JOG_LABELS[i], b };
     }
-  };
-  make_jog_row(0);
-  make_jog_row(4);
+  }
 
-  lv_obj_t *act = lv_obj_create(probe_cont);
-  lv_obj_set_width(act, LV_PCT(100));
-  lv_obj_set_height(act, LV_SIZE_CONTENT);
-  lv_obj_clear_flag(act, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_border_width(act, 0, 0);
-  lv_obj_set_style_pad_all(act, 0, 0);
-  lv_obj_set_style_pad_column(act, 6, 0);
-  lv_obj_set_flex_flow(act, LV_FLEX_FLOW_ROW);
-
-  abort_btn = lv_btn_create(act);
-  lv_obj_set_flex_grow(abort_btn, 1);
-  lv_obj_set_height(abort_btn, 44);
-  lv_obj_set_style_bg_color(abort_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *ab_lbl = lv_label_create(abort_btn);
-  lv_label_set_text(ab_lbl, LV_SYMBOL_CLOSE "  Abortar");
-  lv_obj_set_style_text_font(ab_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_center(ab_lbl);
-  lv_obj_add_event_cb(abort_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  accept_btn = lv_btn_create(act);
-  lv_obj_set_flex_grow(accept_btn, 1);
-  lv_obj_set_height(accept_btn, 44);
-  lv_obj_t *ac_lbl = lv_label_create(accept_btn);
-  lv_label_set_text(ac_lbl, LV_SYMBOL_OK "  Aceitar");
-  lv_obj_set_style_text_font(ac_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_center(ac_lbl);
-  lv_obj_add_event_cb(accept_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  lv_obj_t *act = linha(probe_cont, 44);
+  abort_btn  = botao(act, LV_SYMBOL_CLOSE "  Abortar", Marca::Tipo::NORMAL, cb, this, 0, Marca::f16());
+  accept_btn = botao(act, LV_SYMBOL_OK "  Aceitar", Marca::Tipo::DESTAQUE, cb, this, 0, Marca::f16());
 
   // ---------- MESH (automatic) ----------
-  fill(mesh_cont);
-  lv_obj_set_flex_align(mesh_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(mesh_cont, 12, 0);
-
-  lv_obj_t *mesh_title = lv_label_create(mesh_cont);
-  lv_label_set_text(mesh_title, "Etapa 2 de 2: malha da mesa");
-  lv_obj_set_style_text_font(mesh_title, &lv_font_montserrat_16, 0);
-
-  mesh_status_label = lv_label_create(mesh_cont);
-  lv_label_set_long_mode(mesh_status_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(mesh_status_label, LV_PCT(90));
-  lv_label_set_text(mesh_status_label, "Medindo a mesa... leva cerca de 1 minuto. Não precisa tocar em nada.");
-  lv_obj_set_style_text_font(mesh_status_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(mesh_status_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  lv_obj_t *spinner = lv_spinner_create(mesh_cont, 1000, 60);
-  lv_obj_set_size(spinner, 50, 50);
+  // Sem girador: o texto já diz o que está acontecendo (mais leve).
+  montar_etapa(mesh_cont);
+  titulo_etapa(mesh_cont, "Etapa 2 de 2: malha da mesa");
+  mesh_status_label = texto_etapa(mesh_cont,
+    "Medindo a mesa... leva cerca de 1 minuto. Não precisa tocar em nada.", Marca::f14(), true);
 
   // ---------- DONE ----------
-  fill(done_cont);
-  lv_obj_set_flex_align(done_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_all(done_cont, 6, 0);
-  lv_obj_set_style_pad_row(done_cont, 5, 0);
+  montar_etapa(done_cont);
+  titulo_etapa(done_cont, "Pronto para revisar", Marca::OK, LV_SYMBOL_OK);
+  done_summary_label = texto_etapa(done_cont, "", Marca::f14(), true);
 
-  lv_obj_t *done_title = lv_label_create(done_cont);
-  lv_label_set_text(done_title, LV_SYMBOL_OK "  Pronto para revisar");
-  lv_obj_set_style_text_font(done_title, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(done_title, lv_palette_main(LV_PALETTE_GREEN), 0);
-
-  done_summary_label = lv_label_create(done_cont);
-  lv_label_set_long_mode(done_summary_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(done_summary_label, LV_PCT(94));
-  lv_label_set_text(done_summary_label, "");
-  lv_obj_set_style_text_font(done_summary_label, &lv_font_montserrat_12, 0);
-  lv_obj_set_style_text_align(done_summary_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  save_btn = lv_btn_create(done_cont);
-  lv_obj_set_size(save_btn, 240, 40);
-  lv_obj_t *sv_lbl = lv_label_create(save_btn);
-  lv_label_set_text(sv_lbl, LV_SYMBOL_SAVE "  Salvar e reiniciar");
-  lv_obj_set_style_text_font(sv_lbl, &lv_font_montserrat_14, 0);
-  lv_obj_center(sv_lbl);
-  lv_obj_add_event_cb(save_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  sensor_refine_btn = lv_btn_create(done_cont);
-  lv_obj_set_size(sensor_refine_btn, 240, 36);
-  lv_obj_set_style_bg_color(sensor_refine_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *sr_lbl = lv_label_create(sensor_refine_btn);
-  lv_label_set_long_mode(sr_lbl, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(sr_lbl, 220);
-  lv_label_set_text(sr_lbl, "Refinar com o sensor de pressão");
-  lv_obj_set_style_text_font(sr_lbl, &lv_font_montserrat_12, 0);
-  lv_obj_set_style_text_align(sr_lbl, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_center(sr_lbl);
-  lv_obj_add_event_cb(sensor_refine_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  done_back_btn = lv_btn_create(done_cont);
-  lv_obj_set_size(done_back_btn, 140, 32);
-  lv_obj_set_style_bg_color(done_back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *db_lbl = lv_label_create(done_back_btn);
-  lv_label_set_text(db_lbl, LV_SYMBOL_LEFT "  Descartar");
-  lv_obj_set_style_text_font(db_lbl, &lv_font_montserrat_12, 0);
-  lv_obj_center(db_lbl);
-  lv_obj_add_event_cb(done_back_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  sensor_refine_btn = botao(done_cont, "Refinar com o sensor de pressão", Marca::Tipo::NORMAL,
+                            cb, this, LV_PCT(100));
+  lv_obj_t *done_act = linha(done_cont, 44);
+  done_back_btn = botao(done_act, LV_SYMBOL_LEFT "  Descartar", Marca::Tipo::NORMAL, cb, this, 136);
+  save_btn = botao(done_act, LV_SYMBOL_SAVE "  Salvar e reiniciar", Marca::Tipo::DESTAQUE, cb, this);
 
   // ---------- SENSOR_RUNNING (Z_OFFSET_CALIBRATION, single reading, automatic) ----------
-  fill(sensor_cont);
-  lv_obj_set_flex_align(sensor_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(sensor_cont, 12, 0);
-
-  lv_obj_t *sensor_title = lv_label_create(sensor_cont);
-  lv_label_set_text(sensor_title, "Refinando com o sensor de pressão");
-  lv_obj_set_style_text_font(sensor_title, &lv_font_montserrat_16, 0);
-
-  sensor_status_label = lv_label_create(sensor_cont);
-  lv_label_set_long_mode(sensor_status_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(sensor_status_label, LV_PCT(90));
-  lv_label_set_text(sensor_status_label, "Indo à origem, limpando o bico e medindo...\nNão mexa na impressora.");
-  lv_obj_set_style_text_font(sensor_status_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_align(sensor_status_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  lv_obj_t *sensor_spinner = lv_spinner_create(sensor_cont, 1000, 60);
-  lv_obj_set_size(sensor_spinner, 50, 50);
+  // Sem girador: a linha de estado mostra o que acontece e as temperaturas.
+  montar_etapa(sensor_cont);
+  titulo_etapa(sensor_cont, "Refinando com o sensor de pressão");
+  sensor_status_label = texto_etapa(sensor_cont,
+    "Indo à origem, limpando o bico e medindo...\nNão mexa na impressora.", Marca::f14(), true);
 
   // ---------- SENSOR_CHOICE (paper vs. sensor average, user always picks) ----------
-  fill(sensor_choice_cont);
-  lv_obj_set_flex_align(sensor_choice_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_all(sensor_choice_cont, 8, 0);
-  lv_obj_set_style_pad_row(sensor_choice_cont, 6, 0);
+  montar_etapa(sensor_choice_cont);
+  titulo_etapa(sensor_choice_cont, "Escolha qual valor manter", Marca::ALERTA, LV_SYMBOL_WARNING);
+  sensor_choice_label = texto_etapa(sensor_choice_cont, "", Marca::f14(), true);
 
-  lv_obj_t *choice_title = lv_label_create(sensor_choice_cont);
-  lv_label_set_text(choice_title, LV_SYMBOL_WARNING "  Escolha qual valor manter");
-  lv_obj_set_style_text_font(choice_title, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(choice_title, lv_palette_main(LV_PALETTE_ORANGE), 0);
-
-  sensor_choice_label = lv_label_create(sensor_choice_cont);
-  lv_label_set_long_mode(sensor_choice_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(sensor_choice_label, LV_PCT(94));
-  lv_label_set_text(sensor_choice_label, "");
-  lv_obj_set_style_text_font(sensor_choice_label, &lv_font_montserrat_12, 0);
-  lv_obj_set_style_text_align(sensor_choice_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  keep_paper_btn = lv_btn_create(sensor_choice_cont);
-  lv_obj_set_size(keep_paper_btn, 260, 40);
-  lv_obj_t *kp_lbl = lv_label_create(keep_paper_btn);
-  lv_label_set_text(kp_lbl, "Manter valor do papel");
-  lv_obj_set_style_text_font(kp_lbl, &lv_font_montserrat_14, 0);
-  lv_obj_center(kp_lbl);
-  lv_obj_add_event_cb(keep_paper_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  use_sensor_btn = lv_btn_create(sensor_choice_cont);
-  lv_obj_set_size(use_sensor_btn, 260, 42);
-  lv_obj_t *us_lbl = lv_label_create(use_sensor_btn);
-  lv_label_set_text(us_lbl, "Usar valor do sensor");
-  lv_obj_set_style_text_font(us_lbl, &lv_font_montserrat_14, 0);
-  lv_obj_center(us_lbl);
-  lv_obj_add_event_cb(use_sensor_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  discard_all_btn = lv_btn_create(sensor_choice_cont);
-  lv_obj_set_size(discard_all_btn, 260, 36);
-  lv_obj_set_style_bg_color(discard_all_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *da_lbl = lv_label_create(discard_all_btn);
-  lv_label_set_text(da_lbl, "Descartar os dois e manter o original");
-  lv_obj_set_style_text_font(da_lbl, &lv_font_montserrat_12, 0);
-  lv_obj_center(da_lbl);
-  lv_obj_add_event_cb(discard_all_btn, &RecalibrationWizardPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  lv_obj_t *choice_act = linha(sensor_choice_cont, 44);
+  keep_paper_btn = botao(choice_act, "Manter valor do papel", Marca::Tipo::NORMAL, cb, this);
+  use_sensor_btn = botao(choice_act, "Usar valor do sensor", Marca::Tipo::NORMAL, cb, this);
+  discard_all_btn = botao(sensor_choice_cont, "Descartar os dois e manter o original",
+                          Marca::Tipo::NORMAL, cb, this, LV_PCT(100));
 
   show_stage(INTRO);
 
@@ -351,9 +243,28 @@ void RecalibrationWizardPanel::show_stage(Stage s) {
     case SENSOR_RUNNING: lv_obj_clear_flag(sensor_cont, LV_OBJ_FLAG_HIDDEN); break;
     case SENSOR_CHOICE:  lv_obj_clear_flag(sensor_choice_cont, LV_OBJ_FLAG_HIDDEN); break;
   }
+  // O voltar do cabeçalho substitui o antigo "Voltar" da introdução: só
+  // aparece nela. Nas outras etapas saem pelos botões delas (Abortar,
+  // Descartar, Salvar...), como antes.
+  if (s == INTRO) lv_obj_clear_flag(intro_back_btn, LV_OBJ_FLAG_HIDDEN);
+  else            lv_obj_add_flag(intro_back_btn, LV_OBJ_FLAG_HIDDEN);
+}
+
+void RecalibrationWizardPanel::encerrar() {
+  show_stage(INTRO);
+  Navegacao::fechar(panel_cont);
 }
 
 void RecalibrationWizardPanel::foreground() {
+  // Agora a coluna da esquerda deixa sair da tela no meio do assistente.
+  // Se ele estava esperando o dono (papel, revisão, escolha) ou o sensor,
+  // volta para a mesma etapa em vez de recomeçar: assim os botões Aceitar /
+  // Abortar / Salvar / Descartar continuam ao alcance. Na malha (automática,
+  // sem botão) recomeça como antes.
+  if (stage == ZOFFSET || stage == DONE || stage == SENSOR_RUNNING || stage == SENSOR_CHOICE) {
+    Navegacao::abrir(panel_cont);
+    return;
+  }
   active = false;
   probe_active = false;
   have_z = false;
@@ -363,7 +274,7 @@ void RecalibrationWizardPanel::foreground() {
   have_sensor_reading = false;
   disarm_sensor_timeout();
   show_stage(INTRO);
-  lv_obj_move_foreground(panel_cont);
+  Navegacao::abrir(panel_cont);
 }
 
 void RecalibrationWizardPanel::start_wizard() {
@@ -570,16 +481,17 @@ void RecalibrationWizardPanel::finish_sensor_reading() {
         ? "Valores parecidos: a leitura do sensor (verde) costuma ser a mais precisa."
         : "Diferença maior que o normal (0.1 mm): o teste do papel (verde) é a escolha mais segura.").c_str());
 
-  // Recommended button: clear any local override so it falls back to the
-  // theme's own live bg_color_primary (tracks theme changes with no
-  // restart). The other button: explicit grey override.
-  if (sensor_recommended) {
-    lv_obj_set_style_bg_color(keep_paper_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-    lv_obj_remove_local_style_prop(use_sensor_btn, LV_STYLE_BG_COLOR, LV_PART_MAIN);
-  } else {
-    lv_obj_remove_local_style_prop(keep_paper_btn, LV_STYLE_BG_COLOR, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(use_sensor_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  }
+  // The text calls the recommended button "verde": it gets the brand's OK
+  // green (background, PAPEL text); the other one stays a plain NORMAL button.
+  auto recomendar = [](lv_obj_t *b, bool sim) {
+    Marca::estilo_botao(b, Marca::Tipo::NORMAL);
+    if (sim) {
+      lv_obj_set_style_bg_color(b, lv_color_hex(Marca::OK), 0);
+      lv_obj_set_style_bg_color(b, lv_color_darken(lv_color_hex(Marca::OK), LV_OPA_20), LV_STATE_PRESSED);
+    }
+  };
+  recomendar(keep_paper_btn, !sensor_recommended);
+  recomendar(use_sensor_btn, sensor_recommended);
 
   show_stage(SENSOR_CHOICE);
 }
@@ -588,12 +500,12 @@ void RecalibrationWizardPanel::apply_sensor_choice(bool use_sensor) {
   double chosen = use_sensor ? sensor_reading : new_z_offset;
   if (!patch_z_offset_value(chosen)) {
     KUtils::notify_toast("Falha ao gravar a altura do bico (z_offset) no printer.cfg. Confira o arquivo antes de imprimir.", 6000);
-    lv_obj_move_background(panel_cont);
+    encerrar();
     return;
   }
   ws.gcode_script("FIRMWARE_RESTART");
   KUtils::notify_toast(fmt::format("Salvando {:.3f} mm... O Klipper vai reiniciar.", chosen).c_str(), 3000);
-  lv_obj_move_background(panel_cont);
+  encerrar();
 }
 
 void RecalibrationWizardPanel::apply_discard_all() {
@@ -601,12 +513,12 @@ void RecalibrationWizardPanel::apply_discard_all() {
   // both the paper-test z_offset/mesh and the sensor's readings are abandoned.
   if (!restore_printer_cfg_backup()) {
     KUtils::notify_toast("Não há cópia para restaurar. O printer.cfg ficou como o sensor salvou por último.", 6000);
-    lv_obj_move_background(panel_cont);
+    encerrar();
     return;
   }
   ws.gcode_script("FIRMWARE_RESTART");
   KUtils::notify_toast("Descartando esta recalibração... O Klipper vai reiniciar com as configurações originais.", 4000);
-  lv_obj_move_background(panel_cont);
+  encerrar();
 }
 
 void RecalibrationWizardPanel::consume(json &j) {
@@ -717,7 +629,7 @@ void RecalibrationWizardPanel::handle_callback(lv_event_t *e) {
     btn == keep_paper_btn, btn == use_sensor_btn, btn == discard_all_btn);
 
   if (btn == intro_back_btn) {
-    lv_obj_move_background(panel_cont);
+    Navegacao::fechar(panel_cont);
     return;
   }
 
@@ -727,7 +639,7 @@ void RecalibrationWizardPanel::handle_callback(lv_event_t *e) {
     // live-only offset the manual probe applied so the printer isn't left
     // trusting an unreviewed number.
     ws.gcode_script("G28");
-    lv_obj_move_background(panel_cont);
+    encerrar();
     return;
   }
 
@@ -751,7 +663,7 @@ void RecalibrationWizardPanel::handle_callback(lv_event_t *e) {
   if (btn == save_btn) {
     ws.gcode_script("SAVE_CONFIG");
     KUtils::notify_toast("Salvando... O Klipper vai reiniciar.", 3000);
-    lv_obj_move_background(panel_cont);
+    encerrar();
     return;
   }
 

@@ -1,20 +1,22 @@
 #ifndef __NETWORK_DETAIL_PANEL_H__
 #define __NETWORK_DETAIL_PANEL_H__
 
-#include "button_container.h"
 #include "lvgl/lvgl.h"
 
 #include <functional>
 #include <mutex>
 #include <string>
 
-// Reached by tapping the currently-connected row in WifiPanel. Replaces the
-// old pencil-icon-in-a-table-cell pattern (a hidden, undiscoverable feature
-// whose icon meaning silently changed only for the connected row) with two
-// plainly-labelled buttons. Read-only: it never talks to wpa_supplicant or
-// the static-ip backend itself, only reports taps back to WifiPanel via the
-// callbacks handed to the constructor - WifiPanel already owns the
-// WpaEvent/StaticIpPanel plumbing those actions need.
+// Reached by tapping the currently-connected row in WifiPanel (or Configurações
+// › Rede › Endereço IP). Replaces the old pencil-icon-in-a-table-cell pattern
+// (a hidden, undiscoverable feature whose icon meaning silently changed only
+// for the connected row) with two plainly-labelled buttons. Read-only: it
+// never talks to wpa_supplicant or the static-ip backend itself, only reports
+// taps back to WifiPanel via the callbacks handed to the constructor -
+// WifiPanel already owns the WpaEvent/StaticIpPanel plumbing those actions need.
+//
+// Subtela da marca (Proposta B): cabeçalho com o nome da rede, cartão com
+// Sinal / Segurança / Endereço IP e os dois botões embaixo.
 class NetworkDetailPanel {
 public:
   NetworkDetailPanel(std::mutex &l,
@@ -46,7 +48,6 @@ private:
   lv_obj_t *ip_val;
   lv_obj_t *configure_btn;
   lv_obj_t *forget_btn;
-  ButtonContainer back_btn;
 
   std::function<void()> on_configure_static_ip;
   std::function<void()> on_forget;

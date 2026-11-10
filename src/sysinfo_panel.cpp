@@ -1,21 +1,20 @@
 #include "sysinfo_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "utils.h"
 #include "config.h"
-#include "theme.h"
 #include "touch_beep.h"
 #include "spdlog/spdlog.h"
-#include "guppyscreen.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <iterator>
 #include <map>
+#include <unistd.h>
 
 #include <experimental/filesystem>
 
 namespace fs = std::experimental::filesystem;
-
-LV_IMG_DECLARE(back);
-LV_IMG_DECLARE(cancel);
 
 #ifdef GUPPYSCREEN_VERSION
 #define GS_VERSION GUPPYSCREEN_VERSION
@@ -23,23 +22,208 @@ LV_IMG_DECLARE(cancel);
 #define GS_VERSION "dev-snapshot"
 #endif
 
+// ============================================================================
+// ListaCfg: peças da lista das abas de Configurações
+// ============================================================================
+
+namespace ListaCfg {
+
+  static inline lv_color_t c(uint32_t hex) { return lv_color_hex(hex); }
+
+  void preparar_conteudo(lv_obj_t *obj, Aba a, bool rolavel) {
+    Navegacao::colocar(obj, a);
+    lv_obj_set_style_pad_all(obj, 0, 0);
+    lv_obj_set_style_border_width(obj, 0, 0);
+    lv_obj_set_style_radius(obj, 0, 0);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_TRANSP, 0);
+    if (rolavel) {
+      // rola só na vertical, sem inércia e sem elástico (nada de animação)
+      lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_scroll_dir(obj, LV_DIR_VER);
+      lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+      lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLL_ELASTIC);
+      lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_AUTO);
+      lv_obj_set_style_pad_bottom(obj, Marca::MARGEM, 0);   // folga no fim da rolagem
+    } else {
+      lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    }
+  }
+
+  lv_obj_t *criar_cartao(lv_obj_t *pai, lv_coord_t y, int linhas) {
+    lv_obj_t *cartao = Marca::criar_cartao(pai, CARTAO_X, y, CARTAO_L, LINHA * linhas);
+    for (int i = 1; i < linhas; i++) {
+      lv_obj_t *sep = lv_obj_create(cartao);
+      lv_obj_set_pos(sep, ROTULO_X, LINHA * i);
+      lv_obj_set_size(sep, CARTAO_L - 2 * ROTULO_X, 1);
+      lv_obj_set_style_bg_color(sep, c(Marca::PRETO_3), 0);
+      lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, 0);
+      lv_obj_set_style_border_width(sep, 0, 0);
+      lv_obj_set_style_radius(sep, 0, 0);
+      lv_obj_set_style_pad_all(sep, 0, 0);
+      lv_obj_clear_flag(sep, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_clear_flag(sep, LV_OBJ_FLAG_SCROLLABLE);
+    }
+    return cartao;
+  }
+
+  lv_obj_t *rotulo(lv_obj_t *cartao, int i, const char *texto) {
+    lv_obj_t *l = Marca::criar_rotulo(cartao, texto, Marca::f14(), Marca::PAPEL);
+    lv_obj_set_pos(l, ROTULO_X, LINHA * i + 13);
+    lv_obj_set_width(l, ROTULO_L);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+    return l;
+  }
+
+  lv_obj_t *linha_seta(lv_obj_t *cartao, int i, const char *texto, lv_obj_t **valor) {
+    lv_obj_t *linha = lv_obj_create(cartao);
+    lv_obj_set_pos(linha, 0, LINHA * i);
+    lv_obj_set_size(linha, CARTAO_L, LINHA);
+    lv_obj_set_style_pad_all(linha, 0, 0);
+    lv_obj_set_style_border_width(linha, 0, 0);
+    lv_obj_set_style_radius(linha, Marca::RAIO, 0);
+    lv_obj_set_style_bg_opa(linha, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(linha, c(Marca::APERTADO), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(linha, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_clear_flag(linha, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(linha, LV_OBJ_FLAG_CLICKABLE);
+
+    // filho 0: rótulo (habilitar_linha troca a cor dele)
+    lv_obj_t *l = Marca::criar_rotulo(linha, texto, Marca::f14(), Marca::PAPEL);
+    lv_obj_set_pos(l, ROTULO_X, 13);
+    lv_obj_set_width(l, valor != nullptr ? 230 : ROTULO_L);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+
+    lv_obj_t *seta = Marca::criar_rotulo(linha, LV_SYMBOL_RIGHT, Marca::f14(), Marca::GRAFITE);
+    lv_obj_set_pos(seta, CTRL_X + CTRL_L - 14, 13);
+    lv_obj_set_width(seta, 14);
+    lv_obj_set_style_text_align(seta, LV_TEXT_ALIGN_RIGHT, 0);
+
+    if (valor != nullptr) {
+      lv_obj_t *v = Marca::criar_rotulo(linha, "", Marca::f14(), Marca::GRAFITE);
+      lv_obj_set_pos(v, CTRL_X, 13);
+      lv_obj_set_width(v, CTRL_L - 18);
+      lv_label_set_long_mode(v, LV_LABEL_LONG_DOT);
+      lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_RIGHT, 0);
+      *valor = v;
+    }
+    return linha;
+  }
+
+  void habilitar_linha(lv_obj_t *linha, bool sim) {
+    if (linha == nullptr) {
+      return;
+    }
+    if (sim) {
+      lv_obj_add_flag(linha, LV_OBJ_FLAG_CLICKABLE);
+    } else {
+      lv_obj_clear_flag(linha, LV_OBJ_FLAG_CLICKABLE);
+    }
+    lv_obj_t *l = lv_obj_get_child(linha, 0);
+    if (l != NULL) {
+      lv_obj_set_style_text_color(l, c(sim ? Marca::PAPEL : Marca::GRAFITE), 0);
+    }
+  }
+
+  void lista(lv_obj_t *dd, int i) {
+    lv_obj_set_pos(dd, CTRL_X, LINHA * i);
+    lv_obj_set_size(dd, CTRL_L, LINHA);
+    lv_obj_set_style_bg_opa(dd, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(dd, 0, 0);
+    lv_obj_set_style_shadow_width(dd, 0, 0);
+    lv_obj_set_style_outline_width(dd, 0, LV_STATE_FOCUS_KEY);
+    lv_obj_set_style_radius(dd, Marca::RAIO, 0);
+    lv_obj_set_style_pad_top(dd, (LINHA - 16) / 2, 0);   // f14 tem 16 de linha
+    lv_obj_set_style_pad_bottom(dd, 0, 0);
+    lv_obj_set_style_pad_right(dd, 0, 0);
+    lv_obj_set_style_text_font(dd, Marca::f14(), 0);
+    lv_obj_set_style_text_color(dd, c(Marca::PAPEL), 0);
+    // a seta usa a parte INDICATOR
+    lv_obj_set_style_text_font(dd, Marca::f14(), LV_PART_INDICATOR);
+    lv_obj_set_style_text_color(dd, c(Marca::GRAFITE), LV_PART_INDICATOR);
+    lv_dropdown_set_symbol(dd, LV_SYMBOL_DOWN);
+
+    lv_obj_t *lst = lv_dropdown_get_list(dd);
+    if (lst != NULL) {
+      lv_obj_set_style_text_font(lst, Marca::f14(), 0);
+    }
+    alinhar_lista(dd);
+  }
+
+  void alinhar_lista(lv_obj_t *dd) {
+    // O LVGL desenha o texto a partir do recuo da esquerda e a seta colada à
+    // direita: o recuo é calculado para o texto terminar 6 px antes da seta
+    // (como na maquete), mantendo a área de toque com os 144 px inteiros.
+    char buf[64];
+    lv_dropdown_get_selected_str(dd, buf, sizeof(buf));
+    lv_point_t txt;
+    lv_txt_get_size(&txt, buf, Marca::f14(), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    lv_point_t sim;
+    lv_txt_get_size(&sim, LV_SYMBOL_DOWN, Marca::f14(), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    lv_coord_t recuo = CTRL_L - sim.x - 6 - txt.x;
+    if (recuo < 0) {
+      recuo = 0;
+    }
+    lv_obj_set_style_pad_left(dd, recuo, 0);
+  }
+
+  void chave(lv_obj_t *sw, int i) {
+    lv_obj_set_size(sw, 44, 24);
+    lv_obj_set_pos(sw, CTRL_X + CTRL_L - 44, LINHA * i + (LINHA - 24) / 2);
+    lv_obj_set_style_pad_all(sw, -3, LV_PART_KNOB);   // bolinha de 18 com 3 px de folga
+    lv_obj_set_ext_click_area(sw, 10);                 // toque de 64 x 44
+  }
+
+  lv_obj_t *texto_direita(lv_obj_t *cartao, int i, const char *texto) {
+    lv_obj_t *l = Marca::criar_rotulo(cartao, texto, Marca::f14(), Marca::GRAFITE);
+    lv_obj_set_pos(l, CTRL_X, LINHA * i + 13);
+    lv_obj_set_width(l, CTRL_L);
+    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+    return l;
+  }
+
+  lv_obj_t *rodape(lv_obj_t *pai, lv_coord_t x, lv_coord_t largura, const char *texto) {
+    lv_obj_t *l = Marca::criar_rotulo(pai, texto, Marca::f12(), Marca::GRAFITE);
+    lv_obj_set_pos(l, x, RODAPE_Y);
+    lv_obj_set_width(l, largura);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+    return l;
+  }
+
+  std::string ip_atual(bool so_wifi) {
+    std::string outro;
+    for (const auto &iface : KUtils::get_interfaces()) {
+      if (iface.empty()) {
+        continue;
+      }
+      bool wifi = iface[0] == 'w';
+      if (so_wifi && !wifi) {
+        continue;
+      }
+      std::string ip = KUtils::interface_ip(iface);
+      if (ip.empty() || ip == "0.0.0.0") {
+        continue;
+      }
+      if (wifi) {
+        return ip;
+      }
+      if (outro.empty()) {
+        outro = ip;
+      }
+    }
+    return outro;
+  }
+}
+
+// ============================================================================
+// SysInfoPanel
+// ============================================================================
+
 std::vector<std::string> SysInfoPanel::log_levels = {
   "trace",
   "debug",
   "info",
   "warn"
-};
-
-// ATENÇÃO pt-BR: o theme_dd (lv_dropdown_set_options, no construtor, logo depois de
-// lv_label_set_text(l, "Tema"))
-// mostra os nomes em português NESTA MESMA ORDEM. Mudou aqui, mude lá também.
-std::vector<std::string> SysInfoPanel::themes = {
-  "blue",
-  "red",
-  "green",
-  "purple",
-  "pink",
-  "yellow"
 };
 
 struct SleepOption {
@@ -73,106 +257,45 @@ static const BrightnessOption brightness_options[] = {
   {"Máx. (100%)", 100},
 };
 
-SysInfoPanel::SysInfoPanel()
-  : cont(lv_obj_create(lv_scr_act()))
-  , left_cont(lv_obj_create(cont))
-  , right_cont(lv_obj_create(cont))
-  , network_label(lv_label_create(right_cont))
+static void set_switch(lv_obj_t *sw, bool on) {
+  if (on) {
+    lv_obj_add_state(sw, LV_STATE_CHECKED);
+  } else {
+    lv_obj_clear_state(sw, LV_STATE_CHECKED);
+  }
+}
 
-  // display sleep
-  , disp_sleep_cont(lv_obj_create(left_cont))
-  , display_sleep_dd(lv_dropdown_create(disp_sleep_cont))
-
-  // display brightness
-  , brightness_cont(lv_obj_create(left_cont))
-  , brightness_dd(lv_dropdown_create(brightness_cont))
-
-  // log level
-  , ll_cont(lv_obj_create(left_cont))
-  , loglevel_dd(lv_dropdown_create(ll_cont))
+SysInfoPanel::SysInfoPanel(lv_obj_t *sistema, lv_coord_t y)
+  : tela_cont(lv_obj_create(Navegacao::aba(Aba::TELA)))
+  , tela_cartao(NULL)
+  , brightness_dd(NULL)
+  , display_sleep_dd(NULL)
+  , touch_beep_toggle(NULL)
+  , versao_label(NULL)
+  , wifi_label(NULL)
+  , ajustes_cartao(NULL)
+  , loglevel_dd(NULL)
   , loglevel(1)
-
-  // estop prompt
-  , estop_toggle_cont(lv_obj_create(left_cont))
-  , prompt_estop_toggle(lv_switch_create(estop_toggle_cont))
-
-  // Z axis icons
-  , z_icon_toggle_cont(lv_obj_create(left_cont))
-  , z_icon_toggle(lv_switch_create(z_icon_toggle_cont))
-
-  , y_icon_toggle_cont(lv_obj_create(left_cont))
-  , y_icon_toggle(lv_switch_create(y_icon_toggle_cont))
-
-  // theme + default temp live in the right column to balance the panel
-  , theme_cont(lv_obj_create(right_cont))
-  , theme_dd(lv_dropdown_create(theme_cont))
-  , theme(0)
-
-  , def_temp_cont(lv_obj_create(right_cont))
-  , def_temp_dd(lv_dropdown_create(def_temp_cont))
-
-  , touch_beep_cont(lv_obj_create(right_cont))
-  , touch_beep_toggle(lv_switch_create(touch_beep_cont))
-
-  , reset_options_btn(cont, &cancel, "Opções de\nredefinição", &SysInfoPanel::_handle_callback, this)
-  , back_btn(cont, &back, "Voltar", &SysInfoPanel::_handle_callback, this)
+  , def_temp_dd(NULL)
+  , z_icon_toggle(NULL)
+  , y_icon_toggle(NULL)
+  , reset_row(NULL)
+  , reset_janela(NULL)
 {
-  lv_obj_move_background(cont);
-  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
-
-  lv_obj_clear_flag(left_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(left_cont, LV_PCT(50), LV_PCT(100));
-  lv_obj_set_flex_flow(left_cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(left_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-
-  lv_obj_clear_flag(right_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(right_cont, LV_PCT(50), LV_PCT(100));
-  lv_obj_set_flex_flow(right_cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(right_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-
   Config *conf = Config::get_instance();
-  lv_obj_t *l = lv_label_create(disp_sleep_cont);
-  lv_obj_set_size(disp_sleep_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(disp_sleep_cont, 0, 0);
-  lv_label_set_text(l, "Apagar tela");
-  lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
-  lv_obj_align(display_sleep_dd, LV_ALIGN_RIGHT_MID, 0, 0);
 
-  std::string dd_options;
-  for (const auto &opt : sleep_options) {
-    dd_options += opt.label;
-    dd_options += '\n';
-  }
-  dd_options.pop_back();
+  // ---------------------------------------------------------------- aba Tela
+  ListaCfg::preparar_conteudo(tela_cont, Aba::TELA, false);
 
-  lv_dropdown_set_options(display_sleep_dd, dd_options.c_str());
-
-  auto v = conf->get_json("/display_sleep_sec");
-  if (!v.is_null()) {
-    auto sleep_sec = v.template get<int32_t>();
-    for (size_t i = 0; i < std::size(sleep_options); ++i) {
-      if (sleep_options[i].seconds == sleep_sec) {
-        lv_dropdown_set_selected(display_sleep_dd, i);
-        break;
-      }
-    }
-  }
-
-  lv_obj_add_event_cb(display_sleep_dd, &SysInfoPanel::_handle_callback,
-    LV_EVENT_VALUE_CHANGED, this);
-
-  // Brightness preset dropdown - same row layout as Display Sleep above.
-  // Hidden if the device has no controllable backlight.
-  lv_obj_set_size(brightness_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(brightness_cont, 0, 0);
+  // Brilho só aparece se o aparelho tem luz de fundo controlável.
   int b_max = KUtils::backlight_max();
+  int linhas = b_max > 0 ? 4 : 3;
+  tela_cartao = ListaCfg::criar_cartao(tela_cont, 7, linhas);
+  int i = 0;
+
   if (b_max > 0) {
-    lv_obj_t *bl_label = lv_label_create(brightness_cont);
-    lv_label_set_text(bl_label, "Brilho");
-    lv_obj_align(bl_label, LV_ALIGN_LEFT_MID, 0, 0);
-    lv_obj_align(brightness_dd, LV_ALIGN_RIGHT_MID, 0, 0);
+    ListaCfg::rotulo(tela_cartao, i, "Brilho");
+    brightness_dd = lv_dropdown_create(tela_cartao);
 
     std::string b_dd_options;
     for (const auto &opt : brightness_options) {
@@ -190,231 +313,167 @@ SysInfoPanel::SysInfoPanel()
     }
     size_t best_idx = std::size(brightness_options) - 1;
     int best_diff = std::abs(saved_pct - brightness_options[best_idx].percent);
-    for (size_t i = 0; i < std::size(brightness_options); ++i) {
-      int d = std::abs(saved_pct - brightness_options[i].percent);
+    for (size_t k = 0; k < std::size(brightness_options); ++k) {
+      int d = std::abs(saved_pct - brightness_options[k].percent);
       if (d < best_diff) {
         best_diff = d;
-        best_idx = i;
+        best_idx = k;
       }
     }
     lv_dropdown_set_selected(brightness_dd, best_idx);
+    ListaCfg::lista(brightness_dd, i);
 
     lv_obj_add_event_cb(brightness_dd, &SysInfoPanel::_handle_callback,
       LV_EVENT_VALUE_CHANGED, this);
-  } else {
-    lv_obj_add_flag(brightness_cont, LV_OBJ_FLAG_HIDDEN);
+    i++;
   }
 
-  lv_obj_set_size(ll_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(ll_cont, 0, 0);
-  l = lv_label_create(ll_cont);
-  lv_label_set_text(l, "Nível de registro");
-  lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
-  lv_obj_align(loglevel_dd, LV_ALIGN_RIGHT_MID, 0, 0);
+  // Apagar tela
+  ListaCfg::rotulo(tela_cartao, i, "Apagar tela");
+  display_sleep_dd = lv_dropdown_create(tela_cartao);
+  {
+    std::string dd_options;
+    for (const auto &opt : sleep_options) {
+      dd_options += opt.label;
+      dd_options += '\n';
+    }
+    dd_options.pop_back();
+    lv_dropdown_set_options(display_sleep_dd, dd_options.c_str());
 
+    auto v = conf->get_json("/display_sleep_sec");
+    if (!v.is_null()) {
+      auto sleep_sec = v.template get<int32_t>();
+      for (size_t k = 0; k < std::size(sleep_options); ++k) {
+        if (sleep_options[k].seconds == sleep_sec) {
+          lv_dropdown_set_selected(display_sleep_dd, k);
+          break;
+        }
+      }
+    }
+  }
+  ListaCfg::lista(display_sleep_dd, i);
+  lv_obj_add_event_cb(display_sleep_dd, &SysInfoPanel::_handle_callback,
+    LV_EVENT_VALUE_CHANGED, this);
+  i++;
+
+  // Som ao tocar: opt-in audible click feedback on the hardware buzzer. Off by
+  // default; mirrors the stock Creality KE click sound.
+  ListaCfg::rotulo(tela_cartao, i, "Som ao tocar");
+  touch_beep_toggle = lv_switch_create(tela_cartao);
+  {
+    auto v = conf->get_json("/touch_beep");
+    set_switch(touch_beep_toggle, !v.is_null() && v.template get<bool>());
+  }
+  ListaCfg::chave(touch_beep_toggle, i);
+  lv_obj_add_event_cb(touch_beep_toggle, &SysInfoPanel::_handle_callback,
+    LV_EVENT_VALUE_CHANGED, this);
+  i++;
+
+  // Confirmar parada de emergência: a tela SEMPRE pergunta antes (a chave
+  // /prompt_emergency_stop continua no arquivo, mas não desliga mais a
+  // pergunta). Por isso aqui não tem chave, só o texto.
+  ListaCfg::rotulo(tela_cartao, i, "Confirmar parada de emergência");
+  ListaCfg::texto_direita(tela_cartao, i, "Sempre");
+
+  // rodapé: versão e Wi-Fi
+  versao_label = ListaCfg::rodape(tela_cont, 8, 260, "Versão: GuppyScreen " GS_VERSION);
+  wifi_label = ListaCfg::rodape(tela_cont, 276, 140, "");
+  lv_obj_set_style_text_align(wifi_label, LV_TEXT_ALIGN_RIGHT, 0);
+
+  Navegacao::ao_mostrar(Aba::TELA, [this]() { atualizar(); });
+
+  // ------------------------------------------------------- aba Sistema (cartão)
+  ajustes_cartao = ListaCfg::criar_cartao(sistema, y, 5);
+
+  // Nível de registro
+  ListaCfg::rotulo(ajustes_cartao, 0, "Nível de registro");
+  loglevel_dd = lv_dropdown_create(ajustes_cartao);
   lv_dropdown_set_options(loglevel_dd, fmt::format("{}", fmt::join(log_levels, "\n")).c_str());
-
-  auto df = conf->get_json("/default_printer");
-  json j_null;
-  v = !df.empty() ? conf->get_json(conf->df() + "log_level") : j_null;
-  if (!v.is_null()) {
-    auto it = std::find(log_levels.begin(), log_levels.end(), v.template get<std::string>());
-    if (it != std::end(log_levels)) {
-      loglevel = std::distance(log_levels.begin(), it);
+  {
+    auto df = conf->get_json("/default_printer");
+    json j_null;
+    auto v = !df.empty() ? conf->get_json(conf->df() + "log_level") : j_null;
+    if (!v.is_null()) {
+      auto it = std::find(log_levels.begin(), log_levels.end(), v.template get<std::string>());
+      if (it != std::end(log_levels)) {
+        loglevel = std::distance(log_levels.begin(), it);
+        lv_dropdown_set_selected(loglevel_dd, loglevel);
+      }
+    } else {
       lv_dropdown_set_selected(loglevel_dd, loglevel);
     }
-  } else {
-    lv_dropdown_set_selected(loglevel_dd, loglevel);
   }
-
+  ListaCfg::lista(loglevel_dd, 0);
   lv_obj_add_event_cb(loglevel_dd, &SysInfoPanel::_handle_callback,
     LV_EVENT_VALUE_CHANGED, this);
 
-  lv_obj_set_size(estop_toggle_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(estop_toggle_cont, 0, 0);
-
-  l = lv_label_create(estop_toggle_cont);
-  lv_label_set_text(l, "Confirmar parada\nde emergência");
-  lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
-  lv_obj_align(prompt_estop_toggle, LV_ALIGN_RIGHT_MID, 0, 0);
-
-  v = conf->get_json("/prompt_emergency_stop");
-  if (!v.is_null()) {
-    if (v.template get<bool>()) {
-      lv_obj_add_state(prompt_estop_toggle, LV_STATE_CHECKED);
-    } else {
-      lv_obj_clear_state(prompt_estop_toggle, LV_STATE_CHECKED);
+  // Temp. padrão (bico)
+  ListaCfg::rotulo(ajustes_cartao, 1, "Temp. padrão");
+  def_temp_dd = lv_dropdown_create(ajustes_cartao);
+  lv_dropdown_set_options(def_temp_dd, "180\n200\n220\n240\n260\n280\n300");
+  {
+    auto def_ext_temp = conf->get_json("/default_extruder_temp");
+    if (!def_ext_temp.is_null()) {
+      std::string val = std::to_string(def_ext_temp.template get<int>());
+      int32_t idx = lv_dropdown_get_option_index(def_temp_dd, val.c_str());
+      if (idx != -1) {
+        lv_dropdown_set_selected(def_temp_dd, idx);
+      }
     }
-  } else {
-    lv_obj_add_state(prompt_estop_toggle, LV_STATE_CHECKED);
   }
+  ListaCfg::lista(def_temp_dd, 1);
+  lv_obj_add_event_cb(def_temp_dd, &SysInfoPanel::_handle_callback, LV_EVENT_VALUE_CHANGED, this);
 
-  lv_obj_add_event_cb(prompt_estop_toggle, &SysInfoPanel::_handle_callback,
-    LV_EVENT_VALUE_CHANGED, this);
-
-  /* Z icon selection */
-  lv_obj_set_size(z_icon_toggle_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(z_icon_toggle_cont, 0, 0);
-
-  l = lv_label_create(z_icon_toggle_cont);
-  lv_label_set_text(l, "Inverter direção do Z");
-  lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
-  lv_obj_align(z_icon_toggle, LV_ALIGN_RIGHT_MID, 0, 0);
-
-  v = conf->get_json("/invert_z_direction");
-  if (!v.is_null()) {
-    if (v.template get<bool>()) {
-      lv_obj_add_state(z_icon_toggle, LV_STATE_CHECKED);
-    } else {
-      lv_obj_clear_state(z_icon_toggle, LV_STATE_CHECKED);
-    }
-  } else {
-    // Default is cleared
-    lv_obj_clear_state(z_icon_toggle, LV_STATE_CHECKED);
+  // Inverter direção do Z
+  ListaCfg::rotulo(ajustes_cartao, 2, "Inverter direção do Z");
+  z_icon_toggle = lv_switch_create(ajustes_cartao);
+  {
+    auto v = conf->get_json("/invert_z_direction");
+    set_switch(z_icon_toggle, !v.is_null() && v.template get<bool>());   // padrão: desligada
   }
-
+  ListaCfg::chave(z_icon_toggle, 2);
   lv_obj_add_event_cb(z_icon_toggle, &SysInfoPanel::_handle_callback,
     LV_EVENT_VALUE_CHANGED, this);
 
   /* Y direction (bed-slinger): the up-arrow/Y+ jog moves the bed, which on a
    * bed-slinger travels opposite to the toolhead frame, so the arrows can feel
    * reversed. This flips the homing-panel Y jog like Invert Z does for Z. */
-  lv_obj_set_size(y_icon_toggle_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(y_icon_toggle_cont, 0, 0);
-
-  l = lv_label_create(y_icon_toggle_cont);
-  lv_label_set_text(l, "Inverter direção do Y");
-  lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
-  lv_obj_align(y_icon_toggle, LV_ALIGN_RIGHT_MID, 0, 0);
-
-  v = conf->get_json("/invert_y_direction");
-  if (!v.is_null()) {
-    if (v.template get<bool>()) {
-      lv_obj_add_state(y_icon_toggle, LV_STATE_CHECKED);
-    } else {
-      lv_obj_clear_state(y_icon_toggle, LV_STATE_CHECKED);
-    }
-  } else {
-    // Default is cleared
-    lv_obj_clear_state(y_icon_toggle, LV_STATE_CHECKED);
+  ListaCfg::rotulo(ajustes_cartao, 3, "Inverter direção do Y");
+  y_icon_toggle = lv_switch_create(ajustes_cartao);
+  {
+    auto v = conf->get_json("/invert_y_direction");
+    set_switch(y_icon_toggle, !v.is_null() && v.template get<bool>());   // padrão: desligada
   }
-
+  ListaCfg::chave(y_icon_toggle, 3);
   lv_obj_add_event_cb(y_icon_toggle, &SysInfoPanel::_handle_callback,
     LV_EVENT_VALUE_CHANGED, this);
 
-  // theme dropdown
-  lv_obj_set_size(theme_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(theme_cont, 0, 0);
-  l = lv_label_create(theme_cont);
-  lv_label_set_text(l, "Tema");
-  lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
-  lv_obj_align(theme_dd, LV_ALIGN_RIGHT_MID, 0, 0);
-
-  // Nomes das cores mostrados na tela, na MESMA ORDEM do vetor `themes`.
-  // O valor gravado no guppyconfig.json e o nome do arquivo do tema continuam
-  // em inglês (themes[i]): a escolha é feita pela posição na lista.
-  lv_dropdown_set_options(theme_dd, "Azul\nVermelho\nVerde\nRoxo\nRosa\nAmarelo");
-
-  v = conf->get_json("/theme");
-  if (!v.is_null()) {
-    auto it = std::find(themes.begin(), themes.end(), v.template get<std::string>());
-    if (it != std::end(themes)) {
-      theme = std::distance(themes.begin(), it);
-      lv_dropdown_set_selected(theme_dd, theme);
-    }
-  } else {
-    lv_dropdown_set_selected(theme_dd, theme);
-  }
-  lv_obj_add_event_cb(theme_dd, &SysInfoPanel::_handle_callback,
-    LV_EVENT_VALUE_CHANGED, this);
-
-  // default extruder temp
-  lv_obj_set_size(def_temp_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(def_temp_cont, 0, 0);
-  l = lv_label_create(def_temp_cont);
-  lv_label_set_text(l, "Temp.\npadrão");
-  lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
-  lv_obj_align(def_temp_dd, LV_ALIGN_RIGHT_MID, 0, 0);
-  lv_dropdown_set_options(def_temp_dd, "180\n200\n220\n240\n260\n280\n300");
-  auto def_ext_temp = conf->get_json("/default_extruder_temp");
-  if (!def_ext_temp.is_null()) {
-    std::string val = std::to_string(def_ext_temp.template get<int>());
-    int32_t idx = lv_dropdown_get_option_index(def_temp_dd, val.c_str());
-    if (idx != -1) {
-      lv_dropdown_set_selected(def_temp_dd, idx);
-    }
-  }
-  lv_obj_add_event_cb(def_temp_dd, &SysInfoPanel::_handle_callback, LV_EVENT_VALUE_CHANGED, this);
-
-  // Touch Beep: opt-in audible click feedback on the hardware buzzer. Off by
-  // default; mirrors the stock Creality KE click sound.
-  lv_obj_set_size(touch_beep_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(touch_beep_cont, 0, 0);
-  l = lv_label_create(touch_beep_cont);
-  lv_label_set_text(l, "Som ao tocar");
-  lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
-  lv_obj_align(touch_beep_toggle, LV_ALIGN_RIGHT_MID, 0, 0);
-
-  v = conf->get_json("/touch_beep");
-  if (!v.is_null() && v.template get<bool>()) {
-    lv_obj_add_state(touch_beep_toggle, LV_STATE_CHECKED);
-  } else {
-    lv_obj_clear_state(touch_beep_toggle, LV_STATE_CHECKED);
-  }
-
-  lv_obj_add_event_cb(touch_beep_toggle, &SysInfoPanel::_handle_callback,
-    LV_EVENT_VALUE_CHANGED, this);
-
-  // Reset Options lives alone in the top-right corner, away from other controls.
-  lv_obj_add_flag(reset_options_btn.get_container(), LV_OBJ_FLAG_FLOATING);
-  lv_obj_align(reset_options_btn.get_container(), LV_ALIGN_TOP_RIGHT, 0, 0);
-
-  lv_obj_add_flag(back_btn.get_container(), LV_OBJ_FLAG_FLOATING);
-  lv_obj_align(back_btn.get_container(), LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-
-  // The network/version text is left-aligned and the Reset Options button is
-  // narrow and pinned to the right, so they don't overlap. Reserve only the
-  // button's width on the right so a very long interface line can't slide under
-  // it - full vertical height stays available so the version never clips.
-  lv_obj_update_layout(cont);
-  lv_obj_set_width(network_label,
-    lv_obj_get_width(right_cont)
-      - lv_obj_get_width(reset_options_btn.get_container()) - 4);
-  lv_label_set_long_mode(network_label, LV_LABEL_LONG_WRAP);
-
-  // The Theme/Def-Temp rows now share the right column with the network text.
-  // A long network list (e.g. many interfaces) can push these rows down into
-  // the Back button's band, so reserve clearance for the WIDER of the two
-  // floating corner buttons (Reset Options top-right, Back bottom-right) plus a
-  // comfortable margin, otherwise a right-aligned dropdown tucks under a button.
-  lv_coord_t corner_btn_w = std::max(
-      lv_obj_get_width(reset_options_btn.get_container()),
-      lv_obj_get_width(back_btn.get_container()));
-  lv_coord_t right_row_w = lv_obj_get_width(right_cont) - corner_btn_w - 12;
-  lv_obj_set_width(theme_cont, right_row_w);
-  lv_obj_set_width(def_temp_cont, right_row_w);
-  lv_obj_set_width(touch_beep_cont, right_row_w);
+  // Opções de redefinição (abre a janela)
+  reset_row = ListaCfg::linha_seta(ajustes_cartao, 4, "Opções de redefinição");
+  lv_obj_add_event_cb(reset_row, &SysInfoPanel::_handle_callback, LV_EVENT_CLICKED, this);
 }
 
 SysInfoPanel::~SysInfoPanel() {
-  if (cont != NULL) {
-    lv_obj_del(cont);
-    cont = NULL;
+  // ajustes_cartao é filho do conteúdo da aba Sistema (do SettingPanel), que
+  // apaga tudo junto; aqui só o que é deste painel.
+  if (reset_janela != NULL) {
+    lv_obj_del(reset_janela);
+    reset_janela = NULL;
+  }
+  if (tela_cont != NULL) {
+    lv_obj_del(tela_cont);
+    tela_cont = NULL;
   }
 }
 
 void SysInfoPanel::foreground() {
-  lv_obj_move_foreground(cont);
+  atualizar();
+  Navegacao::ir_para(Aba::TELA);
+}
 
-  auto ifaces = KUtils::get_interfaces();
-  std::vector<std::string> network_detail;
-  network_detail.push_back("Rede");
-  for (auto &iface : ifaces) {
-    auto ip = KUtils::interface_ip(iface);
-    network_detail.push_back(fmt::format("\t{}: {}", iface, ip));
-  }
-  lv_label_set_text(network_label, fmt::format("{}\n\nGuppyScreen\n\tVersão: " GS_VERSION,
-    fmt::join(network_detail, "\n")).c_str());
+void SysInfoPanel::atualizar() {
+  std::string ip = ListaCfg::ip_atual(true);
+  Marca::texto(wifi_label, ip.empty() ? "Wi-Fi desconectado" : "Wi-Fi conectado");
 }
 
 void SysInfoPanel::handle_callback(lv_event_t *e)
@@ -422,15 +481,14 @@ void SysInfoPanel::handle_callback(lv_event_t *e)
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     lv_obj_t *btn = lv_event_get_current_target(e);
 
-    if (btn == back_btn.get_container()) {
-      lv_obj_move_background(cont);
-    } else if (btn == reset_options_btn.get_container()) {
+    if (btn == reset_row) {
       show_reset_options();
     }
   } else if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
     lv_obj_t *obj = lv_event_get_target(e);
     Config *conf = Config::get_instance();
     if (obj == loglevel_dd) {
+      ListaCfg::alinhar_lista(loglevel_dd);
       auto idx = lv_dropdown_get_selected(loglevel_dd);
       if (idx != loglevel) {
         if (loglevel < log_levels.size()) {
@@ -444,11 +502,8 @@ void SysInfoPanel::handle_callback(lv_event_t *e)
           conf->save();
         }
       }
-    } else if (obj == prompt_estop_toggle) {
-      bool should_prompt = lv_obj_has_state(prompt_estop_toggle, LV_STATE_CHECKED);
-      conf->set<bool>("/prompt_emergency_stop", should_prompt);
-      conf->save();
     } else if (obj == display_sleep_dd) {
+      ListaCfg::alinhar_lista(display_sleep_dd);
       char buf[64];
       lv_dropdown_get_selected_str(display_sleep_dd, buf, sizeof(buf));
       std::string selected_label = buf;
@@ -476,23 +531,14 @@ void SysInfoPanel::handle_callback(lv_event_t *e)
       if (enabled) {
         TouchBeep::beep(); // immediate confirmation that it works
       }
-    } else if (obj == theme_dd) {
-      auto idx = lv_dropdown_get_selected(theme_dd);
-      if (idx != theme) {
-        theme = idx;
-        auto selected_theme = themes[theme];
-        conf->set<std::string>("/theme", selected_theme);
-        conf->save();
-        auto theme_config = fs::canonical(conf->get_path()).parent_path() / "themes" / (selected_theme + ".json");
-        ThemeConfig::get_instance()->init(theme_config);
-        GuppyScreen::refresh_theme();
-      }
     } else if (obj == def_temp_dd) {
+      ListaCfg::alinhar_lista(def_temp_dd);
       char buf[64];
       lv_dropdown_get_selected_str(def_temp_dd, buf, sizeof(buf));
       conf->set<int>("/default_extruder_temp", std::stoi(buf));
       conf->save();
-    } else if (obj == brightness_dd) {
+    } else if (brightness_dd != NULL && obj == brightness_dd) {
+      ListaCfg::alinhar_lista(brightness_dd);
       // Resolve preset → absolute brightness, apply, and persist.
       auto idx = lv_dropdown_get_selected(brightness_dd);
       if (idx < std::size(brightness_options)) {
@@ -507,81 +553,75 @@ void SysInfoPanel::handle_callback(lv_event_t *e)
   }
 }
 
+// Janela "Opções de redefinição": tela inteira em lv_layer_top(), lisa e
+// opaca, criada uma vez só e depois só mostrada/escondida.
 void SysInfoPanel::show_reset_options() {
-  lv_obj_t *overlay = lv_obj_create(lv_scr_act());
-  lv_obj_set_size(overlay, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_style_bg_color(overlay, lv_color_black(), 0);
-  lv_obj_set_style_bg_opa(overlay, LV_OPA_50, 0);
-  lv_obj_clear_flag(overlay, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_border_width(overlay, 0, 0);
-  lv_obj_set_style_pad_all(overlay, 0, 0);
+  if (reset_janela != NULL) {
+    lv_obj_clear_flag(reset_janela, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(reset_janela);
+    return;
+  }
 
-  lv_obj_t *box = lv_obj_create(overlay);
-  KUtils::style_dialog_box(box);
-  lv_obj_set_size(box, LV_PCT(92), LV_SIZE_CONTENT);
-  lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(box, 8, 0);
-  lv_obj_set_style_pad_all(box, 10, 0);
-  lv_obj_center(box);
+  reset_janela = lv_obj_create(lv_layer_top());
+  KUtils::style_dialog_overlay(reset_janela);
+  lv_obj_set_pos(reset_janela, 0, 0);
+  lv_obj_set_size(reset_janela, Marca::TELA_L, Marca::TELA_A);
+  lv_obj_add_flag(reset_janela, LV_OBJ_FLAG_CLICKABLE);   // bloqueia o que está atrás
 
-  lv_obj_t *title = lv_label_create(box);
-  KUtils::style_dialog_title(title);
-  lv_label_set_text(title, "Opções de redefinição");
-  lv_obj_set_width(title, LV_PCT(100));
+  lv_obj_t *title = Marca::criar_rotulo(reset_janela, "Opções de redefinição", Marca::f20(), Marca::PAPEL);
+  lv_obj_set_pos(title, 16, 11);
+  lv_obj_set_width(title, 340);
+  lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
 
-  auto make_opt_btn = [&](const char *lbl_text, const char *desc_text) -> lv_obj_t * {
-    lv_obj_t *btn = lv_btn_create(box);
-    lv_obj_set_size(btn, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(btn, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
-    lv_obj_set_style_pad_all(btn, 8, 0);
-    lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_row(btn, 3, 0);
+  lv_obj_t *close_btn = Marca::criar_botao(reset_janela, "Fechar", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(close_btn, 368, 4);
+  lv_obj_set_size(close_btn, 104, Marca::TOQUE);
+  lv_obj_add_event_cb(close_btn, [](lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+      auto *self = (SysInfoPanel *)lv_event_get_user_data(e);
+      lv_obj_add_flag(self->reset_janela, LV_OBJ_FLAG_HIDDEN);
+    }
+  }, LV_EVENT_CLICKED, this);
 
-    lv_obj_t *lbl = lv_label_create(btn);
-    lv_label_set_text(lbl, lbl_text);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
-    lv_obj_set_width(lbl, LV_PCT(100));
+  // cada opção: botão 464 x 66 com título f14 e explicação f12 GRAFITE
+  auto make_opt_btn = [&](lv_coord_t y, const char *lbl_text, const char *desc_text,
+                          Marca::Tipo tipo) -> lv_obj_t * {
+    lv_obj_t *btn = lv_btn_create(reset_janela);
+    lv_obj_set_style_pad_all(btn, 0, 0);
+    lv_obj_set_pos(btn, 8, y);
+    lv_obj_set_size(btn, 464, 66);
 
-    lv_obj_t *desc = lv_label_create(btn);
-    lv_label_set_text(desc, desc_text);
-    lv_obj_set_style_text_font(desc, &lv_font_montserrat_10, 0);
-    lv_obj_set_width(desc, LV_PCT(100));
+    lv_obj_t *lbl = Marca::criar_rotulo(btn, lbl_text, Marca::f14(), Marca::PAPEL);
+    lv_obj_set_pos(lbl, 12, 9);
+    lv_obj_set_width(lbl, 440);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
+
+    lv_obj_t *desc = Marca::criar_rotulo(btn, desc_text, Marca::f12(), Marca::GRAFITE);
+    lv_obj_set_pos(desc, 12, 29);
+    lv_obj_set_width(desc, 440);
     lv_label_set_long_mode(desc, LV_LABEL_LONG_WRAP);
 
+    Marca::estilo_botao(btn, tipo);
     return btn;
   };
 
-  lv_obj_t *btn1 = make_opt_btn(
+  lv_obj_t *btn1 = make_opt_btn(52,
     "Redefinir as configurações da tela",
-    "Apaga as configurações da tela e a disposição dos sensores.\nA tela reinicia com os valores padrão."
+    "Apaga as configurações da tela e a disposição dos sensores.\nA tela reinicia com os valores padrão.",
+    Marca::Tipo::NORMAL
   );
 
-  lv_obj_t *btn2 = make_opt_btn(
+  lv_obj_t *btn2 = make_opt_btn(124,
     "Restaurar a impressora de fábrica",
-    "Apaga o OpenKE, a configuração do Klipper, os arquivos de impressão\ne as calibrações. Reinicia com o firmware original da Creality."
+    "Apaga o OpenKE, a configuração do Klipper, os arquivos de impressão\ne as calibrações. Reinicia com o firmware original da Creality.",
+    Marca::Tipo::CONTORNO_PERIGO
   );
 
-  lv_obj_t *btn3 = make_opt_btn(
+  lv_obj_t *btn3 = make_opt_btn(196,
     "Refazer a calibração do toque",
-    "Apaga os valores salvos da calibração do toque.\nA tela reinicia e pede para calibrar de novo."
+    "Apaga os valores salvos da calibração do toque.\nA tela reinicia e pede para calibrar de novo.",
+    Marca::Tipo::NORMAL
   );
-
-  lv_obj_t *close_btn = lv_btn_create(box);
-  lv_obj_set_size(close_btn, LV_PCT(50), LV_SIZE_CONTENT);
-  lv_obj_set_style_bg_color(close_btn, lv_palette_darken(LV_PALETTE_GREY, 1), 0);
-  lv_obj_t *close_lbl = lv_label_create(close_btn);
-  lv_label_set_text(close_lbl, "Fechar");
-  lv_obj_center(close_lbl);
-
-  lv_obj_add_event_cb(close_btn, [](lv_event_t *e) {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-      // close_btn -> box -> overlay
-      lv_obj_del_async(lv_obj_get_parent(lv_obj_get_parent(lv_event_get_current_target(e))));
-    }
-  }, LV_EVENT_CLICKED, NULL);
 
   lv_obj_add_event_cb(btn1, [](lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -633,28 +673,26 @@ void SysInfoPanel::show_reset_confirm(const char *title, const char *detail,
   lv_obj_t *mbox = lv_msgbox_create(NULL, NULL,
     fmt::format("{}\n\n{}", title, detail).c_str(), btns, false);
   KUtils::style_dialog_msgbox(mbox);
+  lv_obj_set_style_pad_all(mbox, 16, 0);
 
   lv_obj_t *msg = ((lv_msgbox_t *)mbox)->text;
   lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_width(msg, LV_PCT(100));
   lv_obj_center(msg);
 
+  // sem LV_BTNMATRIX_CTRL_CHECKED (seria limão); "Confirmar" em vermelho
   lv_obj_t *btnm = lv_msgbox_get_btns(mbox);
-  lv_btnmatrix_set_btn_ctrl(btnm, 0, LV_BTNMATRIX_CTRL_CHECKED);
-  lv_btnmatrix_set_btn_ctrl(btnm, 1, LV_BTNMATRIX_CTRL_CHECKED);
   lv_obj_add_flag(btnm, LV_OBJ_FLAG_FLOATING);
   lv_obj_align(btnm, LV_ALIGN_BOTTOM_MID, 0, 0);
-
-  auto hscale = (double)lv_disp_get_physical_ver_res(NULL) / 480.0;
-  lv_obj_set_size(btnm, LV_PCT(90), 50 * hscale);
-  lv_obj_set_size(mbox, LV_PCT(75), LV_PCT(55));
+  lv_obj_set_size(btnm, LV_PCT(100), Marca::TOQUE);
+  lv_obj_set_size(mbox, 432, 248);
 
   lv_obj_add_event_cb(btnm, [](lv_event_t *e) {
     lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
     if (dsc->part == LV_PART_ITEMS && dsc->id == 1) {
-      dsc->rect_dsc->bg_color = lv_color_hex(0xC62828);
+      dsc->rect_dsc->bg_color = lv_color_hex(Marca::ERRO);
       dsc->rect_dsc->bg_opa   = LV_OPA_COVER;
-      dsc->label_dsc->color   = lv_color_white();
+      dsc->label_dsc->color   = lv_color_hex(Marca::PAPEL);
     }
   }, LV_EVENT_DRAW_PART_BEGIN, NULL);
 

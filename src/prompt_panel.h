@@ -24,8 +24,14 @@ class PromptPanel : public NotifyConsumer {
 
     private:
         static void on_button_click(lv_event_t *e);
+        // Libera o texto do comando guardado no botão quando o botão é apagado
+        // (prompt_end limpa as fileiras com lv_obj_clean).
+        static void on_button_delete(lv_event_t *e);
 
         KWebSocketClient &ws;
+        // Janela em lv_layer_top(): o acompanhamento automático e a navegação
+        // nunca a escondem. Cobre a área de conteúdo (56,0 424x272) e deixa a
+        // coluna da esquerda (com o botão de parada) à vista.
         lv_obj_t *prompt_cont;
         lv_obj_t *header;
         lv_obj_t *body_cont;

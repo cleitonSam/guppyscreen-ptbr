@@ -1,30 +1,42 @@
 #include "print_status_panel.h"
 #include "finetune_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "state.h"
 #include "utils.h"
 #include "spdlog/spdlog.h"
 
+#include <algorithm>
+#include <cmath>
 
-LV_IMG_DECLARE(extruder);
-LV_IMG_DECLARE(speed_up_img);
-LV_IMG_DECLARE(extrude);
-LV_IMG_DECLARE(clock_img);
-LV_IMG_DECLARE(hourglass);
-LV_IMG_DECLARE(bed);
-LV_IMG_DECLARE(home_z);
-LV_IMG_DECLARE(fan);
-LV_IMG_DECLARE(heater);
-LV_IMG_DECLARE(layers_img);
+// Acompanhamento (Proposta B, quadros 04 e 05). Coordenadas da subtela
+// (424 x 272): x = x_da_maquete - 56, y igual.
 
-LV_IMG_DECLARE(fine_tune_img);
-LV_IMG_DECLARE(delete_img);
-LV_IMG_DECLARE(pause_img);
-LV_IMG_DECLARE(resume);
-LV_IMG_DECLARE(cancel);
-LV_IMG_DECLARE(emergency);
-LV_IMG_DECLARE(back);
+namespace {
+  // Nome mostrado: sem o ".gcode" do fim (o caminho guardado não muda).
+  std::string nome_sem_gcode(const std::string &fname) {
+    const std::string ext = ".gcode";
+    if (fname.size() > ext.size()
+        && fname.compare(fname.size() - ext.size(), ext.size(), ext) == 0) {
+      return fname.substr(0, fname.size() - ext.size());
+    }
+    return fname;
+  }
 
-double pi() { return std::atan(1)*4; }
+  // Rótulo com largura fixa, uma linha só, "..." no fim se não couber.
+  lv_obj_t *rotulo_fixo(lv_obj_t *pai, const char *txt, const lv_font_t *f, uint32_t cor,
+                        lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_text_align_t alinhamento) {
+    lv_obj_t *l = Marca::criar_rotulo(pai, txt, f, cor);
+    lv_obj_set_pos(l, x, y);
+    lv_obj_set_width(l, w);
+    // sempre uma linha só: com a altura solta, o LVGL 8.3 deixa a caixa
+    // crescer com o texto inteiro antes de pôr os "..."
+    lv_obj_set_height(l, lv_font_get_line_height(f));
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(l, alinhamento, 0);
+    return l;
+  }
+}
 
 PrintStatusPanel::PrintStatusPanel(KWebSocketClient &websocket_client,
 				   std::mutex &lock,
@@ -34,171 +46,116 @@ PrintStatusPanel::PrintStatusPanel(KWebSocketClient &websocket_client,
   , finetune_panel(websocket_client, lock)
   , zoffset_panel(websocket_client, lock)
   , exclude_object_panel(websocket_client, lock)
-  , mini_print_status(mini_parent, &PrintStatusPanel::_handle_callback, this)
   , status_cont(lv_obj_create(lv_scr_act()))
-  , buttons_cont(lv_obj_create(status_cont))
-  , finetune_btn(buttons_cont, &fine_tune_img, "Ajuste fino", &PrintStatusPanel::_handle_callback, this)
-  , objects_btn(buttons_cont, &delete_img, "Objetos", &PrintStatusPanel::_handle_callback, this)
-  , pause_btn(buttons_cont, &pause_img, "Pausar", &PrintStatusPanel::_handle_callback, this)
-  , resume_btn(buttons_cont, &resume, "Retomar", &PrintStatusPanel::_handle_callback, this)
-  , cancel_btn(buttons_cont, &cancel, "Cancelar", &PrintStatusPanel::_handle_callback, this)
-  , emergency_btn(buttons_cont, &emergency, "Parar tudo", &PrintStatusPanel::_handle_callback, this,
-		  "Fazer parada de emergência?",
-		  [&websocket_client]() {
-		    spdlog::debug("emergency stop pressed");
-		    websocket_client.send_jsonrpc("printer.emergency_stop");
-		  })
-  , back_btn(buttons_cont, &back, "Voltar", &PrintStatusPanel::_handle_callback, this)
-  , thumbnail_cont(lv_obj_create(status_cont))
-  , filename_label(lv_label_create(thumbnail_cont))
-  , thumbnail(lv_img_create(thumbnail_cont))
-  , pbar_cont(lv_obj_create(thumbnail_cont))
-  , progress_bar(lv_bar_create(pbar_cont))
-  , progress_label(lv_label_create(pbar_cont))
-  , detail_cont(lv_obj_create(status_cont))
-  , extruder_temp(detail_cont, &extruder, 100, "20")
-  , bed_temp(detail_cont, &bed, 100, "21")
-  , chamber_temp(detail_cont, &heater, 100, "22")
-  , print_speed(detail_cont, &speed_up_img, 100, "0 mm/s")
-  , z_offset(detail_cont, &home_z, 100, "0.0 mm")
-  , flow_rate(detail_cont, &extrude, 100, "0.0 mm³/s")
-  , layers(detail_cont, &layers_img, 100, "...")
-  , fan0(detail_cont, &fan, 100, "0%")
-  , elapsed(detail_cont, &clock_img, 100, "0s")
-  , time_left(detail_cont, &hourglass, 100, "...")
+  , complete_cont(lv_obj_create(lv_scr_act()))
   , estimated_time_s(0)
-  , filament_diameter(1.75) // XXX: check config
   , extruder_target(-1)
   , heater_bed_target(-1)
-  , chamber_target(-1)
 {
-  lv_obj_move_background(status_cont);
-  lv_obj_clear_flag(status_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(status_cont, LV_PCT(100), LV_PCT(100));
+  (void)mini_parent;  // a sobreposição pequena do Início saiu
 
-  static lv_coord_t grid_main_row_dsc_detail[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
-    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t grid_main_col_dsc_detail[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  lv_obj_set_grid_dsc_array(detail_cont, grid_main_col_dsc_detail, grid_main_row_dsc_detail);
+  // ---- acompanhamento: subtela registrada (pad 0, PRETO, 424 x 272) ----
+  Navegacao::subtela(status_cont);
+  Navegacao::registrar_acompanhamento(status_cont);
 
-  lv_obj_clear_flag(detail_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(detail_cont, 0, 0);
+  // miniatura: cartão 128 x 128 em (8,8); sem miniatura, ícone de arquivo
+  thumb_card = Marca::criar_cartao(status_cont, 8, 8, 128, 128);
+  sem_thumb = Marca::criar_rotulo(thumb_card, LV_SYMBOL_FILE, Marca::f20(), Marca::GRAFITE);
+  lv_obj_center(sem_thumb);
+  thumbnail = lv_img_create(thumb_card);
+  lv_obj_clear_flag(thumbnail, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(thumbnail, LV_OBJ_FLAG_HIDDEN);
 
-  //detail containter row 1
-  lv_obj_set_grid_cell(extruder_temp.get_container(), LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
-  lv_obj_set_grid_cell(bed_temp.get_container(), LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
+  // chip de estado em (148,8) 112 x 24
+  chip = Marca::criar_chip(status_cont);
+  lv_obj_set_pos(chip, 148, 8);
+  lv_obj_set_width(chip, 112);
+  Marca::chip_estado(chip, Marca::Estado::IMPRIMINDO, "Imprimindo");
 
-  //detail containter row 2
-  lv_obj_set_grid_cell(chamber_temp.get_container(), LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-  lv_obj_set_grid_cell(print_speed.get_container(), LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+  camada_label = rotulo_fixo(status_cont, "", Marca::f12(), Marca::GRAFITE,
+                             276, 11, 140, LV_TEXT_ALIGN_RIGHT);
+  lv_label_set_recolor(camada_label, true);   // número em PAPEL, como na maquete
+  filename_label = rotulo_fixo(status_cont, "", Marca::f14(), Marca::PAPEL,
+                               148, 38, 268, LV_TEXT_ALIGN_LEFT);
 
-  //detail containter row 3
-  lv_obj_set_grid_cell(z_offset.get_container(), LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 2, 1);
-  lv_obj_set_grid_cell(flow_rate.get_container(), LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 2, 1);
-  // tap the Z-offset metric to open the baby-stepping aid during a print
-  lv_obj_add_flag(z_offset.get_container(), LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(z_offset.get_container(), &PrintStatusPanel::_handle_callback,
-    LV_EVENT_CLICKED, this);
+  // porcentagem: f40 (sem acento: só dígitos e %), caixa 120 x 44
+  progress_label = rotulo_fixo(status_cont, "0%", Marca::f40(), Marca::PAPEL,
+                               148, 52, 120, LV_TEXT_ALIGN_LEFT);
+  lv_obj_set_height(progress_label, 44);
 
-  //detail containter row 4
-  lv_obj_set_grid_cell(layers.get_container(), LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 3, 1);
-  lv_obj_set_grid_cell(elapsed.get_container(), LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 3, 1);
+  falta_titulo = rotulo_fixo(status_cont, "Falta", Marca::f12(), Marca::GRAFITE,
+                             276, 60, 140, LV_TEXT_ALIGN_RIGHT);
+  falta_label = rotulo_fixo(status_cont, "--", Marca::f20(), Marca::PAPEL,
+                            256, 75, 160, LV_TEXT_ALIGN_RIGHT);
 
-  //detail containter row 5
-  lv_obj_set_grid_cell(fan0.get_container(), LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 4, 1);
-  lv_obj_set_grid_cell(time_left.get_container(), LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 4, 1);
-  // lv_obj_set_grid_cell(fan2.get_container(), LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_START, 4, 1);
-
-  static lv_coord_t grid_main_row_dsc[] = {LV_GRID_FR(1), LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t grid_main_col_dsc[] = {LV_GRID_FR(4), LV_GRID_FR(5), LV_GRID_TEMPLATE_LAST};
-
-  lv_obj_set_grid_dsc_array(status_cont, grid_main_col_dsc, grid_main_row_dsc);
-
-  lv_obj_set_size(buttons_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_clear_flag(buttons_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(buttons_cont, 0, 0);
-  lv_obj_set_flex_flow(buttons_cont, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(buttons_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-  lv_obj_set_flex_grow(finetune_btn.get_container(), 1);
-  lv_obj_set_flex_grow(objects_btn.get_container(), 1);
-  lv_obj_set_flex_grow(pause_btn.get_container(), 1);
-  lv_obj_set_flex_grow(resume_btn.get_container(), 1);
-  lv_obj_set_flex_grow(cancel_btn.get_container(), 1);
-  lv_obj_set_flex_grow(emergency_btn.get_container(), 1);
-  lv_obj_set_flex_grow(back_btn.get_container(), 1);
-
-  // Hidden until a print with labelled objects is active (see consume()).
-  lv_obj_add_flag(objects_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
-
-  lv_obj_set_style_pad_all(pbar_cont, 0, 0);
-  lv_obj_set_size(pbar_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_clear_flag(pbar_cont, LV_OBJ_FLAG_SCROLLABLE);
-
-  auto hscale = (double)lv_disp_get_physical_ver_res(NULL) / 480.0;
-
-  lv_obj_set_size(progress_bar, LV_PCT(100), 20 * hscale);
+  // barra 268 x 8 (trilho PRETO_3, indicador LIMAO pelo tema), sem animação
+  progress_bar = lv_bar_create(status_cont);
+  lv_obj_set_pos(progress_bar, 148, 104);
+  lv_obj_set_size(progress_bar, 268, 8);
+  lv_bar_set_range(progress_bar, 0, 100);
   lv_bar_set_value(progress_bar, 0, LV_ANIM_OFF);
+  lv_obj_clear_flag(progress_bar, LV_OBJ_FLAG_CLICKABLE);
 
-  lv_label_set_text(progress_label, "0%");
-  lv_obj_center(progress_label);
+  decorrido_label = rotulo_fixo(status_cont, "", Marca::f12(), Marca::GRAFITE,
+                                148, 120, 140, LV_TEXT_ALIGN_LEFT);
+  lv_label_set_recolor(decorrido_label, true);
+  total_label = rotulo_fixo(status_cont, "", Marca::f12(), Marca::GRAFITE,
+                            276, 120, 140, LV_TEXT_ALIGN_RIGHT);
 
-  lv_obj_set_flex_flow(thumbnail_cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(thumbnail_cont, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_size(thumbnail_cont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(thumbnail_cont, 0, 0);
-  lv_obj_clear_flag(thumbnail_cont, LV_OBJ_FLAG_SCROLLABLE);
+  // 4 cartões 96 x 56 em y = 144
+  bico       = criar_cartao_info(8,   "Bico", "--");
+  mesa       = criar_cartao_info(112, "Mesa", "--");
+  velocidade = criar_cartao_info(216, "Velocidade", "100%");
+  ventoinha  = criar_cartao_info(320, "Ventoinha", "--");
 
-  // Filename label: between thumbnail and progress bar. lv_label_create defaults
-  // to no width, so set a percent width + DOT long-mode so a 60-char gcode name
-  // truncates instead of overflowing the column. Move to index 1 (after
-  // thumbnail, before pbar_cont) so the column reads top-to-bottom:
-  // thumbnail / filename / progress bar.
-  lv_obj_set_width(filename_label, LV_PCT(100));
-  lv_label_set_long_mode(filename_label, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_align(filename_label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(filename_label, "");
-  lv_obj_move_to_index(filename_label, 1);
+  // faixa de baixo: altura 52 em y = 212
+  pause_btn = Marca::criar_botao(status_cont, LV_SYMBOL_PAUSE " Pausar", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(pause_btn, 8, 212);
+  lv_obj_set_size(pause_btn, 130, 52);
+  lv_obj_add_event_cb(pause_btn, &PrintStatusPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
-  // row 1
-  lv_obj_set_grid_cell(thumbnail_cont, LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
-  lv_obj_set_grid_cell(detail_cont, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
+  resume_btn = Marca::criar_botao(status_cont, LV_SYMBOL_PLAY " Retomar", Marca::Tipo::DESTAQUE);
+  lv_obj_set_pos(resume_btn, 8, 212);
+  lv_obj_set_size(resume_btn, 130, 52);
+  lv_obj_add_event_cb(resume_btn, &PrintStatusPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  lv_obj_add_flag(resume_btn, LV_OBJ_FLAG_HIDDEN);
 
-  //row 2
-  lv_obj_set_grid_cell(buttons_cont, LV_GRID_ALIGN_STRETCH, 0, 2, LV_GRID_ALIGN_STRETCH, 1, 1);
+  finetune_btn = Marca::criar_botao(status_cont, LV_SYMBOL_EDIT " Ajuste fino", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(finetune_btn, 147, 212);
+  lv_obj_set_size(finetune_btn, 131, 52);
+  lv_obj_add_event_cb(finetune_btn, &PrintStatusPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
-  // ---- completion overlay (own full-screen layer, shown by show_completion) ----
-  complete_cont = lv_obj_create(lv_scr_act());
-  lv_obj_move_background(complete_cont);
-  lv_obj_set_size(complete_cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_clear_flag(complete_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_flex_flow(complete_cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(complete_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(complete_cont, 12, 0);
+  cancel_btn = Marca::criar_botao(status_cont, LV_SYMBOL_CLOSE " Cancelar", Marca::Tipo::CONTORNO_PERIGO);
+  lv_obj_set_pos(cancel_btn, 287, 212);
+  lv_obj_set_size(cancel_btn, 129, 52);
+  lv_obj_add_event_cb(cancel_btn, &PrintStatusPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
-  complete_title = lv_label_create(complete_cont);
-  lv_obj_set_style_text_font(complete_title, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_align(complete_title, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(complete_title, "");
+  // "Objetos" mora agora no cabeçalho do Ajuste fino
+  finetune_panel.set_objetos_cb([this]() { exclude_object_panel.foreground(); });
 
-  complete_file = lv_label_create(complete_cont);
-  lv_obj_set_width(complete_file, LV_PCT(80));
-  lv_label_set_long_mode(complete_file, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_align(complete_file, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(complete_file, &lv_font_montserrat_16, 0);
-  lv_label_set_text(complete_file, "");
+  // ---- tela de concluída: subtela própria, sem cabeçalho ----
+  Navegacao::subtela(complete_cont);
 
-  complete_stats = lv_label_create(complete_cont);
-  lv_obj_set_style_text_align(complete_stats, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_color(complete_stats, lv_palette_lighten(LV_PALETTE_GREY, 2), 0);
-  lv_label_set_text(complete_stats, "");
+  complete_selo = Marca::criar_selo(complete_cont, 56, Marca::OK, Marca::PAPEL, LV_SYMBOL_OK);
+  lv_obj_set_pos(complete_selo, 184, 40);
 
-  complete_done_btn = lv_btn_create(complete_cont);
-  lv_obj_set_size(complete_done_btn, 160, 48);
-  lv_obj_t *done_lbl = lv_label_create(complete_done_btn);
-  lv_label_set_text(done_lbl, "OK");
-  lv_obj_center(done_lbl);
+  complete_title = rotulo_fixo(complete_cont, "Impressão concluída", Marca::f20(), Marca::PAPEL,
+                               0, 108, Marca::CONT_L, LV_TEXT_ALIGN_CENTER);
+  complete_file = rotulo_fixo(complete_cont, "", Marca::f14(), Marca::PAPEL,
+                              12, 138, 400, LV_TEXT_ALIGN_CENTER);
+  complete_stats = rotulo_fixo(complete_cont, "", Marca::f12(), Marca::GRAFITE,
+                               0, 160, Marca::CONT_L, LV_TEXT_ALIGN_CENTER);
+
+  complete_done_btn = Marca::criar_botao(complete_cont, "OK", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(complete_done_btn, 8, 212);
+  lv_obj_set_size(complete_done_btn, 130, Marca::TOQUE);
   lv_obj_add_event_cb(complete_done_btn, &PrintStatusPanel::_handle_callback, LV_EVENT_CLICKED, this);
+
+  complete_again_btn = Marca::criar_botao(complete_cont, LV_SYMBOL_PLAY " Imprimir de novo",
+                                          Marca::Tipo::DESTAQUE);
+  lv_obj_set_pos(complete_again_btn, 146, 212);
+  lv_obj_set_size(complete_again_btn, 270, Marca::TOQUE);
+  lv_obj_add_event_cb(complete_again_btn, &PrintStatusPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
   ws.register_notify_update(this);
 }
@@ -208,80 +165,102 @@ PrintStatusPanel::~PrintStatusPanel() {
     lv_obj_del(status_cont);
     status_cont = NULL;
   }
+  if (complete_cont != NULL) {
+    lv_obj_del(complete_cont);
+    complete_cont = NULL;
+  }
 
   ws.unregister_notify_update(this);
 }
 
+PrintStatusPanel::Cartao PrintStatusPanel::criar_cartao_info(lv_coord_t x, const char *nome,
+                                                             const char *valor) {
+  Cartao c;
+  c.cont = Marca::criar_cartao(status_cont, x, 144, 96, 56);
+  Marca::cartao_tocavel(c.cont);
+  lv_obj_add_event_cb(c.cont, &PrintStatusPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  rotulo_fixo(c.cont, nome, Marca::f12(), Marca::GRAFITE, 10, 8, 76, LV_TEXT_ALIGN_LEFT);
+  c.valor = rotulo_fixo(c.cont, valor, Marca::f16(), Marca::PAPEL, 10, 27, 76, LV_TEXT_ALIGN_LEFT);
+  return c;
+}
+
 void PrintStatusPanel::foreground() {
-  // populate();
-  lv_obj_move_foreground(status_cont);
+  Navegacao::abrir_acompanhamento();
 }
 
 void PrintStatusPanel::background() {
-  lv_obj_move_background(status_cont);
+  Navegacao::fechar(status_cont);
 }
 
 void PrintStatusPanel::show_completion(const std::string &state) {
   State *s = State::get_instance();
   bool ok = (state == "complete");
 
-  lv_label_set_text(complete_title, ok ? LV_SYMBOL_OK "  Impressão concluída"
-                                       : LV_SYMBOL_CLOSE "  Impressão cancelada");
-  lv_obj_set_style_text_color(complete_title,
-    ok ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
+  lv_obj_set_style_bg_color(complete_selo, lv_color_hex(ok ? Marca::OK : Marca::ERRO), 0);
+  lv_obj_t *selo_txt = lv_obj_get_child(complete_selo, 0);
+  if (selo_txt != NULL) {
+    Marca::texto(selo_txt, ok ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE);
+  }
+  Marca::texto(complete_title, ok ? "Impressão concluída" : "Impressão cancelada");
 
   auto fn = s->get_data("/printer_state/print_stats/filename"_json_pointer);
-  lv_label_set_text(complete_file, fn.is_string() ? fn.template get<std::string>().c_str() : "");
+  complete_arquivo = fn.is_string() ? fn.template get<std::string>() : arquivo_atual;
+  Marca::texto(complete_file, nome_sem_gcode(complete_arquivo).c_str());
 
   std::string stats;
   auto dur = s->get_data("/printer_state/print_stats/print_duration"_json_pointer);
   if (dur.is_number()) {
-    int t = (int)dur.template get<double>();
-    int h = t / 3600, m = (t % 3600) / 60, sec = t % 60;
-    stats = h > 0 ? fmt::format("Tempo  {}h {:02d}min", h, m)
-                  : fmt::format("Tempo  {}min {:02d}s", m, sec);
+    stats = "Tempo " + KUtils::tempo_curto((int64_t)dur.template get<double>());
   }
   auto fil = s->get_data("/printer_state/print_stats/filament_used"_json_pointer);
   if (fil.is_number()) {
-    stats += fmt::format("     Filamento  {:.2f} m", fil.template get<double>() / 1000.0);
+    if (!stats.empty()) stats += " · ";
+    stats += fmt::format("Filamento {:.1f} m", fil.template get<double>() / 1000.0);
   }
-  lv_label_set_text(complete_stats, stats.c_str());
+  Marca::texto(complete_stats, stats.c_str());
 
-  lv_obj_move_background(status_cont);
-  lv_obj_clear_flag(complete_cont, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_move_foreground(complete_cont);
+  if (complete_arquivo.empty()) {
+    lv_obj_add_flag(complete_again_btn, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_clear_flag(complete_again_btn, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  // por cima do que estiver na tela; NÃO acende a tela (sem lv_disp_trig_activity)
+  Navegacao::fechar(status_cont);
+  Navegacao::abrir(complete_cont);
 }
 
 void PrintStatusPanel::reset() {
-  lv_obj_move_background(complete_cont);  // a new print clears any completion summary
   lv_bar_set_value(progress_bar, 0, LV_ANIM_OFF);
-  lv_label_set_text(progress_label, "0%");
-  print_speed.update_label("0 mm/s");
-  flow_rate.update_label("0.0 mm³/s");
-  elapsed.update_label("0s");
-  time_left.update_label("...");
+  Marca::texto(progress_label, "0%");
+  Marca::texto(falta_label, "--");
+  Marca::texto(decorrido_label, "");
+  Marca::texto(total_label, "");
+  Marca::texto(camada_label, "");
+  Marca::texto(filename_label, "");
   estimated_time_s = 0;
   current_progress = 0.0;
   current_filament_used = 0.0;
-  lv_label_set_text(filename_label, "");
-
-  auto v = State::get_instance()
-    ->get_data("/printer_state/configfile/config/extruder/filament_diameter"_json_pointer);
-  filament_diameter = v.is_null() ? 1.750 : std::stod(v.template get<std::string>());
+  pct_atual = -1;
+  camada_atual = 0;
+  camadas_total = 0;
+  current_file = json();
+  arquivo_atual.clear();
   extruder_target = -1;
   heater_bed_target = -1;
 
-  // free src
-  lv_img_set_src(thumbnail, NULL);
-  // hack to color in empty space.
-  ((lv_img_t*)thumbnail)->src_type = LV_IMG_SRC_SYMBOL;
+  // impressão nova: os botões voltam a responder
+  lv_obj_clear_state(pause_btn, LV_STATE_DISABLED);
+  lv_obj_clear_state(resume_btn, LV_STATE_DISABLED);
 
-  mini_print_status.reset();
+  // solta a imagem anterior e mostra o ícone até a nova chegar
+  lv_img_set_src(thumbnail, NULL);
+  lv_obj_add_flag(thumbnail, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(sem_thumb, LV_OBJ_FLAG_HIDDEN);
 }
 
 void PrintStatusPanel::init(json &fans) {
   fan_speeds.clear();
-  std::vector<std::string> values;
   for (auto &f : fans.items()) {
     std::string fan_name = f.key();
 
@@ -290,7 +269,6 @@ void PrintStatusPanel::init(json &fans) {
     if (!fan_value.is_null()) {
       int v = static_cast<int>(fan_value.template get<double>() * 100);
       fan_speeds.insert({fan_name, v});
-      values.push_back(fmt::format("{}%", v));
     }
 
     fan_value = State::get_instance()
@@ -298,134 +276,181 @@ void PrintStatusPanel::init(json &fans) {
     if (!fan_value.is_null()) {
       int v = static_cast<int>(fan_value.template get<double>() * 100);
       fan_speeds.insert({fan_name, v});
-      values.push_back(fmt::format("{}%", v));
     }
   }
-
-  fan0.update_label(fmt::format("{}", fmt::join(values, ", ")).c_str());
+  atualizar_ventoinha();
 
   reset();
   populate();
+
+  // Ao ligar a tela (ou reconectar) no meio de uma impressão, ela já mostra o
+  // acompanhamento, como a de fábrica.
   json pstat_state = State::get_instance()
     ->get_data("/printer_state/print_stats/state"_json_pointer);
-  if (!pstat_state.is_null()) {
-    auto pstatus = pstat_state.template get<std::string>();
-    // Overlay rides over Homing/Extrude, so show it only while actively
-    // printing; when paused swap it for the small chip; when idle hide both.
-    if (pstatus == "paused") {
-      mini_print_status.hide();
-      mini_print_status.show_chip();
-    } else if (pstatus != "printing") {
-      mini_print_status.hide();
-      mini_print_status.hide_chip();
-    } else {
-      mini_print_status.hide_chip();
-    }
-    mini_print_status.update_status(pstatus);
+  last_print_state = pstat_state.is_string() ? pstat_state.template get<std::string>() : "";
+  if (last_print_state == "printing" || last_print_state == "paused") {
+    Navegacao::abrir_acompanhamento();
   } else {
-    mini_print_status.show();
+    Navegacao::fechar(status_cont);
   }
-
 }
 
 void PrintStatusPanel::populate() {
   State* s = State::get_instance();
   json printfile = s->get_data("/printer_state/print_stats/filename"_json_pointer);
-  if (!printfile.is_null()) {
+  if (printfile.is_string()) {
     const std::string fname = printfile.template get<std::string>();
     if (fname.length() > 0) {
-      lv_label_set_text(filename_label, fname.c_str());
+      arquivo_atual = fname;
+      Marca::texto(filename_label, nome_sem_gcode(fname).c_str());
       json fname_input = {{"filename", fname }};
       ws.send_jsonrpc("server.files.metadata", fname_input,
 		      [fname, this](json &d) { this->handle_metadata(fname, d); });
-
-      mini_print_status.show();
     }
   }
 
   auto pstate = s->get_data("/printer_state/print_stats/state"_json_pointer);
-  if (!pstate.is_null() && pstate.template get<std::string>() == "paused") {
-    lv_obj_clear_flag(resume_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(pause_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_add_flag(resume_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(pause_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
-  }
+  mostrar_estado(pstate.is_string() ? pstate.template get<std::string>() : "");
 
   // progress percentage
   auto v = s->get_data("/printer_state/virtual_sdcard/progress"_json_pointer);
-  if (!v.is_null()) {
+  if (v.is_number()) {
     current_progress = v.template get<double>();
-    int new_value = static_cast<int>(current_progress * 100);
-    lv_bar_set_value(progress_bar, new_value, LV_ANIM_ON);
-    lv_label_set_text(progress_label, fmt::format("{}%", new_value).c_str());
-    mini_print_status.update_progress(new_value);
+    atualizar_progresso(static_cast<int>(current_progress * 100));
   }
 
-  v = s->get_data(
-      "/printer_state/gcode_move/homing_origin/2"_json_pointer);
-  if (!v.is_null()) {
-    z_offset.update_label(fmt::format("{:.5} mm", v.template get<double>()).c_str());
+  auto fil_used = s->get_data("/printer_state/print_stats/filament_used"_json_pointer);
+  if (fil_used.is_number()) {
+    current_filament_used = fil_used.template get<double>();
   }
 
-  auto v_target = s->get_data("/printer_state/extruder/target"_json_pointer);
-  if (!v_target.is_null()) extruder_target = v_target.template get<int>();
+  ler_cartoes_do_estado();
 
-  v_target = s->get_data("/printer_state/heater_bed/target"_json_pointer);
-  if (!v_target.is_null()) heater_bed_target = v_target.template get<int>();
-
-  std::string chamber_id = "temperature_sensor chamber_temp";
-  json display_sensors = s->get_display_sensors();
-  for (auto& item : display_sensors.items()) {
-    if (item.value().contains("display_name") && item.value()["display_name"] == "Chamber") {
-      chamber_id = item.key();
-      break;
-    }
+  auto pd = s->get_data("/printer_state/print_stats/print_duration"_json_pointer);
+  if (pd.is_number()) {
+    update_time_progress(static_cast<uint32_t>(pd.template get<double>()));
   }
-  v_target = s->get_data(json::json_pointer(fmt::format("/printer_state/{}/target", chamber_id)));
-  if (!v_target.is_null()) chamber_target = v_target.template get<int>();
+
+  json info = s->get_data("/printer_state/print_stats/info"_json_pointer);
+  update_layers(info);
+}
+
+void PrintStatusPanel::ler_cartoes_do_estado() {
+  State *s = State::get_instance();
+
+  auto v = s->get_data("/printer_state/extruder/target"_json_pointer);
+  if (v.is_number()) extruder_target = v.template get<int>();
+
+  v = s->get_data("/printer_state/heater_bed/target"_json_pointer);
+  if (v.is_number()) heater_bed_target = v.template get<int>();
+
+  v = s->get_data("/printer_state/extruder/temperature"_json_pointer);
+  if (v.is_number()) {
+    Marca::texto(bico.valor, fmt::format("{}°C", v.template get<int>()).c_str());
+  }
+
+  v = s->get_data("/printer_state/heater_bed/temperature"_json_pointer);
+  if (v.is_number()) {
+    Marca::texto(mesa.valor, fmt::format("{}°C", v.template get<int>()).c_str());
+  }
+
+  v = s->get_data("/printer_state/gcode_move/speed_factor"_json_pointer);
+  if (v.is_number()) {
+    Marca::texto(velocidade.valor, fmt::format("{}%",
+      static_cast<int>(std::lround(v.template get<double>() * 100))).c_str());
+  }
+}
+
+void PrintStatusPanel::mostrar_estado(const std::string &st) {
+  if (st == "paused") {
+    Marca::chip_estado(chip, Marca::Estado::PAUSADA, "Pausada");
+    lv_obj_set_width(chip, 92);    // maquete: 92 px no "Pausada", 112 no "Imprimindo"
+    lv_obj_add_flag(pause_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(resume_btn, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    Marca::chip_estado(chip, Marca::Estado::IMPRIMINDO, "Imprimindo");
+    lv_obj_set_width(chip, 112);
+    lv_obj_add_flag(resume_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(pause_btn, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void PrintStatusPanel::atualizar_progresso(int pct) {
+  pct = std::max(0, std::min(100, pct));
+  if (pct == pct_atual) {
+    return;
+  }
+  pct_atual = pct;
+  lv_bar_set_value(progress_bar, pct, LV_ANIM_OFF);
+  Marca::texto(progress_label, fmt::format("{}%", pct).c_str());
+  atualizar_resumo();
+}
+
+void PrintStatusPanel::atualizar_resumo() {
+  std::string r = fmt::format("{}%", pct_atual < 0 ? 0 : pct_atual);
+  if (camadas_total > 0) {
+    r += fmt::format(" · camada {}/{}", camada_atual, camadas_total);
+  }
+  finetune_panel.set_resumo(r);
+}
+
+void PrintStatusPanel::atualizar_ventoinha() {
+  if (fan_speeds.empty()) {
+    Marca::texto(ventoinha.valor, "--");
+  } else {
+    Marca::texto(ventoinha.valor, fmt::format("{}%", fan_speeds.begin()->second).c_str());
+  }
 }
 
 void PrintStatusPanel::handle_metadata(const std::string &gcode_file, json &j) {
-  auto eta = j["/result/estimated_time"_json_pointer];
-  if (!eta.is_null()) {
-    estimated_time_s = static_cast<uint32_t>(eta.template get<float>());
-    spdlog::trace("updated eta {}", estimated_time_s);
+  // Roda na thread do websocket: a miniatura (download, se preciso) é buscada
+  // fora do lv_lock; o resto, com o lock preso.
+  std::pair<std::string, std::pair<size_t, size_t>> thumb_detail;
+  try {
+    thumb_detail = KUtils::get_thumbnail(gcode_file, j, 120);
+  } catch (const std::exception &e) {
+    spdlog::warn("miniatura de {} ilegível: {}", gcode_file, e.what());
+  }
 
-    json v = State::get_instance()->get_data("/printer_state/print_stats/print_duration"_json_pointer);
-    if (!v.is_null()) {
-      uint32_t passed = static_cast<uint32_t>(v.template get<float>());
-      spdlog::trace("updated time progress in handle metadata, passed {}", passed);
-
-      std::lock_guard<std::mutex> lock(lv_lock);
-      update_time_progress(passed);
-    }
+  std::lock_guard<std::mutex> lock(lv_lock);
+  if (gcode_file != arquivo_atual) {
+    return;  // chegou atrasado: já é outra impressão
   }
 
   current_file = j["/result"_json_pointer];
 
-  auto thumb_detail = KUtils::get_thumbnail(gcode_file, j);
+  auto eta = j["/result/estimated_time"_json_pointer];
+  if (eta.is_number()) {
+    estimated_time_s = static_cast<uint32_t>(eta.template get<float>());
+    spdlog::trace("updated eta {}", estimated_time_s);
+
+    json v = State::get_instance()->get_data("/printer_state/print_stats/print_duration"_json_pointer);
+    if (v.is_number()) {
+      uint32_t passed = static_cast<uint32_t>(v.template get<float>());
+      update_time_progress(passed);
+    }
+  }
+
+  json info = State::get_instance()->get_data("/printer_state/print_stats/info"_json_pointer);
+  update_layers(info);
+
   std::string fullpath = thumb_detail.first;
-  if (fullpath.length() > 0) {
+  size_t thumb_w = thumb_detail.second.first;
+  size_t thumb_h = thumb_detail.second.second;
+  if (fullpath.length() > 0 && thumb_w > 0 && thumb_h > 0) {
     spdlog::trace("thumb path: {}", fullpath);
-    std::lock_guard<std::mutex> lock(lv_lock);
     const std::string img_path = "A:" + fullpath;
-
     lv_img_set_src(thumbnail, img_path.c_str());
-    auto thumb_w = thumb_detail.second.first;
-    auto thumb_h = thumb_detail.second.second;
 
-    auto available_w = lv_obj_get_width(thumbnail_cont);
-    auto available_h = lv_obj_get_height(thumbnail_cont) - lv_obj_get_height(pbar_cont) - lv_obj_get_style_pad_row(thumbnail_cont, LV_PART_MAIN);
-
-    double scale_x = (double)available_w / (double)thumb_w;
-    double scale_y = (double)available_h / (double)thumb_h;
-    double scale = std::min(scale_x, scale_y);
-
-    uint32_t lv_zoom = static_cast<uint32_t>(scale * 256.0);
-    lv_img_set_pivot(thumbnail, thumb_w / 2, thumb_h);
-    lv_img_set_zoom(thumbnail, lv_zoom);
-    mini_print_status.update_img(img_path, thumb_detail.second.first);
+    // cabe em 120 x 120 no meio do cartão de 128
+    size_t maior = std::max(thumb_w, thumb_h);
+    uint32_t zoom = static_cast<uint32_t>(120 * 256 / maior);
+    zoom = std::max<uint32_t>(1, std::min<uint32_t>(zoom, 512));
+    lv_img_set_pivot(thumbnail, (lv_coord_t)(thumb_w / 2), (lv_coord_t)(thumb_h / 2));
+    lv_img_set_zoom(thumbnail, (uint16_t)zoom);
+    lv_obj_center(thumbnail);
+    lv_obj_clear_flag(thumbnail, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(sem_thumb, LV_OBJ_FLAG_HIDDEN);
   }
 }
 
@@ -433,296 +458,235 @@ void PrintStatusPanel::handle_metadata(const std::string &gcode_file, json &j) {
 void PrintStatusPanel::consume(json &j) {
   std::lock_guard<std::mutex> lock(lv_lock);
 
-  // Only surface the Exclude Objects button when the active print actually has
-  // labelled objects - otherwise it just crowds the button row.
-  auto objs = State::get_instance()->get_data("/printer_state/exclude_object/objects"_json_pointer);
-  if (objs.is_array() && !objs.empty()) {
-    lv_obj_clear_flag(objects_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_add_flag(objects_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
-  }
-
+  // Arquivo novo: busca metadados e miniatura (sem trazer a tela para a
+  // frente aqui; quem abre é a passagem para "printing", logo abaixo).
+  bool recarregado = false;
   auto printfile = j["/params/0/print_stats/filename"_json_pointer];
-  if (!printfile.is_null()) {
-    // filename change indicates a start of a print
+  if (printfile.is_string() && !printfile.template get<std::string>().empty()) {
     reset();
     populate();
-    foreground(); // auto move to front when print is detected
+    recarregado = true;
   }
 
-  auto& pstate = j["/params/0/print_stats/state"_json_pointer];
-  if (!pstate.is_null()) {
-    auto print_status = pstate.template get<std::string>();
-    if (print_status != "printing" && print_status != "paused") {
-      mini_print_status.hide();
-      mini_print_status.hide_chip();
-      // Print just ended (#94). Show a completion summary (result + stats +
-      // Done) instead of dismissing - otherwise the user is left with no
-      // confirmation. Other terminal states (e.g. standby) just dismiss.
-      if (last_print_state == "printing" || last_print_state == "paused") {
-        if (print_status == "complete" || print_status == "cancelled") {
-          show_completion(print_status);
-        } else {
-          lv_obj_move_background(status_cont);
+  auto &pstate = j["/params/0/print_stats/state"_json_pointer];
+  if (pstate.is_string()) {
+    std::string st = pstate.template get<std::string>();
+    bool ativo     = st == "printing" || st == "paused";
+    bool era_ativo = last_print_state == "printing" || last_print_state == "paused";
+    if (st == "printing" && !era_ativo) {
+      // começou (de qualquer origem: tela, Orca, Mainsail; também reimprimir
+      // o mesmo arquivo, quando o nome não muda)
+      if (!recarregado) {
+        reset();
+        populate();
+      }
+      Navegacao::abrir_acompanhamento();   // fecha subtelas, Início, acompanhamento na frente, acende a tela
+    } else if (!ativo && era_ativo) {
+      // terminou
+      if (st == "complete") {
+        show_completion(st);               // concluída por cima; NÃO acende a tela
+      } else {                             // cancelled, error, standby...
+        Navegacao::fechar(status_cont);
+        if (Navegacao::pagina_atual() == Pagina::INICIO) {
+          Navegacao::ir_para(Pagina::INICIO);
         }
       }
-    } else if (print_status == "paused") {
-      // Swap the big overlay for a small "Paused" chip so the Homing/Extrude
-      // buttons it sat over are revealed and tappable (purge/load filament,
-      // jog) while a tap still returns to the full status panel. Don't dismiss
-      // the full status panel - the job isn't over.
-      mini_print_status.hide();
-      mini_print_status.show_chip();
-    } else {
-      // actively printing: make sure any leftover completion summary is gone
-      // (covers a new print started externally, including a same-file reprint)
-      lv_obj_move_background(complete_cont);
-      mini_print_status.show();
-      mini_print_status.hide_chip();
     }
-
-    mini_print_status.update_status(print_status);
-    last_print_state = print_status;
-  }
-
-  // Keep the on-screen filename label in sync with mid-print rename / new file
-  // events. The state-update notify also surfaces these.
-  if (!printfile.is_null()) {
-    lv_label_set_text(filename_label, printfile.template get<std::string>().c_str());
+    // pausada <-> imprimindo: só troca o chip e Pausar/Retomar
+    if (ativo) {
+      mostrar_estado(st);
+    }
+    last_print_state = st;
   }
 
   // Track virtual_sdcard progress and filament usage so update_time_progress
   // can average the file-, filament- and slicer-based ETAs like Mainsail (#126).
   auto progress = j["/params/0/virtual_sdcard/progress"_json_pointer];
-  if (!progress.is_null()) {
+  if (progress.is_number()) {
     current_progress = progress.template get<double>();
   }
 
   auto fil_used = j["/params/0/print_stats/filament_used"_json_pointer];
-  if (!fil_used.is_null()) {
+  if (fil_used.is_number()) {
     current_filament_used = fil_used.template get<double>();
   }
 
   auto v = j["/params/0/extruder/target"_json_pointer];
-  if (!v.is_null()) {
+  if (v.is_number()) {
     extruder_target = v.template get<int>();
   }
 
   v = j["/params/0/heater_bed/target"_json_pointer];
-  if (!v.is_null()) {
+  if (v.is_number()) {
     heater_bed_target = v.template get<int>();
   }
 
   v = j["/params/0/extruder/temperature"_json_pointer];
-  if (!v.is_null()) {
-    if (extruder_target > 0) {
-      extruder_temp.update_label(fmt::format("{} / {}", v.template get<int>(), extruder_target).c_str());
-    } else {
-      extruder_temp.update_label(fmt::format("{}", v.template get<int>()).c_str());
-    }
+  if (v.is_number()) {
+    Marca::texto(bico.valor, fmt::format("{}°C", v.template get<int>()).c_str());
   }
 
   v = j["/params/0/heater_bed/temperature"_json_pointer];
-  if (!v.is_null()) {
-    if (heater_bed_target > 0) {
-      bed_temp.update_label(fmt::format("{} / {}", v.template get<int>(), heater_bed_target).c_str());
-    } else {
-      bed_temp.update_label(fmt::format("{}", v.template get<int>()).c_str());
-    }
+  if (v.is_number()) {
+    Marca::texto(mesa.valor, fmt::format("{}°C", v.template get<int>()).c_str());
   }
 
-  bool chamber_temp_found = false;
-  int parsed_chamber_temp = 0;
-
-  std::string chamber_id = "temperature_sensor chamber_temp";
-  json display_sensors = State::get_instance()->get_display_sensors();
-  for (auto& item : display_sensors.items()) {
-    if (item.value().contains("display_name") && item.value()["display_name"] == "Chamber") {
-      chamber_id = item.key();
-      break;
-    }
+  v = j["/params/0/gcode_move/speed_factor"_json_pointer];
+  if (v.is_number()) {
+    Marca::texto(velocidade.valor, fmt::format("{}%",
+      static_cast<int>(std::lround(v.template get<double>() * 100))).c_str());
   }
 
-  // Use the exact configured chamber_id, which handles both target and temperature
-  auto target_ptr = json::json_pointer(fmt::format("/params/0/{}/target", chamber_id));
-  if (j.contains(target_ptr)) {
-    chamber_target = j[target_ptr].template get<int>();
-  }
-
-  auto temp_ptr = json::json_pointer(fmt::format("/params/0/{}/temperature", chamber_id));
-  if (j.contains(temp_ptr)) {
-    parsed_chamber_temp = j[temp_ptr].template get<int>();
-    chamber_temp_found = true;
-  }
-
-  if (chamber_temp_found) {
-    if (chamber_target > 0) {
-      chamber_temp.update_label(fmt::format("{} / {}", parsed_chamber_temp, chamber_target).c_str());
-    } else {
-      chamber_temp.update_label(fmt::format("{}", parsed_chamber_temp).c_str());
-    }
-  }
-  // speed
-  auto speed = j["/params/0/motion_report/live_velocity"_json_pointer];
-  if (!speed.is_null()) {
-    int s = static_cast<int>(speed.template get<double>());
-    print_speed.update_label((std::to_string(s) + " mm/s").c_str());
-  }
-
-  // zoffset
-  v = j["/params/0/gcode_move/homing_origin/2"_json_pointer];
-  if (!v.is_null()) {
-    z_offset.update_label(fmt::format("{:.5} mm", v.template get<double>()).c_str());
-  }
-
-  std::vector<std::string> values;
+  bool mudou_ventoinha = false;
   for (auto &f : fan_speeds) {
-    std::string fan_name = f.first;
+    const std::string &fan_name = f.first;
 
-    int fv = f.second;
     auto fan_value = j[json::json_pointer(fmt::format("/params/0/{}/value", fan_name))];
-    if (!fan_value.is_null()) {
-      fv = static_cast<int>(fan_value.template get<double>() * 100);
-      f.second = fv;
+    if (fan_value.is_number()) {
+      f.second = static_cast<int>(fan_value.template get<double>() * 100);
+      mudou_ventoinha = true;
     }
 
     fan_value = j[json::json_pointer(fmt::format("/params/0/{}/speed", fan_name))];
-    if (!fan_value.is_null()) {
-      fv = static_cast<int>(fan_value.template get<double>() * 100);
-      f.second = fv;
+    if (fan_value.is_number()) {
+      f.second = static_cast<int>(fan_value.template get<double>() * 100);
+      mudou_ventoinha = true;
     }
-    values.push_back(fmt::format("{}%", fv));
+  }
+  if (mudou_ventoinha) {
+    atualizar_ventoinha();
   }
 
-  fan0.update_label(fmt::format("{}", fmt::join(values, ", ")).c_str());
-
-  // progress
+  // tempo
   v = j["/params/0/print_stats/print_duration"_json_pointer];
-  if (!v.is_null()) {
+  if (v.is_number()) {
     uint32_t passed = static_cast<uint32_t>(v.template get<float>());
     update_time_progress(passed);
   }
 
-  // progress percentage
-  v = j["/params/0/virtual_sdcard/progress"_json_pointer];
-  if (!v.is_null()) {
-    int new_value = static_cast<int>(v.template get<double>() * 100);
-    lv_bar_set_value(progress_bar, new_value, LV_ANIM_ON);
-    lv_label_set_text(progress_label, fmt::format("{}%", new_value).c_str());
-    mini_print_status.update_progress(new_value);
-  }
-
-  v = j["/params/0/motion_report/live_extruder_velocity"_json_pointer];
-  if (!v.is_null()) {
-    double flow = pi() / 4 * std::pow(filament_diameter, 2) * v.template get<double>();
-    flow_rate.update_label(fmt::format("{:.1f} mm³/s", flow > 0.0 ? flow : 0.0).c_str());
+  // porcentagem
+  if (progress.is_number()) {
+    atualizar_progresso(static_cast<int>(progress.template get<double>() * 100));
   }
 
   v = j["/params/0/pause_resume/is_paused"_json_pointer];
-  if (!v.is_null()) {
+  if (v.is_boolean()) {
     bool is_paused = v.template get<bool>();
     if (is_paused) {
-      resume_btn.enable();
-      lv_obj_clear_flag(resume_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
-
-      pause_btn.disable();
-      lv_obj_add_flag(pause_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
-
+      lv_obj_clear_state(resume_btn, LV_STATE_DISABLED);
+      lv_obj_clear_flag(resume_btn, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_add_state(pause_btn, LV_STATE_DISABLED);
+      lv_obj_add_flag(pause_btn, LV_OBJ_FLAG_HIDDEN);
     } else {
-      pause_btn.enable();
-      lv_obj_clear_flag(pause_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
-
-      resume_btn.disable();
-      lv_obj_add_flag(resume_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
+      lv_obj_clear_state(pause_btn, LV_STATE_DISABLED);
+      lv_obj_clear_flag(pause_btn, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_add_state(resume_btn, LV_STATE_DISABLED);
+      lv_obj_add_flag(resume_btn, LV_OBJ_FLAG_HIDDEN);
     }
   }
 
-  // layers
+  // camadas
   v = j["/params/0/print_stats/info"_json_pointer];
   update_layers(v);
 }
 
 void PrintStatusPanel::handle_callback(lv_event_t *event) {
-  lv_obj_t *btn = lv_event_get_current_target(event);
-  if (btn == back_btn.get_container()) {
-    lv_obj_move_background(status_cont);
-
-  } else if (btn == complete_done_btn) {
-    lv_obj_move_background(complete_cont);
-
-  } else if (btn == z_offset.get_container()) {
-    zoffset_panel.foreground();
-
-  } else if (btn == emergency_btn.get_container()) {
-    ws.send_jsonrpc("printer.emergency_stop");
-  } else if (btn == pause_btn.get_container()) {
-    ws.send_jsonrpc("printer.print.pause");
-    pause_btn.disable();
-
-  } else if (btn == resume_btn.get_container()) {
-    ws.send_jsonrpc("printer.print.resume");
-    resume_btn.disable();
-  } else if (btn == cancel_btn.get_container()) {
-    auto s = State::get_instance();
-    auto etarget_j = s->get_data("/printer_state/extruder/target"_json_pointer);
-    auto etemp_j   = s->get_data("/printer_state/extruder/temperature"_json_pointer);
-    auto btarget_j = s->get_data("/printer_state/heater_bed/target"_json_pointer);
-    auto btemp_j   = s->get_data("/printer_state/heater_bed/temperature"_json_pointer);
-    auto pdur_j    = s->get_data("/printer_state/print_stats/print_duration"_json_pointer);
-    double etarget = etarget_j.is_number() ? etarget_j.template get<double>() : 0.0;
-    double etemp   = etemp_j.is_number()   ? etemp_j.template get<double>()   : 0.0;
-    double btarget = btarget_j.is_number() ? btarget_j.template get<double>() : 0.0;
-    double btemp   = btemp_j.is_number()   ? btemp_j.template get<double>()   : 0.0;
-    double pdur    = pdur_j.is_number()    ? pdur_j.template get<double>()    : 1.0;
-    bool e_heating  = etarget > 0 && etemp < etarget - 2.0;
-    bool b_heating  = btarget > 0 && btemp < btarget - 2.0;
-    bool in_startup = pdur < 0.1;
-
-    std::string delay;
-    if (e_heating && b_heating)
-      delay = fmt::format("\n\nBico {:.0f}/{:.0f}°C + mesa {:.0f}/{:.0f}°C\n"
-                          "O cancelamento fica na fila até o aquecimento terminar.", etemp, etarget, btemp, btarget);
-    else if (e_heating)
-      delay = fmt::format("\n\nAquecendo o bico: {:.0f}/{:.0f}°C\n"
-                          "O cancelamento fica na fila até o aquecimento terminar.", etemp, etarget);
-    else if (b_heating)
-      delay = fmt::format("\n\nAquecendo a mesa: {:.0f}/{:.0f}°C\n"
-                          "O cancelamento fica na fila até o aquecimento terminar.", btemp, btarget);
-    else if (in_startup)
-      delay = "\n\nA impressão está começando.\n"
-              "O cancelamento fica na fila até essa etapa terminar.";
-
-    static const char *cancel_dlg_btns[] = {"Cancelar impressão", "Voltar", ""};
-    std::string cancel_msg = fmt::format("Cancelar a impressão?{}", delay);
-    lv_obj_t *mbox = lv_msgbox_create(NULL, NULL, cancel_msg.c_str(), cancel_dlg_btns, false);
-    lv_obj_add_event_cb(mbox, [](lv_event_t *ev) {
-      lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(ev));
-      auto *self = static_cast<PrintStatusPanel *>(lv_event_get_user_data(ev));
-      if (lv_msgbox_get_active_btn(obj) == 0) {
-        spdlog::debug("cancel print confirmed");
-        self->ws.send_jsonrpc("printer.print.cancel");
-      }
-      lv_msgbox_close(obj);
-    }, LV_EVENT_VALUE_CHANGED, this);
-    KUtils::style_lock_mbox(mbox, 90);
-    lv_obj_align(((lv_msgbox_t *)mbox)->text, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t *btnm = lv_msgbox_get_btns(mbox);
-    lv_obj_add_event_cb(btnm, [](lv_event_t *e) {
-      lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
-      if (dsc->part == LV_PART_ITEMS && dsc->id == 0) {
-        dsc->rect_dsc->bg_color = lv_color_hex(0xC62828);
-        dsc->rect_dsc->bg_opa   = LV_OPA_COVER;
-        dsc->label_dsc->color   = lv_color_white();
-      }
-    }, LV_EVENT_DRAW_PART_BEGIN, NULL);
-  } else if (btn == finetune_btn.get_container()) {
-    finetune_panel.foreground();
-  } else if (btn == objects_btn.get_container()) {
-    exclude_object_panel.foreground();
-  } else if (btn == mini_print_status.get_container()
-             || btn == mini_print_status.get_chip()) {
-    foreground();
+  if (lv_event_get_code(event) != LV_EVENT_CLICKED) {
+    return;
   }
+  lv_obj_t *btn = lv_event_get_current_target(event);
+
+  if (btn == complete_done_btn) {
+    Navegacao::fechar(complete_cont);
+    Navegacao::ir_para(Pagina::INICIO);
+
+  } else if (btn == complete_again_btn) {
+    // Não imprime direto: abre os Detalhes do arquivo, e lá o dono toca Imprimir.
+    Navegacao::fechar(complete_cont);
+    if (!Navegacao::executar("abrir_arquivo", complete_arquivo)) {
+      Navegacao::ir_para(Pagina::ARQUIVOS);
+    }
+
+  } else if (btn == pause_btn) {
+    ws.send_jsonrpc("printer.print.pause");
+    lv_obj_add_state(pause_btn, LV_STATE_DISABLED);
+
+  } else if (btn == resume_btn) {
+    ws.send_jsonrpc("printer.print.resume");
+    lv_obj_add_state(resume_btn, LV_STATE_DISABLED);
+
+  } else if (btn == cancel_btn) {
+    confirmar_cancelar();
+
+  } else if (btn == finetune_btn) {
+    finetune_panel.foreground();
+
+  } else if (btn == bico.cont || btn == mesa.cont) {
+    Navegacao::ir_para(Aba::TEMPERATURA);
+
+  } else if (btn == velocidade.cont || btn == ventoinha.cont) {
+    finetune_panel.foreground();
+  }
+}
+
+void PrintStatusPanel::confirmar_cancelar() {
+  auto s = State::get_instance();
+  auto etarget_j = s->get_data("/printer_state/extruder/target"_json_pointer);
+  auto etemp_j   = s->get_data("/printer_state/extruder/temperature"_json_pointer);
+  auto btarget_j = s->get_data("/printer_state/heater_bed/target"_json_pointer);
+  auto btemp_j   = s->get_data("/printer_state/heater_bed/temperature"_json_pointer);
+  auto pdur_j    = s->get_data("/printer_state/print_stats/print_duration"_json_pointer);
+  double etarget = etarget_j.is_number() ? etarget_j.template get<double>() : 0.0;
+  double etemp   = etemp_j.is_number()   ? etemp_j.template get<double>()   : 0.0;
+  double btarget = btarget_j.is_number() ? btarget_j.template get<double>() : 0.0;
+  double btemp   = btemp_j.is_number()   ? btemp_j.template get<double>()   : 0.0;
+  double pdur    = pdur_j.is_number()    ? pdur_j.template get<double>()    : 1.0;
+  bool e_heating  = etarget > 0 && etemp < etarget - 2.0;
+  bool b_heating  = btarget > 0 && btemp < btarget - 2.0;
+  bool in_startup = pdur < 0.1;
+
+  std::string delay;
+  if (e_heating && b_heating)
+    delay = fmt::format("\n\nBico {:.0f}/{:.0f}°C + mesa {:.0f}/{:.0f}°C\n"
+                        "O cancelamento fica na fila até o aquecimento terminar.", etemp, etarget, btemp, btarget);
+  else if (e_heating)
+    delay = fmt::format("\n\nAquecendo o bico: {:.0f}/{:.0f}°C\n"
+                        "O cancelamento fica na fila até o aquecimento terminar.", etemp, etarget);
+  else if (b_heating)
+    delay = fmt::format("\n\nAquecendo a mesa: {:.0f}/{:.0f}°C\n"
+                        "O cancelamento fica na fila até o aquecimento terminar.", btemp, btarget);
+  else if (in_startup)
+    delay = "\n\nA impressão está começando.\n"
+            "O cancelamento fica na fila até essa etapa terminar.";
+
+  static const char *cancel_dlg_btns[] = {"Cancelar impressão", "Voltar", ""};
+  std::string cancel_msg = fmt::format("Cancelar a impressão?{}", delay);
+  lv_obj_t *mbox = lv_msgbox_create(NULL, NULL, cancel_msg.c_str(), cancel_dlg_btns, false);
+  lv_obj_add_event_cb(mbox, [](lv_event_t *ev) {
+    lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(ev));
+    auto *self = static_cast<PrintStatusPanel *>(lv_event_get_user_data(ev));
+    if (lv_msgbox_get_active_btn(obj) == 0) {
+      spdlog::debug("cancel print confirmed");
+      self->ws.send_jsonrpc("printer.print.cancel");
+    }
+    lv_msgbox_close(obj);
+  }, LV_EVENT_VALUE_CHANGED, this);
+  KUtils::style_lock_mbox(mbox, 90);
+  if (!delay.empty()) {
+    // o texto de espera tem 4 ou 5 linhas: caixa maior para não cortar
+    lv_obj_set_size(mbox, 400, 216);
+    lv_obj_center(mbox);
+  }
+  lv_obj_align(((lv_msgbox_t *)mbox)->text, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_t *btnm = lv_msgbox_get_btns(mbox);
+  lv_obj_add_event_cb(btnm, [](lv_event_t *e) {
+    lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
+    if (dsc->part == LV_PART_ITEMS && dsc->id == 0) {
+      dsc->rect_dsc->bg_color = lv_color_hex(Marca::ERRO);
+      dsc->rect_dsc->bg_opa   = LV_OPA_COVER;
+      dsc->label_dsc->color   = lv_color_hex(Marca::PAPEL);
+    }
+  }, LV_EVENT_DRAW_PART_BEGIN, NULL);
 }
 
 void PrintStatusPanel::update_time_progress(uint32_t time_passed) {
@@ -742,9 +706,9 @@ void PrintStatusPanel::update_time_progress(uint32_t time_passed) {
 
     // filament: extrapolate elapsed time over the consumed/total filament ratio.
     double filament_total = 0.0;
-    if (!current_file.is_null()) {
+    if (current_file.is_object()) {
       auto ft = current_file["/filament_total"_json_pointer];
-      if (!ft.is_null()) filament_total = ft.template get<double>();
+      if (ft.is_number()) filament_total = ft.template get<double>();
     }
     if (current_filament_used > 0.0 && filament_total > current_filament_used
         && time_passed > 0) {
@@ -761,37 +725,52 @@ void PrintStatusPanel::update_time_progress(uint32_t time_passed) {
 
     if (count > 0) {
       int64_t eta_secs = static_cast<int64_t>(total / count);
-      time_left.update_label(KUtils::eta_string(eta_secs).c_str());
-      mini_print_status.update_eta(eta_secs);
+      Marca::texto(falta_label, KUtils::tempo_curto(eta_secs).c_str());
+      Marca::texto(total_label,
+        ("Total: " + KUtils::tempo_curto((int64_t)time_passed + eta_secs)).c_str());
     } else {
-      time_left.update_label("...");
+      Marca::texto(falta_label, "--");
+      Marca::texto(total_label, "");
     }
 
-    elapsed.update_label(KUtils::eta_string(time_passed).c_str());
+    Marca::texto(decorrido_label, ("Decorrido #f5f4f0 " + KUtils::tempo_curto(time_passed) + "#").c_str());
 }
 
 void PrintStatusPanel::update_layers(json &info) {
-  layers.update_label(fmt::format("{} / {}", current_layer(info), max_layer(info)).c_str());
+  int atual = current_layer(info);
+  int total = max_layer(info);
+  if (atual == camada_atual && total == camadas_total) {
+    return;
+  }
+  camada_atual = atual;
+  camadas_total = total;
+  if (total > 0) {
+    Marca::texto(camada_label, fmt::format("Camada #f5f4f0 {}/{}#", atual, total).c_str());
+  } else {
+    Marca::texto(camada_label, "");
+  }
+  atualizar_resumo();
 }
 
 int PrintStatusPanel::max_layer(json &info) {
-  if (!info.is_null()) {
+  if (info.is_object()) {
     auto v = info["/total_layer"_json_pointer];
-    if (!v.is_null()) {
+    if (v.is_number()) {
       return v.template get<int>();
     }
   }
 
-  if (!current_file.is_null()) {
+  if (current_file.is_object()) {
     auto v = current_file["/layer_count"_json_pointer];
-    if (!v.is_null()) {
+    if (v.is_number()) {
       return v.template get<int>();
     } else {
       auto first_layer_height = current_file["/first_layer_height"_json_pointer];
       auto layer_height = current_file["/layer_height"_json_pointer];
       auto object_height = current_file["/object_height"_json_pointer];
 
-      if (!first_layer_height.is_null() && !layer_height.is_null() && !object_height.is_null()) {
+      if (first_layer_height.is_number() && layer_height.is_number() && object_height.is_number()
+          && layer_height.template get<double>() > 0.0) {
         auto layer = static_cast<int>(std::ceil((object_height.template get<double>() - first_layer_height.template get<double>()) / layer_height.template get<double>() + 1));
         return layer > 0 ? layer : 0;
       }
@@ -801,14 +780,14 @@ int PrintStatusPanel::max_layer(json &info) {
 }
 
 int PrintStatusPanel::current_layer(json &info) {
-  if (!info.is_null()) {
+  if (info.is_object()) {
     auto v = info["/current_layer"_json_pointer];
-    if (!v.is_null()) {
+    if (v.is_number()) {
       return v.template get<int>();
     }
   }
 
-  if (!current_file.is_null()) {
+  if (current_file.is_object()) {
     State *s = State::get_instance();
     auto pd = s->get_data("/printer_state/print_stats/print_duration"_json_pointer);
     auto zpos = s->get_data("/printer_state/gcode_move/gcode_position/2"_json_pointer);
@@ -816,11 +795,12 @@ int PrintStatusPanel::current_layer(json &info) {
     auto first_layer_height = current_file["/first_layer_height"_json_pointer];
     auto layer_height = current_file["/layer_height"_json_pointer];
 
-    if (!pd.is_null()
+    if (pd.is_number()
         && pd.template get<int>() > 0
-        && !zpos.is_null()
-        && !first_layer_height.is_null()
-        && !layer_height.is_null()) {
+        && zpos.is_number()
+        && first_layer_height.is_number()
+        && layer_height.is_number()
+        && layer_height.template get<double>() > 0.0) {
       auto layer = static_cast<int>(std::ceil((zpos.template get<double>() - first_layer_height.template get<double>()) / layer_height.template get<double>() + 1));
       auto total = max_layer(info);
       if (layer > total) {
@@ -847,8 +827,6 @@ ZOffsetPanel &PrintStatusPanel::get_zoffset_panel() {
 #ifdef SIMULATOR
 void PrintStatusPanel::sim_setup_mock_data() {
   // Mid-print snapshot: 20% in, 10 minutes elapsed.
-  // To preview the auto-dismiss (#94) on this build, change "printing" to
-  // "complete" and rebuild - the panel should NOT foreground.
   json mock = {{"params", {{
     {"print_stats", {
       {"filename", "BunnyHighResLongFilenameTest_v3.gcode"},
@@ -860,7 +838,8 @@ void PrintStatusPanel::sim_setup_mock_data() {
     {"virtual_sdcard", {{"progress", 0.20}}},
     {"extruder", {{"temperature", 210}, {"target", 220}}},
     {"heater_bed", {{"temperature", 62}, {"target", 65}}},
-    // Labelled objects so the conditional "Objects" button shows in the sim.
+    {"gcode_move", {{"speed_factor", 1.0}, {"extrude_factor", 1.0}}},
+    // Labelled objects so the conditional "Objetos" button shows in the sim.
     {"exclude_object", {
       {"objects", {
         {{"name", "benchy_1"}, {"center", {60, 60}},
@@ -875,24 +854,19 @@ void PrintStatusPanel::sim_setup_mock_data() {
     }}
   }}}};
   State::get_instance()->consume(mock);
-  // consume() will reset() + populate() + foreground() because filename is
-  // present, then drive update_time_progress(600) with current_progress=0.20.
+  // consume() faz reset() + populate() (nome novo) e abre o acompanhamento
+  // (passagem para "printing").
   consume(mock);
 
   // reset() (inside consume) cleared the slicer estimate and metadata, so only
   // the file method had data above. Inject a slicer estimate + filament total
   // the way handle_metadata would, then recompute so the displayed ETA shows
-  // the full Mainsail-style average of all three methods (#126):
-  //   file     = 600/0.20            - 600 = 2400 s
-  //   filament = 600/(1234.5/5000.0) - 600 ≈ 1831 s
-  //   slicer   = 3000                - 600 = 2400 s
-  //   mean ≈ 2210 s ≈ 36m50s remaining.
+  // the full Mainsail-style average of all three methods (#126).
   estimated_time_s = 3000;
   current_file = {{"filament_total", 5000.0}};
   {
     std::lock_guard<std::mutex> lock(lv_lock);
     update_time_progress(600);
-    mini_print_status.sim_thumb();  // placeholder preview for the home overlay
   }
 
   // preview the completion summary (no real print finishes in the sim)

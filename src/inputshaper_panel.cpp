@@ -1,4 +1,6 @@
 #include "inputshaper_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "state.h"
 #include "utils.h"
 #include "config.h"
@@ -8,8 +10,6 @@
 
 LV_IMG_DECLARE(resume);
 LV_IMG_DECLARE(sd_img);
-LV_IMG_DECLARE(emergency);
-LV_IMG_DECLARE(back);
 
 LV_FONT_DECLARE(dejavusans_mono_14);
 
@@ -17,6 +17,11 @@ LV_FONT_DECLARE(dejavusans_mono_14);
 #define X_PNG "resonances_x.png"
 #define Y_DATA "/tmp/resonances_y_y.csv"
 #define Y_PNG "resonances_y.png"
+
+// Zoom do gráfico: pequeno no cartão (156 x 108) e "ampliado" ocupando o
+// corpo da subtela (408 x 212). O PNG é gerado com o tamanho da tela (480 x 272).
+#define ZOOM_PEQUENO 80
+#define ZOOM_AMPLIADO 186
 
 std::vector<std::string> InputShaperPanel::shapers = {
   "zv",
@@ -26,25 +31,51 @@ std::vector<std::string> InputShaperPanel::shapers = {
   "3hump_ei"
 };
 
+// Girador (lv_spinner) só gira enquanto mede: o lv_spinner do LVGL anima para
+// sempre, mesmo escondido. Aqui as animações dele são apagadas ao esconder e
+// uma rotação simples é ligada ao mostrar. Roda sempre com o lv_lock preso.
+static void girador_passo(void *obj, int32_t v) {
+  lv_arc_set_rotation((lv_obj_t *)obj, (uint16_t)v);
+}
+
+static void girador(lv_obj_t *sp, bool ligar) {
+  lv_anim_del(sp, NULL);
+  if (!ligar) {
+    lv_obj_add_flag(sp, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_arc_set_angles(sp, 0, 60);
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, sp);
+  lv_anim_set_exec_cb(&a, girador_passo);
+  lv_anim_set_values(&a, 0, 360);
+  lv_anim_set_time(&a, 1000);
+  lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_start(&a);
+  lv_obj_clear_flag(sp, LV_OBJ_FLAG_HIDDEN);
+}
+
 InputShaperPanel::InputShaperPanel(KWebSocketClient &c, std::mutex &l)
   : ws(c)
   , lv_lock(l)
   , cont(lv_obj_create(lv_scr_act()))
+  , corpo(lv_obj_create(cont))
 
   // xgraph
-  , xgraph_cont(lv_obj_create(cont))
+  , xgraph_cont(lv_obj_create(corpo))
   , xgraph(lv_img_create(xgraph_cont))
-  , xoutput(lv_label_create(cont))
-  , xspinner(lv_spinner_create(cont, 1000, 60))
+  , xoutput(lv_label_create(corpo))
+  , xspinner(lv_spinner_create(corpo, 1000, 60))
 
   // ygraph
-  , ygraph_cont(lv_obj_create(cont))
+  , ygraph_cont(lv_obj_create(corpo))
   , ygraph(lv_img_create(ygraph_cont))
-  , youtput(lv_label_create(cont))
-  , yspinner(lv_spinner_create(cont, 1000, 60))
+  , youtput(lv_label_create(corpo))
+  , yspinner(lv_spinner_create(corpo, 1000, 60))
 
   // x controls
-  , xcontrol(lv_obj_create(cont))
+  , xcontrol(lv_obj_create(corpo))
   , xaxis_label(lv_label_create(xcontrol))
   , x_switch(lv_switch_create(xcontrol))
   , xslider_cont(lv_obj_create(xcontrol))
@@ -53,7 +84,7 @@ InputShaperPanel::InputShaperPanel(KWebSocketClient &c, std::mutex &l)
   , xshaper_dd(lv_dropdown_create(xcontrol))
 
   // y controls
-  , ycontrol(lv_obj_create(cont))
+  , ycontrol(lv_obj_create(corpo))
   , yaxis_label(lv_label_create(ycontrol))
   , y_switch(lv_switch_create(ycontrol))
   , yslider_cont(lv_obj_create(ycontrol))
@@ -61,19 +92,12 @@ InputShaperPanel::InputShaperPanel(KWebSocketClient &c, std::mutex &l)
   , ylabel(lv_label_create(yslider_cont))
   , yshaper_dd(lv_dropdown_create(ycontrol))
 
-  , button_cont(lv_obj_create(cont))
+  , button_cont(lv_obj_create(corpo))
   , switch_cont(lv_obj_create(button_cont))
   , graph_switch_label(lv_label_create(switch_cont))
   , graph_switch(lv_switch_create(switch_cont))
   , calibrate_btn(button_cont, &resume, "Calibrar", &InputShaperPanel::_handle_callback, this)
   , save_btn(button_cont, &sd_img, "Salvar", &InputShaperPanel::_handle_callback, this)
-  , emergency_btn(button_cont, &emergency, "Parar tudo", &InputShaperPanel::_handle_callback, this,
-    "Fazer parada de emergência?",
-    [&c]() {
-      spdlog::debug("emergency stop pressed");
-      c.send_jsonrpc("printer.emergency_stop");
-    })
-  , back_btn(cont, &back, "Voltar", &InputShaperPanel::_handle_callback, this)
   , ximage_fullsized(false)
   , yimage_fullsized(false)
   , x_pending(false)
@@ -82,167 +106,172 @@ InputShaperPanel::InputShaperPanel(KWebSocketClient &c, std::mutex &l)
   , next_axis_is_x(false)
   , cal_watchdog(NULL)
 {
-  lv_obj_move_background(cont);
+  // Subtela (Proposta B): cabeçalho com voltar (fecha a subtela) e o conteúdo
+  // num "corpo" em (0,44) 424 x 228, com margem 8 e grade:
+  //   coluna 0 (80): Calibrar, Salvar, Gráfico
+  //   colunas 1 e 2 (156 cada): resultado X | resultado Y (108 de altura)
+  //   linhas 1 e 2 (44 cada): controles do eixo X e do eixo Y
+  // A parada de emergência fica no botão vermelho da coluna (sempre visível).
+  Navegacao::subtela(cont);
+  Marca::Cabecalho cab = Marca::criar_cabecalho(cont, "Compensação de vibração");
+  lv_obj_set_width(cab.titulo, 366);  // 269 px na f20; o lado direito não é usado
 
-  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_style_pad_all(cont, 0, 0);
+  lv_obj_set_pos(corpo, 0, Marca::TOQUE);
+  lv_obj_set_size(corpo, Marca::CONT_L, Marca::TELA_A - Marca::TOQUE);
+  lv_obj_set_style_pad_all(corpo, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(corpo, Marca::VAO, 0);
+  lv_obj_set_style_pad_column(corpo, Marca::VAO, 0);
+  lv_obj_clear_flag(corpo, LV_OBJ_FLAG_SCROLLABLE);
 
+  // cartões dos gráficos (PRETO_2, raio 12); tocar amplia/reduz
   lv_obj_t *graph_label = lv_label_create(xgraph_cont);
   lv_label_set_text(graph_label, "Resposta em frequência X");
-  lv_obj_align(graph_label, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_text_font(graph_label, &lv_font_montserrat_10, 0);  // 160 px na 12: não cabe em 156
+  lv_obj_set_style_text_color(graph_label, lv_color_hex(Marca::GRAFITE), 0);
+  lv_obj_align(graph_label, LV_ALIGN_BOTTOM_MID, 0, -4);
 
-  lv_obj_set_style_pad_all(xgraph_cont, 0, 0);
+  Marca::cartao(xgraph_cont);
   lv_obj_add_flag(xgraph_cont, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_clear_flag(xgraph_cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(xgraph_cont, &InputShaperPanel::_handle_image_clicked,
     LV_EVENT_CLICKED, this);
 
   graph_label = lv_label_create(ygraph_cont);
   lv_label_set_text(graph_label, "Resposta em frequência Y");
-  lv_obj_align(graph_label, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_text_font(graph_label, &lv_font_montserrat_10, 0);
+  lv_obj_set_style_text_color(graph_label, lv_color_hex(Marca::GRAFITE), 0);
+  lv_obj_align(graph_label, LV_ALIGN_BOTTOM_MID, 0, -4);
 
-  lv_obj_set_style_pad_all(ygraph_cont, 0, 0);
+  Marca::cartao(ygraph_cont);
   lv_obj_add_flag(ygraph_cont, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_clear_flag(ygraph_cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(ygraph_cont, &InputShaperPanel::_handle_image_clicked,
     LV_EVENT_CLICKED, this);
 
   // graphs
-  lv_img_set_zoom(xgraph, 95);
-  lv_obj_center(xgraph);
+  lv_img_set_zoom(xgraph, ZOOM_PEQUENO);
+  lv_obj_align(xgraph, LV_ALIGN_CENTER, 0, -6);  // acima da legenda
   // lv_img_set_src(xgraph, "A:/usr/data/printer_data/thumbnails/resonances_x.png");
 
-  lv_img_set_zoom(ygraph, 95);
-  lv_obj_center(ygraph);
+  lv_img_set_zoom(ygraph, ZOOM_PEQUENO);
+  lv_obj_align(ygraph, LV_ALIGN_CENTER, 0, -6);
   // lv_img_set_src(ygraph, "A:/usr/data/printer_data/thumbnails/resonances_y.png");
 
-  lv_obj_set_size(ygraph_cont, LV_PCT(40), LV_PCT(45));
-  lv_obj_clear_flag(ygraph_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(xgraph_cont, LV_PCT(40), LV_PCT(45));
-  lv_obj_clear_flag(xgraph_cont, LV_OBJ_FLAG_SCROLLABLE);
-
-  // text output
-  lv_obj_set_size(xoutput, LV_PCT(38), LV_PCT(45));
+  // text output (10: a linha "2hump_ei  54.2 Hz  vib. 3.4%" mede 170 px na 12)
   lv_label_set_text(xoutput, "");
   lv_obj_set_style_text_font(xoutput, &lv_font_montserrat_10, LV_STATE_DEFAULT);
 
-  lv_obj_set_size(youtput, LV_PCT(38), LV_PCT(45));
   lv_label_set_text(youtput, "");
   lv_obj_set_style_text_font(youtput, &lv_font_montserrat_10, LV_STATE_DEFAULT);
 
-  // spinners
-  lv_obj_add_flag(xspinner, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_size(xspinner, 80, 80);
+  // spinners: escondidos e parados até medir
+  lv_obj_set_size(xspinner, 64, 64);
+  girador(xspinner, false);
 
-  lv_obj_add_flag(yspinner, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_size(yspinner, 80, 80);
+  lv_obj_set_size(yspinner, 64, 64);
+  girador(yspinner, false);
 
-  // buttons
-  lv_obj_set_size(button_cont, LV_PCT(20), LV_PCT(100));
+  // buttons (coluna da esquerda, 80 de largura): só texto, 44 de altura
+  lv_obj_set_size(button_cont, 80, LV_PCT(100));
   lv_obj_clear_flag(button_cont, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_pad_all(button_cont, 0, 0);
+  lv_obj_set_style_pad_row(button_cont, Marca::VAO, 0);
   lv_obj_set_flex_flow(button_cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(button_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_flex_grow(calibrate_btn.get_container(), 1);
-  lv_obj_set_flex_grow(save_btn.get_container(), 1);
-  lv_obj_set_flex_grow(emergency_btn.get_container(), 1);
+  lv_obj_set_flex_align(button_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
+  calibrate_btn.sem_icone();
+  lv_obj_set_size(calibrate_btn.get_container(), 80, Marca::TOQUE);
+  calibrate_btn.set_tipo(Marca::Tipo::DESTAQUE);
+  save_btn.sem_icone();
+  lv_obj_set_size(save_btn.get_container(), 80, Marca::TOQUE);
+
+  // "Gráfico" (12 G) com a chave embaixo, depois dos botões
+  lv_obj_move_foreground(switch_cont);
   lv_obj_set_size(switch_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_row(switch_cont, 0, 0);
+  lv_obj_set_style_pad_all(switch_cont, 0, 0);
+  lv_obj_set_style_pad_top(switch_cont, 4, 0);
+  lv_obj_set_style_pad_bottom(switch_cont, 10, 0);   // a área de toque da chave cabe dentro
+  lv_obj_set_style_pad_row(switch_cont, 4, 0);
   lv_obj_set_flex_flow(switch_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(switch_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   lv_obj_set_style_text_align(graph_switch_label, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(graph_switch_label, "Gráfico");
   lv_obj_set_width(graph_switch_label, LV_PCT(100));
+  lv_obj_set_style_text_font(graph_switch_label, Marca::f12(), 0);
+  lv_obj_set_style_text_color(graph_switch_label, lv_color_hex(Marca::GRAFITE), 0);
+  lv_obj_set_size(graph_switch, 44, 24);
+  lv_obj_set_ext_click_area(graph_switch, 10);   // toque de 64 x 44
   lv_obj_clear_state(graph_switch, LV_STATE_CHECKED);
   lv_obj_clear_flag(switch_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(switch_cont, 0, 0);
 
-  auto scale = (double)lv_disp_get_physical_hor_res(NULL) / 800.0;
+  // controls: uma linha de 44 por eixo (320 de largura):
+  //   "Eixo X" 12 G | chave 44 x 24 | régua (cresce) com o valor em Hz embaixo | lista 88 x 44
+  lv_obj_t *linhas[] = {xcontrol, ycontrol};
+  lv_obj_t *rotulos[] = {xaxis_label, yaxis_label};
+  lv_obj_t *chaves[] = {x_switch, y_switch};
+  lv_obj_t *reguas_cont[] = {xslider_cont, yslider_cont};
+  lv_obj_t *reguas[] = {xslider, yslider};
+  lv_obj_t *valores[] = {xlabel, ylabel};
+  lv_obj_t *listas[] = {xshaper_dd, yshaper_dd};
+  const char *nomes[] = {"Eixo X", "Eixo Y"};
+  for (int i = 0; i < 2; i++) {
+    lv_obj_set_flex_flow(linhas[i], LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(linhas[i], LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(linhas[i], LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(linhas[i], 0, 0);
+    lv_obj_set_style_pad_column(linhas[i], 6, 0);
 
-  // controls
-  lv_obj_set_flex_flow(xcontrol, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_set_flex_align(xcontrol, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(xcontrol, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(xcontrol, LV_PCT(62), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_row(xcontrol, 0, 0);
-  lv_obj_set_style_pad_all(xcontrol, 0, 0);
+    lv_label_set_text(rotulos[i], nomes[i]);
+    lv_obj_set_width(rotulos[i], LV_SIZE_CONTENT);
+    lv_obj_set_style_text_font(rotulos[i], Marca::f12(), 0);
+    lv_obj_set_style_text_color(rotulos[i], lv_color_hex(Marca::GRAFITE), 0);
 
-  lv_obj_set_width(xaxis_label, LV_PCT(100));
-  lv_label_set_text(xaxis_label, "Eixo X");
-  lv_obj_add_state(x_switch, LV_STATE_CHECKED);
+    lv_obj_set_size(chaves[i], 44, 24);
+    lv_obj_add_state(chaves[i], LV_STATE_CHECKED);
 
-  lv_obj_clear_flag(xslider_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(xslider_cont, LV_PCT(53), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(xslider_cont, 0, 0);
+    lv_obj_clear_flag(reguas_cont[i], LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_height(reguas_cont[i], Marca::TOQUE);
+    lv_obj_set_flex_grow(reguas_cont[i], 1);
+    lv_obj_set_style_pad_all(reguas_cont[i], 0, 0);
+    lv_obj_set_style_pad_hor(reguas_cont[i], 10, 0);  // espaço para o botão da régua
 
-  lv_obj_center(xslider);
-  lv_obj_set_width(xslider, LV_PCT(85));
-  lv_slider_set_range(xslider, 0, 1400);
+    lv_obj_set_width(reguas[i], LV_PCT(100));
+    lv_obj_align(reguas[i], LV_ALIGN_TOP_MID, 0, 9);
+    lv_slider_set_range(reguas[i], 0, 1400);
+    lv_obj_add_event_cb(reguas[i], &InputShaperPanel::_handle_update_slider,
+      LV_EVENT_VALUE_CHANGED, this);
 
-  lv_obj_add_event_cb(xslider, &InputShaperPanel::_handle_update_slider,
-    LV_EVENT_VALUE_CHANGED, this);
+    lv_obj_set_style_text_font(valores[i], Marca::f12(), 0);
+    lv_obj_align(valores[i], LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_label_set_text(valores[i], "0 Hz");
 
+    lv_dropdown_set_options(listas[i], fmt::format("{}", fmt::join(shapers, "\n")).c_str());
+    lv_obj_set_size(listas[i], 88, Marca::TOQUE);
+    lv_obj_set_style_text_font(listas[i], Marca::f12(), 0);
+  }
 
-  lv_obj_align_to(xlabel, xslider, LV_ALIGN_OUT_BOTTOM_MID, 0, 35 * scale);
-  lv_label_set_text(xlabel, "0 Hz");
-
-  lv_dropdown_set_options(xshaper_dd, fmt::format("{}", fmt::join(shapers, "\n")).c_str());
-
-  lv_obj_set_flex_flow(ycontrol, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_set_flex_align(ycontrol, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(ycontrol, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(ycontrol, LV_PCT(62), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(ycontrol, 0, 0);
-  lv_obj_set_style_pad_row(ycontrol, 0, 0);
-
-  lv_obj_set_width(yaxis_label, LV_PCT(100));
-  lv_label_set_text(yaxis_label, "Eixo Y");
-  lv_obj_add_state(y_switch, LV_STATE_CHECKED);
-
-  lv_obj_clear_flag(yslider_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(yslider_cont, LV_PCT(53), LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(yslider_cont, 0, 0);
-
-  lv_obj_center(yslider);
-  lv_obj_set_width(yslider, LV_PCT(85));
-  lv_slider_set_range(yslider, 0, 1400);
-
-  lv_obj_add_event_cb(yslider, &InputShaperPanel::_handle_update_slider,
-    LV_EVENT_VALUE_CHANGED, this);
-
-  lv_obj_align_to(ylabel, yslider, LV_ALIGN_OUT_BOTTOM_MID, 0, 35 * scale);
-  lv_label_set_text(ylabel, "0 Hz");
-
-  lv_dropdown_set_options(yshaper_dd, fmt::format("{}", fmt::join(shapers, "\n")).c_str());
-
-  static lv_coord_t grid_main_row_dsc[] = {LV_GRID_FR(2), LV_GRID_FR(1), LV_GRID_FR(1),
+  static lv_coord_t grid_main_row_dsc[] = {LV_GRID_FR(1), Marca::TOQUE, Marca::TOQUE,
     LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t grid_main_col_dsc[] = {LV_GRID_FR(3), LV_GRID_FR(7), LV_GRID_FR(7),
+  static lv_coord_t grid_main_col_dsc[] = {80, LV_GRID_FR(1), LV_GRID_FR(1),
     LV_GRID_TEMPLATE_LAST};
 
-  lv_obj_set_grid_dsc_array(cont, grid_main_col_dsc, grid_main_row_dsc);
+  lv_obj_set_grid_dsc_array(corpo, grid_main_col_dsc, grid_main_row_dsc);
 
-  // row 1, col 2/3
+  // row 1, col 2/3 (cartão/texto ocupam a célula toda; girador no meio)
   lv_obj_set_grid_cell(xspinner, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 0, 1);
   lv_obj_set_grid_cell(yspinner, LV_GRID_ALIGN_CENTER, 2, 1, LV_GRID_ALIGN_CENTER, 0, 1);
-  lv_obj_set_grid_cell(xgraph_cont, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 0, 1);
-  lv_obj_set_grid_cell(ygraph_cont, LV_GRID_ALIGN_CENTER, 2, 1, LV_GRID_ALIGN_CENTER, 0, 1);
-  lv_obj_set_grid_cell(xoutput, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 0, 1);
-  lv_obj_set_grid_cell(youtput, LV_GRID_ALIGN_CENTER, 2, 1, LV_GRID_ALIGN_CENTER, 0, 1);
+  lv_obj_set_grid_cell(xgraph_cont, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
+  lv_obj_set_grid_cell(ygraph_cont, LV_GRID_ALIGN_STRETCH, 2, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
+  lv_obj_set_grid_cell(xoutput, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
+  lv_obj_set_grid_cell(youtput, LV_GRID_ALIGN_STRETCH, 2, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
 
   // row 2, col 2 span 2
-  lv_obj_set_grid_cell(xcontrol, LV_GRID_ALIGN_START, 1, 2, LV_GRID_ALIGN_START, 1, 1);
+  lv_obj_set_grid_cell(xcontrol, LV_GRID_ALIGN_STRETCH, 1, 2, LV_GRID_ALIGN_STRETCH, 1, 1);
 
   // row 3, col 2 span 2
-  lv_obj_set_grid_cell(ycontrol, LV_GRID_ALIGN_START, 1, 2, LV_GRID_ALIGN_START, 2, 1);
+  lv_obj_set_grid_cell(ycontrol, LV_GRID_ALIGN_STRETCH, 1, 2, LV_GRID_ALIGN_STRETCH, 2, 1);
 
-  // row 1, col 1
-  lv_obj_set_grid_cell(button_cont, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 0, 3);
-
-  lv_obj_add_flag(back_btn.get_container(), LV_OBJ_FLAG_FLOATING);
-  lv_obj_align(back_btn.get_container(), LV_ALIGN_BOTTOM_RIGHT, 0, -20);
+  // col 1, todas as linhas
+  lv_obj_set_grid_cell(button_cont, LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 0, 3);
 
   // TODO: show only register when issuing macros inputshaper cares about, then unregister after.
   // ws.register_gcode_resp([this](json& d) { this->handle_macro_response(d); });
@@ -293,7 +322,7 @@ void InputShaperPanel::foreground() {
     }
   }
 
-  lv_obj_move_foreground(cont);
+  Navegacao::abrir(cont);
 }
 
 
@@ -333,12 +362,8 @@ void InputShaperPanel::handle_callback(lv_event_t *event) {
       fmt::format("Salvo: X {} em {:.1f} Hz e Y {} em {:.1f} Hz. O Klipper vai reiniciar para aplicar. "
         "Se aparecer 'shutdown', reinicie o Klipper de novo.", xbuf, xhz, ybuf, yhz),
       6000);
-
-  } else if (btn == back_btn.get_container()) {
-    lv_obj_move_background(cont);
-  } else if (btn == emergency_btn.get_container()) {
-    ws.send_jsonrpc("printer.emergency_stop");
   }
+  // "Voltar" é o do cabeçalho; a parada de emergência é o botão vermelho da coluna.
 }
 
 void InputShaperPanel::handle_macro_response(json &j) {
@@ -385,7 +410,7 @@ void InputShaperPanel::handle_macro_response(json &j) {
             lv_obj_move_foreground(xoutput);
           }
 
-          lv_obj_add_flag(xspinner, LV_OBJ_FLAG_HIDDEN);
+          girador(xspinner, false);
           lv_obj_move_background(xspinner);
           {
             auto &b = res["/best"_json_pointer];
@@ -440,7 +465,7 @@ void InputShaperPanel::handle_macro_response(json &j) {
             lv_obj_move_foreground(youtput);
           }
 
-          lv_obj_add_flag(yspinner, LV_OBJ_FLAG_HIDDEN);
+          girador(yspinner, false);
           lv_obj_move_background(yspinner);
           {
             auto &b = res["/best"_json_pointer];
@@ -487,6 +512,22 @@ void InputShaperPanel::handle_macro_response(json &j) {
   }
 }
 
+// Cartão do gráfico: pequeno (preso na célula da grade, zoom pequeno) ou
+// ampliado (solto da grade, cobre o corpo da subtela 408 x 212; o cabeçalho
+// com o voltar continua à vista). Tocar de novo reduz.
+static void cartao_grafico(lv_obj_t *graph_cont, lv_obj_t *graph, bool ampliado) {
+  lv_obj_invalidate(graph);
+  if (ampliado) {
+    lv_img_set_zoom(graph, ZOOM_AMPLIADO);
+    lv_obj_add_flag(graph_cont, LV_OBJ_FLAG_FLOATING);
+    lv_obj_set_pos(graph_cont, 0, 0);
+    lv_obj_set_size(graph_cont, LV_PCT(100), LV_PCT(100));
+  } else {
+    lv_img_set_zoom(graph, ZOOM_PEQUENO);
+    lv_obj_clear_flag(graph_cont, LV_OBJ_FLAG_FLOATING);  // a grade volta a esticar na célula
+  }
+}
+
 void InputShaperPanel::handle_image_clicked(lv_event_t *e) {
   const lv_event_code_t code = lv_event_get_code(e);
   if (code == LV_EVENT_CLICKED) {
@@ -494,59 +535,21 @@ void InputShaperPanel::handle_image_clicked(lv_event_t *e) {
 
     if (clicked == xgraph_cont) {
       if (yimage_fullsized) {
-        lv_obj_invalidate(ygraph);
-        lv_img_set_zoom(ygraph, 150);
+        cartao_grafico(ygraph_cont, ygraph, false);
         yimage_fullsized = false;
-        lv_obj_set_size(ygraph_cont, LV_PCT(40), LV_PCT(45));
-        lv_obj_clear_flag(ygraph_cont, LV_OBJ_FLAG_FLOATING);
-
-        // lv_obj_set_size(ygraph_cont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
       }
 
-      lv_obj_invalidate(xgraph);
-
-      if (ximage_fullsized) {
-        lv_img_set_zoom(xgraph, 95);
-        lv_obj_set_size(xgraph_cont, LV_PCT(40), LV_PCT(45));
-        lv_obj_clear_flag(xgraph_cont, LV_OBJ_FLAG_FLOATING);
-
-        // lv_obj_set_size(xgraph_cont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-
-      } else {
-        lv_img_set_zoom(xgraph, LV_IMG_ZOOM_NONE);
-        lv_obj_add_flag(xgraph_cont, LV_OBJ_FLAG_FLOATING);
-        lv_obj_set_size(xgraph_cont, LV_PCT(100), LV_PCT(100));
-      }
+      cartao_grafico(xgraph_cont, xgraph, !ximage_fullsized);
       lv_obj_move_foreground(xgraph_cont);
       ximage_fullsized = !ximage_fullsized;
 
     } else if (clicked == ygraph_cont) {
       if (ximage_fullsized) {
-        lv_obj_invalidate(xgraph);
-        lv_img_set_zoom(xgraph, 150);
+        cartao_grafico(xgraph_cont, xgraph, false);
         ximage_fullsized = false;
-        // lv_obj_set_size(xgraph_cont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-        lv_obj_set_size(xgraph_cont, LV_PCT(40), LV_PCT(45));
-        lv_obj_clear_flag(xgraph_cont, LV_OBJ_FLAG_FLOATING);
-
       }
 
-      lv_obj_invalidate(ygraph);
-
-      if (yimage_fullsized) {
-        lv_img_set_zoom(ygraph, 95);
-        // lv_obj_set_size(ygraph_cont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-        lv_obj_set_size(ygraph_cont, LV_PCT(40), LV_PCT(45));
-        lv_obj_clear_flag(ygraph_cont, LV_OBJ_FLAG_FLOATING);
-
-      } else {
-        lv_img_set_zoom(ygraph, LV_IMG_ZOOM_NONE);
-        lv_obj_set_size(ygraph_cont, LV_PCT(100), LV_PCT(100));
-
-        // floating hacks (free child from grid) around the grid layout alignment
-        lv_obj_add_flag(ygraph_cont, LV_OBJ_FLAG_FLOATING);
-
-      }
+      cartao_grafico(ygraph_cont, ygraph, !yimage_fullsized);
       lv_obj_move_foreground(ygraph_cont);
       yimage_fullsized = !yimage_fullsized;
     }
@@ -628,21 +631,29 @@ void InputShaperPanel::set_shaper_detail(json &res,
 }
 
 void InputShaperPanel::layout_panes(bool graph, bool x_sel, bool y_sel) {
+  // girador no meio da célula; cartão do gráfico e texto ocupam a célula toda
   auto cell = [](lv_obj_t *o, uint8_t col) {
     lv_obj_set_grid_cell(o, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, 0, 1);
+  };
+  auto cell_cheia = [](lv_obj_t *o, uint8_t col) {
+    lv_obj_set_grid_cell(o, LV_GRID_ALIGN_STRETCH, col, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
   };
   // wipe stale console text so a previous run can't peek out behind a new pane
   lv_label_set_text(xoutput, "");
   lv_label_set_text(youtput, "");
   // default: each axis owns its column (X=1, Y=2) - graphs side by side
-  cell(xspinner, 1); cell(xgraph_cont, 1); cell(xoutput, 1);
-  cell(yspinner, 2); cell(ygraph_cont, 2); cell(youtput, 2);
+  cell(xspinner, 1); cell_cheia(xgraph_cont, 1); cell_cheia(xoutput, 1);
+  cell(yspinner, 2); cell_cheia(ygraph_cont, 2); cell_cheia(youtput, 2);
 
-  // single axis WITH graph -> graph on the left, its text console on the right
+  // single axis WITH graph -> graph on the left, its text console on the right.
+  // O cartão (opaco) do outro eixo sai da frente para o texto não ficar por
+  // cima dele; ele volta quando aquele eixo tiver gráfico de novo.
   if (graph && x_sel && !y_sel) {
-    cell(xoutput, 2);                       // X graph stays col1, console to col2
+    cell_cheia(xoutput, 2);                       // X graph stays col1, console to col2
+    lv_obj_add_flag(ygraph_cont, LV_OBJ_FLAG_HIDDEN);
   } else if (graph && y_sel && !x_sel) {
-    cell(yspinner, 1); cell(ygraph_cont, 1); // Y graph to col1, console stays col2
+    cell(yspinner, 1); cell_cheia(ygraph_cont, 1); // Y graph to col1, console stays col2
+    lv_obj_add_flag(xgraph_cont, LV_OBJ_FLAG_HIDDEN);
   }
 }
 
@@ -652,8 +663,8 @@ void InputShaperPanel::end_calibration_ui() {
   // unlock the Graph switch
   lv_obj_clear_state(graph_switch, LV_STATE_DISABLED);
   lv_obj_add_flag(graph_switch, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_flag(xspinner, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(yspinner, LV_OBJ_FLAG_HIDDEN);
+  girador(xspinner, false);
+  girador(yspinner, false);
   if (cal_watchdog != NULL) {
     lv_timer_del(cal_watchdog);
     cal_watchdog = NULL;
@@ -671,8 +682,8 @@ void InputShaperPanel::handle_watchdog() {
     y_after_move = false;
     calibrate_btn.enable();
     save_btn.enable();
-    lv_obj_add_flag(xspinner, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(yspinner, LV_OBJ_FLAG_HIDDEN);
+    girador(xspinner, false);
+    girador(yspinner, false);
     KUtils::notify_toast(
       "A calibração demorou demais e nada foi alterado. Confira a impressora e tente de novo.", 6000);
   }
@@ -693,7 +704,7 @@ void InputShaperPanel::start_axis(bool is_x) {
 
   lv_label_set_text(output, "");
   lv_obj_add_flag(graph_cont, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(spinner, LV_OBJ_FLAG_HIDDEN);
+  girador(spinner, true);
   lv_obj_move_foreground(spinner);
 }
 

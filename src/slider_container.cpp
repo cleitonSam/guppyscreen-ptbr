@@ -1,4 +1,5 @@
 #include "slider_container.h"
+#include "marca.h"
 #include "spdlog/spdlog.h"
 
 SliderContainer::SliderContainer(lv_obj_t *parent,
@@ -74,8 +75,10 @@ SliderContainer::SliderContainer(lv_obj_t *parent,
 {
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  // separador de 1 px PRETO_3 embaixo (marca)
   lv_obj_set_style_border_side(cont, LV_BORDER_SIDE_BOTTOM, 0);
-  lv_obj_set_style_border_width(cont, 2, 0);
+  lv_obj_set_style_border_width(cont, 1, 0);
+  lv_obj_set_style_border_color(cont, lv_color_hex(Marca::PRETO_3), 0);
   lv_obj_set_style_pad_all(cont, 0, 0);
   lv_obj_set_style_pad_row(cont, 0, 0);
   lv_obj_set_size(cont, lv_pct(100), LV_SIZE_CONTENT);
@@ -83,6 +86,8 @@ SliderContainer::SliderContainer(lv_obj_t *parent,
 
   lv_label_set_text(label, label_text);
   lv_obj_set_width(label, LV_PCT(100));
+  lv_obj_set_style_text_font(label, Marca::f14(), 0);
+  lv_obj_set_style_text_color(label, lv_color_hex(Marca::PAPEL), 0);
 
   lv_obj_clear_flag(control_cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_size(control_cont, lv_pct(100), LV_SIZE_CONTENT);
@@ -100,7 +105,14 @@ SliderContainer::SliderContainer(lv_obj_t *parent,
 
   lv_obj_align(slider, LV_ALIGN_CENTER, 0, 0);
   lv_obj_set_width(slider, LV_PCT(100));
+  // trilho PRETO_3, indicador LIMAO e bolinha PAPEL vêm do tema da marca
+  lv_obj_set_style_text_font(slider_value, Marca::f12(), 0);
+  lv_obj_set_style_text_color(slider_value, lv_color_hex(Marca::GRAFITE), 0);
   lv_obj_align_to(slider_value, slider, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+
+  // botões NORMAL da marca (PRETO_3, raio 12)
+  off_btn.set_tipo(Marca::Tipo::NORMAL);
+  max_btn.set_tipo(Marca::Tipo::NORMAL);
 
   if (max_text == NULL) {
     lv_obj_set_style_opa(max_btn.get_container(), LV_OPA_0, 0);
@@ -148,8 +160,8 @@ void SliderContainer::hide_slider() {
 }
 
 void SliderContainer::update_value(int value) {
-  lv_label_set_text(slider_value, fmt::format("{}{}", value, unit).c_str());
-  lv_slider_set_value(slider, value, LV_ANIM_ON);
+  Marca::texto(slider_value, fmt::format("{}{}", value, unit).c_str());
+  lv_slider_set_value(slider, value, LV_ANIM_OFF);
   lv_obj_align_to(slider_value, slider, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
 }
 

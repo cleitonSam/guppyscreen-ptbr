@@ -6,7 +6,10 @@
 #include <functional>
 #include <string>
 
-
+// Uma linha 196 x 44 da tela Medições TMC (Proposta B):
+// nome 12 G | "-" 44 x 44 | valor 48 x 44 | "+" 44 x 44.
+// Segurar "-" ou "+" anda o número; ao soltar, anda mais um e manda o valor
+// (igual ao de antes).
 class SpinBoxSelector {
  public:
   SpinBoxSelector(lv_obj_t *parent,
@@ -23,10 +26,9 @@ class SpinBoxSelector {
 
  private:
   lv_obj_t *cont;
-  lv_obj_t *sb_cont;
   lv_obj_t *sb;
   std::function<void(int)> cb;
-  
+
 };
 
 #endif // __SPINBOX_SELECTOR_H__

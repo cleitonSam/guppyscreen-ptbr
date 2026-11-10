@@ -1,11 +1,14 @@
 #include "notification_manager.h"
 #include "state.h"
 #include "utils.h"
+#include "marca.h"
+#include "avisos_pt.h"
 #include "spdlog/spdlog.h"
 
-static const int    TAB_W      = 60;     // left tab bar width
+static const int    TAB_W      = 56;     // coluna da esquerda (Marca::NAV_L)
 static const size_t MAX_TOASTS = 3;
 static const uint32_t INFO_MS  = 4000;   // info auto-dismiss
+static const uint32_t LEVE_MS  = 8000;   // aviso leve some sozinho
 
 NotificationManager::NotificationManager(KWebSocketClient &websocket_client, std::mutex &lock)
   : NotifyConsumer(lock)
@@ -13,12 +16,14 @@ NotificationManager::NotificationManager(KWebSocketClient &websocket_client, std
   , cont(lv_obj_create(lv_layer_top()))
   , baselined(false)
 {
-  // toast stack: top of screen, right of the tab bar, stacking downward.
-  lv_coord_t w = lv_disp_get_hor_res(NULL) - TAB_W - 8;
+  // toast stack: top of screen, right of the left column, stacking downward.
+  // Proposta B: mesmas margens das telas (8 px), 408 de largura na tela de
+  // 480, 8 px entre os avisos.
+  lv_coord_t w = lv_disp_get_hor_res(NULL) - TAB_W - 2 * Marca::MARGEM;
   lv_obj_set_size(cont, w, LV_SIZE_CONTENT);
-  lv_obj_align(cont, LV_ALIGN_TOP_LEFT, TAB_W + 4, 4);
+  lv_obj_align(cont, LV_ALIGN_TOP_LEFT, TAB_W + Marca::MARGEM, Marca::MARGEM);
   lv_obj_set_style_pad_all(cont, 0, 0);
-  lv_obj_set_style_pad_row(cont, 4, 0);
+  lv_obj_set_style_pad_row(cont, Marca::VAO, 0);
   lv_obj_set_style_border_width(cont, 0, 0);
   lv_obj_set_style_bg_opa(cont, LV_OPA_TRANSP, 0);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
@@ -29,8 +34,13 @@ NotificationManager::NotificationManager(KWebSocketClient &websocket_client, std
   ws.register_method_callback("notify_gcode_response", "NotificationManager",
                               [this](json &d) { this->handle_gcode_response(d); });
   // re-baseline after a (re)connect so we don't replay state as fresh events
+  // e some com os avisos graves antigos: a impressora voltou a ficar pronta
   ws.register_method_callback("notify_klippy_ready", "NotificationManager",
-                              [this](json &) { this->baselined = false; });
+                              [this](json &) {
+                                std::lock_guard<std::mutex> lock(lv_lock);
+                                this->baselined = false;
+                                this->clear_all();
+                              });
 
 #ifdef SIMULATOR
   // no printer in the sim - periodically re-show a demo of each severity so the
@@ -88,12 +98,14 @@ void NotificationManager::handle_gcode_response(json &j) {
     std::string line = el.template get<std::string>();
     // "!! " = Klipper error; "// action:" belongs to PromptPanel; skip the rest
     if (line.rfind("!! ", 0) == 0) {
-      std::string err = line.substr(3);
-      // a homing-required error becomes an actionable modal instead of a toast
-      if (err.find("Must home axis first") != std::string::npos) {
-        show_homing_prompt();
-      } else {
-        push(err, ERROR);
+      // tira o {"code","msg"} da Creality e traduz; erro bobo some sozinho
+      AvisosPt::Aviso a = AvisosPt::traduzir(line.substr(3));
+      if (a.pede_home) {
+        show_homing_prompt();  // vira a janela com o botão de ir ao início
+      } else if (a.nivel == AvisosPt::GRAVE) {
+        push(a.texto, ERROR);
+      } else if (a.nivel == AvisosPt::LEVE) {
+        push(a.texto, WARNING);
       }
     }
   }
@@ -127,7 +139,11 @@ void NotificationManager::process(json &st) {
       if (ns == "shutdown" || ns == "error") {
         std::string msg = st["webhooks"]["state_message"].is_string()
           ? st["webhooks"]["state_message"].template get<std::string>() : "";
-        push(msg.empty() ? ("O Klipper parou (estado '" + ns + "').") : msg, ERROR);
+        AvisosPt::Aviso a = AvisosPt::traduzir(msg);
+        // parado é sempre grave, mesmo se o motivo for desconhecido
+        push(a.nivel == AvisosPt::IGNORAR || a.texto.empty()
+               ? std::string("A impressora parou. Toque em Reiniciar firmware.") : a.texto,
+             ERROR);
       }
       last_webhooks_state = ns;
     }
@@ -169,23 +185,34 @@ void NotificationManager::push(const std::string &text, Severity sev) {
     remove_card(toasts.front().card, false);  // drop oldest
   }
 
-  lv_color_t bg;
+  // Proposta B: aviso = cartão PRETO_2 liso, raio 12, com uma faixa de 4 px
+  // à esquerda na cor da gravidade (erro ERRO, aviso ALERTA, info PRETO_3).
+  // A gravidade também vai na palavra/símbolo, nunca só na cor.
+  uint32_t faixa;
   const char *icon;
   switch (sev) {
-    case ERROR:   bg = lv_palette_darken(LV_PALETTE_RED, 2);    icon = LV_SYMBOL_WARNING; break;
-    case WARNING: bg = lv_palette_darken(LV_PALETTE_ORANGE, 1); icon = LV_SYMBOL_WARNING; break;
-    default:      bg = lv_palette_darken(LV_PALETTE_BLUE, 2);   icon = LV_SYMBOL_BELL;    break;
+    case ERROR:   faixa = Marca::ERRO;    icon = LV_SYMBOL_WARNING; break;
+    case WARNING: faixa = Marca::ALERTA;  icon = LV_SYMBOL_WARNING; break;
+    default:      faixa = Marca::PRETO_3; icon = LV_SYMBOL_BELL;    break;
   }
 
   lv_obj_t *card = lv_obj_create(cont);
   lv_obj_set_width(card, LV_PCT(100));
   lv_obj_set_height(card, LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_all(card, 8, 0);
-  lv_obj_set_style_pad_column(card, 8, 0);
-  lv_obj_set_style_radius(card, 6, 0);
-  lv_obj_set_style_border_width(card, 0, 0);
-  lv_obj_set_style_bg_color(card, bg, 0);
+  lv_obj_set_style_min_height(card, Marca::TOQUE, 0);  // toca para fechar
+  lv_obj_set_style_pad_ver(card, 10, 0);
+  lv_obj_set_style_pad_left(card, 10, 0);
+  lv_obj_set_style_pad_right(card, 12, 0);
+  lv_obj_set_style_pad_column(card, 10, 0);
+  lv_obj_set_style_radius(card, Marca::RAIO, 0);
+  lv_obj_set_style_shadow_width(card, 0, 0);
+  lv_obj_set_style_border_width(card, 4, 0);
+  lv_obj_set_style_border_side(card, LV_BORDER_SIDE_LEFT, 0);
+  lv_obj_set_style_border_color(card, lv_color_hex(faixa), 0);
+  lv_obj_set_style_border_opa(card, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(card, lv_color_hex(Marca::PRETO_2), 0);
   lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(card, lv_color_hex(Marca::APERTADO), LV_STATE_PRESSED);
   lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_flex_flow(card, LV_FLEX_FLOW_ROW);
@@ -196,20 +223,22 @@ void NotificationManager::push(const std::string &text, Severity sev) {
 
   lv_obj_t *ic = lv_label_create(card);
   lv_label_set_text(ic, icon);
-  lv_obj_set_style_text_font(ic, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(ic, lv_color_white(), 0);
+  lv_obj_set_style_text_font(ic, Marca::f14(), 0);
+  lv_obj_set_style_text_color(ic, lv_color_hex(sev == INFO ? Marca::GRAFITE : Marca::PAPEL), 0);
 
   lv_obj_t *lbl = lv_label_create(card);
   lv_obj_set_flex_grow(lbl, 1);
   lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
   lv_label_set_text(lbl, text.c_str());
-  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(lbl, Marca::f14(), 0);
+  lv_obj_set_style_text_color(lbl, lv_color_hex(Marca::PAPEL), 0);
 
-  // info auto-dismisses; warning/error stay until tapped (or condition clears)
+  // info e aviso leve somem sozinhos; erro grave fica até tocar (ou até a
+  // impressora voltar a ficar pronta)
   lv_timer_t *timer = NULL;
-  if (sev == INFO) {
-    timer = lv_timer_create(&NotificationManager::_timer_cb, INFO_MS, card);
+  if (sev != ERROR) {
+    timer = lv_timer_create(&NotificationManager::_timer_cb,
+                            sev == INFO ? INFO_MS : LEVE_MS, card);
     lv_timer_set_repeat_count(timer, 1);
   }
 
@@ -228,6 +257,12 @@ void NotificationManager::remove_card(lv_obj_t *card, bool from_timer) {
       toasts.erase(it);
       return;
     }
+  }
+}
+
+void NotificationManager::clear_all() {
+  while (!toasts.empty()) {
+    remove_card(toasts.front().card, false);
   }
 }
 

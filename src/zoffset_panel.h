@@ -8,11 +8,11 @@
 
 #include <mutex>
 
-// First-layer Z-offset / baby-stepping aid. A focused live control reachable
-// from the Tune tab and by tapping the Z-offset value on the print-status
-// screen. Adjusts the live gcode offset (SET_GCODE_OFFSET Z_ADJUST ... MOVE=1),
-// same as FineTune's Z column, but with a big readout, clear closer/farther
-// direction, and fine first-layer steps.
+// First-layer Z-offset / baby-stepping aid ("Altura do bico"). Subtela com
+// cabeçalho; abre pela página Calibração (executar("altura_do_bico")) e pela
+// aba Avançado. Adjusts the live gcode offset (SET_GCODE_OFFSET Z_ADJUST ...
+// MOVE=1), same as Ajuste fino's Z card, but with a big readout, clear
+// closer/farther direction, and fine first-layer steps.
 //
 // Persistence is handled by the Creality Helper Script's Save Z-Offset macros,
 // which override SET_GCODE_OFFSET to mirror every adjustment into variables.cfg
@@ -42,8 +42,8 @@ class ZOffsetPanel : public NotifyConsumer {
   lv_obj_t *down_btn;          // lower — closer to bed / more squish
   lv_obj_t *reset_btn;
   lv_obj_t *auto_save_hint;    // "Os ajustes são salvos automaticamente"
-  lv_obj_t *back_btn;
-  Selector step_selector;
+  lv_obj_t *step_selector;     // segmentado {"0.001","0.005","0.01","0.025","0.05"}
+  uint32_t step_idx;
 };
 
 #endif  // __ZOFFSET_PANEL_H__

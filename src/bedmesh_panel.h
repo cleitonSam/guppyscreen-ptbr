@@ -36,6 +36,8 @@ class BedMeshPanel : public NotifyConsumer {
   void handle_view_zoom_out(lv_event_t *event);
   void handle_canvas_drag(lv_event_t *event);
   void handle_toggle_view(lv_event_t *event);
+  // Voltar do cabeçalho: da vista 3D volta para a tabela; da tabela fecha a subtela.
+  void voltar();
   // Table view is the default; the 3D view is a fullscreen mode (canvas + Back only).
   void show_table_view();
   void show_3d_fullscreen();
@@ -253,11 +255,18 @@ class BedMeshPanel : public NotifyConsumer {
     panel->handle_toggle_view(event);
   };
 
+  static void _voltar_cb(lv_event_t *event) {
+    BedMeshPanel *panel = (BedMeshPanel*)event->user_data;
+    panel->voltar();
+  };
+
 
  private:
   KWebSocketClient &ws;
-  lv_obj_t *cont;
-  lv_obj_t *prompt;
+  lv_obj_t *cont;          // subtela (Navegacao::subtela), 424 x 272
+  lv_obj_t *cab_direita;   // texto à direita do cabeçalho (perfil ativo)
+  lv_obj_t *prompt;        // janela "Salvar perfil" em lv_layer_top(), escondida
+  lv_obj_t *corpo;         // conteúdo abaixo do cabeçalho (0,44) 424 x 228
   lv_obj_t *top_cont;
   lv_obj_t *display_cont;
   lv_obj_t *mesh_table;
@@ -275,7 +284,6 @@ class BedMeshPanel : public NotifyConsumer {
   ButtonContainer clear_btn;
   ButtonContainer calibrate_btn;
   ButtonContainer toggle_view_btn;
-  ButtonContainer back_btn;
   lv_obj_t *msgbox;
   lv_obj_t *input;
   lv_obj_t *kb;

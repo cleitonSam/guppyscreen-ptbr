@@ -2,9 +2,12 @@
 #include "state.h"
 #include "config.h"
 #include "utils.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "spdlog/spdlog.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <limits>
 
 // How close (in C) the hotend must be to the target before we fire a pending
@@ -16,6 +19,9 @@ static const uint32_t HEAT_TIMEOUT_MS = 5 * 60 * 1000;
 // Safety cap on how long we keep buttons locked while waiting for a gcode
 // response. Long enough for a 50mm slow load; trips only if the ws dies.
 static const uint32_t ACTION_TIMEOUT_MS = 5 * 60 * 1000;
+// Troca de filamento parada no meio (ninguém mexendo) por este tempo: a troca
+// é encerrada e o bico desligado, para o aquecedor não ficar ligado à toa.
+static const uint32_t TROCA_ESPERA_MS = 10 * 60 * 1000;
 
 // Chunked load (stoppable): the stock _GUPPY_LOAD_MATERIAL is one uninterruptible
 // G1 move, so we feed in small steps issued one at a time and the user can Stop
@@ -30,14 +36,25 @@ static const int LOAD_SLOW_MM   = 50;    // purge: slow feed through the melt zo
 static const int LOAD_SLOW_FEED = 180;   // 3 mm/s (matches the stock load macro)
 static const int LOAD_TOTAL_MM  = LOAD_FAST_MM + LOAD_SLOW_MM;  // 130
 
-LV_IMG_DECLARE(back);
-LV_IMG_DECLARE(spoolman_img);
-LV_IMG_DECLARE(extrude_img);
-LV_IMG_DECLARE(retract_img);
+// Temperaturas do − / + (os mesmos valores do antigo seletor "Temperatura do
+// bico"; o padrão continua vindo de /default_extruder_temp).
+static const int TEMPS[] = {180, 200, 220, 240, 260, 280, 300};
+static const int N_TEMPS = sizeof(TEMPS) / sizeof(TEMPS[0]);
+static const int TEMP_IDX_PADRAO = 3;  // 240
+
+// Extrudar / Retrair: velocidade padrão de antes (5 mm/s, o índice 2 do antigo
+// seletor), agora sem seletor na tela.
+static const int EXTRUDE_SPEED_MM_S = 5;
+// Purga da troca de filamento (etapa 4 e "Purgar mais").
+static const int PURGA_MM = 10;
+
+// Mapa do segmentado de comprimento (o Selector guarda o vetor).
+static const int COMPRIMENTOS[] = {10, 50, 100};
+
 LV_IMG_DECLARE(unload_filament_img);
 LV_IMG_DECLARE(load_filament_img);
+LV_IMG_DECLARE(filament_img);
 LV_IMG_DECLARE(extruder);
-LV_IMG_DECLARE(cooldown_img);
 
 ExtruderPanel::ExtruderPanel(KWebSocketClient &websocket_client,
   std::mutex &lock,
@@ -47,27 +64,20 @@ ExtruderPanel::ExtruderPanel(KWebSocketClient &websocket_client,
   , ws(websocket_client)
   , panel_cont(lv_obj_create(lv_scr_act()))
   , spoolman_panel(sm)
-  , extruder_temp(ws, panel_cont, &extruder, 150,
-    "Bico", lv_palette_main(LV_PALETTE_RED), false, true, numpad, "extruder", NULL, NULL)
-  , temp_selector(panel_cont, "Temperatura do bico (°C)",
-    {"180", "200", "220", "240", "260", "280", "300", ""}, 3, &ExtruderPanel::_handle_callback, this)
-  , length_selector(panel_cont, "Comprimento para extrudar / retrair (mm)",
-    {"5", "10", "15", "20", "25", "30", "35", ""}, 1, &ExtruderPanel::_handle_callback, this)
-  , speed_selector(panel_cont, "Velocidade para extrudar / retrair (mm/s)",
-    {"1", "2", "5", "10", "25", "35", "50", ""}, 2, &ExtruderPanel::_handle_callback, this)
-  , rightside_btns_cont(lv_obj_create(panel_cont))
-  , leftside_btns_cont(lv_obj_create(panel_cont))
-  , load_btn(leftside_btns_cont, &load_filament_img, "Carregar", &ExtruderPanel::_handle_callback, this)
-  , unload_btn(leftside_btns_cont, &unload_filament_img, "Descarregar", &ExtruderPanel::_handle_callback, this)
-  , cooldown_btn(leftside_btns_cont, &cooldown_img, "Esfriar", &ExtruderPanel::_handle_callback, this)
-  , spoolman_btn(rightside_btns_cont, &spoolman_img, "Spoolman", &ExtruderPanel::_handle_callback, this)
-  , extrude_btn(rightside_btns_cont, &extrude_img, "Extrudar", &ExtruderPanel::_handle_callback, this)
-  , retract_btn(rightside_btns_cont, &retract_img, "Retrair", &ExtruderPanel::_handle_callback, this)
-  , back_btn(rightside_btns_cont, &back, "Voltar", &ExtruderPanel::_handle_callback, this)
+  , load_btn(panel_cont, &load_filament_img, "Carregar", &ExtruderPanel::_handle_callback, this)
+  , unload_btn(panel_cont, &unload_filament_img, "Descarregar", &ExtruderPanel::_handle_callback, this)
+  , troca_btn(panel_cont, &filament_img, "Trocar", &ExtruderPanel::_handle_callback, this)
+  , extrude_obj(NULL)
+  , retract_obj(NULL)
+  , length_selector(panel_cont, "", {"10 mm", "50 mm", "100 mm", ""}, 0,
+    &ExtruderPanel::_handle_callback, this)
   , load_filament_macro("LOAD_FILAMENT")
   , unload_filament_macro("UNLOAD_FILAMENT")
   , cooldown_macro("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0")
+  , troca([this]() { this->troca_esquerdo(); }, [this]() { this->troca_direito(); })
 {
+  LV_UNUSED(numpad);  // o valor da temperatura padrão anda por − / + (sem teclado)
+
   Config *conf = Config::get_instance();
   auto df = conf->get_json("/default_printer");
   if (!df.empty()) {
@@ -87,128 +97,165 @@ ExtruderPanel::ExtruderPanel(KWebSocketClient &websocket_client,
     }
   }
 
-  lv_obj_move_background(panel_cont);
+  // ---- a aba: Controle › Filamento (424 x 227) -----------------------------
+  Navegacao::colocar(panel_cont, Aba::FILAMENTO);
   lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(panel_cont, LV_PCT(100), LV_PCT(100));
   lv_obj_set_style_pad_all(panel_cont, 0, 0);
+  lv_obj_set_style_border_width(panel_cont, 0, 0);
+  lv_obj_set_style_radius(panel_cont, 0, 0);
+  // nasceu filho da tela (o tema pinta de PRETO opaco); dentro da aba não
+  // precisa desenhar fundo nenhum
+  lv_obj_set_style_bg_opa(panel_cont, LV_OPA_TRANSP, 0);
 
-  lv_obj_set_size(rightside_btns_cont, LV_PCT(20), LV_PCT(100));
-  lv_obj_set_flex_flow(rightside_btns_cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(rightside_btns_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(rightside_btns_cont, LV_OBJ_FLAG_SCROLLABLE);
-  /* Zero padding so the inner buttons (LV_PCT(100)) actually fill the column. */
-  lv_obj_set_style_pad_all(rightside_btns_cont, 0, 0);
+  // ---- cartão "Temp. padrão" 408 x 76 em (8,7) -----------------------------
+  temp_cartao = Marca::criar_cartao(panel_cont, 8, 7, 408, 76);
 
-  lv_obj_set_size(leftside_btns_cont, LV_PCT(20), LV_PCT(100));
-  // lv_obj_set_style_pad_row(leftside_btns_cont, 15, 0);
-  lv_obj_set_flex_flow(leftside_btns_cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(leftside_btns_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(leftside_btns_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(leftside_btns_cont, 0, 0);
+  lv_obj_t *ico = Marca::criar_icone(temp_cartao, &extruder, 24, Marca::GRAFITE);
+  lv_obj_set_pos(ico, 12, 12);
 
-  lv_obj_set_flex_grow(load_btn.get_container(), 1);
-  lv_obj_set_flex_grow(unload_btn.get_container(), 1);
-  lv_obj_set_flex_grow(cooldown_btn.get_container(), 1);
-  lv_obj_set_flex_grow(spoolman_btn.get_container(), 1);
-  lv_obj_set_flex_grow(extrude_btn.get_container(), 1);
-  lv_obj_set_flex_grow(retract_btn.get_container(), 1);
-  lv_obj_set_flex_grow(back_btn.get_container(), 1);
+  lv_obj_t *nome = Marca::criar_rotulo(temp_cartao, "Temp. padrão", Marca::f14(), Marca::PAPEL);
+  lv_obj_set_pos(nome, 42, 15);
+  lv_obj_set_width(nome, 140);
+  lv_label_set_long_mode(nome, LV_LABEL_LONG_DOT);
 
-  /* Stretch each button to fill its flex column. ButtonContainer's default
-   * 110*width_scale (~66 px on 480-wide) is too narrow for 7-8 char labels
-   * like "Spoolman" / "Cooldown" / "Extrude" - they truncate or wrap. */
-  lv_obj_t *btns[] = {
-    load_btn.get_container(), unload_btn.get_container(), cooldown_btn.get_container(),
-    spoolman_btn.get_container(), extrude_btn.get_container(),
-    retract_btn.get_container(), back_btn.get_container()
+  // linha de estado: bolinha de 8 px + texto 12 grafite
+  estado_ponto = lv_obj_create(temp_cartao);
+  lv_obj_set_pos(estado_ponto, 12, 52);
+  lv_obj_set_size(estado_ponto, 8, 8);
+  lv_obj_set_style_radius(estado_ponto, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(estado_ponto, lv_color_hex(Marca::LIMAO), 0);
+  lv_obj_set_style_bg_opa(estado_ponto, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(estado_ponto, 0, 0);
+  lv_obj_set_style_pad_all(estado_ponto, 0, 0);
+  lv_obj_clear_flag(estado_ponto, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(estado_ponto, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(estado_ponto, LV_OBJ_FLAG_HIDDEN);
+
+  estado_label = Marca::criar_rotulo(temp_cartao, "", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(estado_label, 24, 48);
+  lv_obj_set_width(estado_label, 160);
+  lv_label_set_long_mode(estado_label, LV_LABEL_LONG_WRAP);
+
+  lv_obj_t *alvo_titulo = Marca::criar_rotulo(temp_cartao, "Alvo", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(alvo_titulo, 244, 4);
+  lv_obj_set_width(alvo_titulo, 92);
+  lv_obj_set_style_text_align(alvo_titulo, LV_TEXT_ALIGN_CENTER, 0);
+
+  menos_btn = Marca::criar_botao(temp_cartao, LV_SYMBOL_MINUS, Marca::Tipo::NORMAL, Marca::f20());
+  lv_obj_set_pos(menos_btn, 188, 24);
+  lv_obj_set_size(menos_btn, 52, 44);
+  lv_obj_add_event_cb(menos_btn, &ExtruderPanel::_handle_callback, LV_EVENT_CLICKED, this);
+
+  lv_obj_t *valor_cont = lv_obj_create(temp_cartao);
+  lv_obj_set_pos(valor_cont, 244, 24);
+  lv_obj_set_size(valor_cont, 92, 44);
+  lv_obj_set_style_bg_color(valor_cont, lv_color_hex(Marca::PRETO), 0);
+  lv_obj_set_style_bg_opa(valor_cont, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(valor_cont, 1, 0);
+  lv_obj_set_style_border_color(valor_cont, lv_color_hex(Marca::PRETO_3), 0);
+  lv_obj_set_style_radius(valor_cont, Marca::RAIO, 0);
+  lv_obj_set_style_pad_all(valor_cont, 0, 0);
+  lv_obj_clear_flag(valor_cont, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(valor_cont, LV_OBJ_FLAG_CLICKABLE);
+
+  temp_valor = Marca::criar_rotulo(valor_cont, "240°C", Marca::f20(), Marca::PAPEL);
+  lv_obj_center(temp_valor);
+
+  mais_btn = Marca::criar_botao(temp_cartao, LV_SYMBOL_PLUS, Marca::Tipo::NORMAL, Marca::f20());
+  lv_obj_set_pos(mais_btn, 340, 24);
+  lv_obj_set_size(mais_btn, 52, 44);
+  lv_obj_add_event_cb(mais_btn, &ExtruderPanel::_handle_callback, LV_EVENT_CLICKED, this);
+
+  // ---- Carregar / Descarregar / Trocar: 72 de altura em y = 91 -------------
+  struct { ButtonContainer *b; lv_coord_t x; lv_coord_t w; } grandes[] = {
+    { &load_btn,   8,   130 },
+    { &unload_btn, 147, 131 },
+    { &troca_btn,  287, 129 },
   };
-  for (auto *b : btns) {
-    lv_obj_set_width(b, lv_pct(100));
+  for (auto &g : grandes) {
+    lv_obj_t *c = g.b->get_container();
+    lv_obj_set_size(c, g.w, 72);
+    lv_obj_set_pos(c, g.x, 91);
+    g.b->set_tipo(Marca::Tipo::NORMAL);
   }
-  /* Note: ButtonContainer applies the small-screen m10 font globally. */
 
-  spoolman_btn.disable();
+  // ---- Extrudar / Retrair 100 x 44 e comprimento 192 x 44 em y = 175 -------
+  extrude_obj = Marca::criar_botao(panel_cont, LV_SYMBOL_DOWN " Extrudar", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(extrude_obj, 8, 175);
+  lv_obj_set_size(extrude_obj, 100, 44);
+  lv_obj_add_event_cb(extrude_obj, &ExtruderPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
-  static lv_coord_t grid_main_row_dsc[] = {LV_GRID_FR(3), LV_GRID_FR(6), LV_GRID_FR(6), LV_GRID_FR(6),
-    LV_GRID_TEMPLATE_LAST};
-  /* FR(2)/FR(8)/FR(2): side cols ~80 px (still room for 8-char labels with
-   * pad_all=0 on the side containers) and middle ~320 px so each of the 7
-   * selector pills gets ~45 px - a usable touch target on the KE display. */
-  static lv_coord_t grid_main_col_dsc[] = {LV_GRID_FR(2), LV_GRID_FR(8), LV_GRID_FR(2), LV_GRID_TEMPLATE_LAST};
+  retract_obj = Marca::criar_botao(panel_cont, LV_SYMBOL_UP " Retrair", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(retract_obj, 116, 175);
+  lv_obj_set_size(retract_obj, 100, 44);
+  lv_obj_add_event_cb(retract_obj, &ExtruderPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
-  lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
+  length_selector.sem_titulo();
+  lv_obj_set_size(length_selector.get_container(), 192, 44);
+  lv_obj_set_pos(length_selector.get_container(), 224, 175);
+  lv_obj_set_size(length_selector.get_selector(), 192, 44);
 
-  lv_obj_set_grid_dsc_array(panel_cont, grid_main_col_dsc, grid_main_row_dsc);
-  lv_obj_add_flag(extruder_temp.get_sensor(), LV_OBJ_FLAG_FLOATING);
-  lv_obj_align(extruder_temp.get_sensor(), LV_ALIGN_TOP_LEFT, 20, 0);
+  // ---- botões de ação (para o "Parar" e o liga/desliga) ---------------------
+  acao_carregar    = { load_btn.get_container(),   load_btn.get_label(),   "Carregar",    &load_btn };
+  acao_descarregar = { unload_btn.get_container(), unload_btn.get_label(), "Descarregar", &unload_btn };
+  acao_trocar      = { troca_btn.get_container(),  troca_btn.get_label(),  "Trocar",      &troca_btn };
+  acao_extrudar    = { extrude_obj, lv_obj_get_child(extrude_obj, 0), LV_SYMBOL_DOWN " Extrudar", NULL };
+  acao_retrair     = { retract_obj, lv_obj_get_child(retract_obj, 0), LV_SYMBOL_UP " Retrair",    NULL };
 
-  // lv_obj_set_size(extruder_temp.get_sensor(), 350, 60);
-  // col 0
-  // lv_obj_set_grid_cell(spoolman_btn.get_container(), LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_START, 0, 2);
-  // lv_obj_set_grid_cell(load_btn.get_container(), LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_END, 0, 2);
-  // lv_obj_set_grid_cell(unload_btn.get_container(), LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_START, 2, 2);
-  // lv_obj_set_grid_cell(cooldown_btn.get_container(), LV_GRID_ALIGN_END, 0, 1, LV_GRID_ALIGN_END, 2, 2);
-
-  lv_obj_set_grid_cell(leftside_btns_cont, LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 1, 3);
-
-  // col 1
-  // lv_obj_set_grid_cell(extruder_temp.get_sensor(), LV_GRID_ALIGN_CENTER, 0, 2, LV_GRID_ALIGN_CENTER, 0, 1);
-  lv_obj_set_grid_cell(speed_selector.get_container(), LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-  lv_obj_set_grid_cell(length_selector.get_container(), LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 2, 1);
-  lv_obj_set_grid_cell(temp_selector.get_container(), LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 3, 1);
-
-  // col 2
-  // lv_obj_set_grid_cell(spoolman_btn.get_container(), LV_GRID_ALIGN_CENTER, 2, 1, LV_GRID_ALIGN_START, 0, 2);
-  // lv_obj_set_grid_cell(retract_btn.get_container(), LV_GRID_ALIGN_CENTER, 2, 1, LV_GRID_ALIGN_END, 0, 2);
-  // lv_obj_set_grid_cell(extrude_btn.get_container(), LV_GRID_ALIGN_CENTER, 2, 1, LV_GRID_ALIGN_START, 2, 2);
-  // lv_obj_set_grid_cell(back_btn.get_container(), LV_GRID_ALIGN_END, 2, 1, LV_GRID_ALIGN_END, 2, 2);
-
-  lv_obj_set_grid_cell(rightside_btns_cont, LV_GRID_ALIGN_STRETCH, 2, 1, LV_GRID_ALIGN_STRETCH, 0, 4);
-  // lv_obj_set_grid_cell(retract_btn.get_container(), LV_GRID_ALIGN_CENTER, 2, 1, LV_GRID_ALIGN_END, 0, 2);
-  // lv_obj_set_grid_cell(extrude_btn.get_container(), LV_GRID_ALIGN_CENTER, 2, 1, LV_GRID_ALIGN_START, 2, 2);
-  // lv_obj_set_grid_cell(back_btn.get_container(), LV_GRID_ALIGN_END, 2, 1, LV_GRID_ALIGN_END, 2, 2);
-
-
-  // Busy spinner: floating overlay centered on the panel, big enough to be
-  // unmissable but not so big it covers the selectors behind it. Hidden until
-  // refresh_button_state() shows it.
-  busy_spinner = lv_spinner_create(panel_cont, 1000, 60);
-  lv_obj_add_flag(busy_spinner, LV_OBJ_FLAG_FLOATING);
-  lv_obj_set_size(busy_spinner, 80, 80);
-  lv_obj_align(busy_spinner, LV_ALIGN_CENTER, 0, -10);
-  lv_obj_add_flag(busy_spinner, LV_OBJ_FLAG_HIDDEN);
-
-  // Caption just below the spinner. Wrapped + centered so the two-line heating
-  // message fits. Uses the shared dialog-card styling so it matches the app's
-  // toasts/dialogs (grey card, radius 8, border) instead of an ad-hoc look.
-  busy_label = lv_label_create(panel_cont);
-  lv_obj_add_flag(busy_label, LV_OBJ_FLAG_FLOATING);
-  lv_label_set_long_mode(busy_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(busy_label, 200);
-  lv_obj_set_style_text_align(busy_label, LV_TEXT_ALIGN_CENTER, 0);
-  KUtils::style_dialog_box(busy_label);
-  lv_obj_align(busy_label, LV_ALIGN_CENTER, 0, 55);
-  lv_obj_add_flag(busy_label, LV_OBJ_FLAG_HIDDEN);
-
-  ws.register_notify_update(this);
-
-  auto def_ext_temp_v = conf->get_json("/default_extruder_temp");
-  if (!def_ext_temp_v.is_null()) {
-    int def_temp = def_ext_temp_v.template get<int>();
-    int temps[] = {180, 200, 220, 240, 260, 280, 300};
-    for (int i = 0; i < 7; i++) {
-      if (temps[i] == def_temp) {
-        temp_selector.set_selected_idx(i);
-        break;
-      }
-    }
-  }
+  ler_padrao();
+  mostrar_temp();
 
   build_filament_dialog();
+
+  // Ao abrir a aba: confere a trava da impressão e a temperatura padrão
+  // (pode ter mudado em Configurações). Roda com o lv_lock já preso.
+  Navegacao::ao_mostrar(Aba::FILAMENTO, [this]() {
+    this->ler_padrao();
+    this->refresh_button_state();
+  });
+
+  // O acompanhamento abriu sozinho (começou uma impressão): a pergunta do
+  // filamento não fica por cima dele. Só esconde a janela; o resto da troca
+  // já é cancelado em consume() quando a impressão começa.
+  Navegacao::ao_abrir_acompanhamento([this]() {
+    if (this->fil_cont != NULL && !lv_obj_has_flag(this->fil_cont, LV_OBJ_FLAG_HIDDEN)) {
+      lv_obj_move_background(this->fil_cont);
+      lv_obj_add_flag(this->fil_cont, LV_OBJ_FLAG_HIDDEN);
+      this->dialogo_da_troca = false;
+    }
+  });
+
+  // vigia da troca parada: criado uma vez só e pausado (sem custo parado)
+  troca_espera = lv_timer_create([](lv_timer_t *t) {
+    auto *self = (ExtruderPanel *)t->user_data;
+    lv_timer_pause(t);
+    self->troca_espera_ativa = false;
+    if (self->troca_etapa >= 0 && !self->ocupado()) {
+      spdlog::warn("troca de filamento parada por falta de uso");
+      if (self->dialogo_da_troca && self->fil_cont != NULL) {
+        lv_obj_move_background(self->fil_cont);
+        lv_obj_add_flag(self->fil_cont, LV_OBJ_FLAG_HIDDEN);
+      }
+      KUtils::notify_toast(KUtils::is_printing()
+        ? "Troca de filamento parada por falta de uso."
+        : "Troca de filamento parada por falta de uso. O bico foi desligado.", 4000);
+      self->parar();   // não esfria se houver impressão
+    }
+  }, TROCA_ESPERA_MS, this);
+  lv_timer_pause(troca_espera);
+
+  refresh_button_state();
+
+  // por último: consume() só começa com tudo montado
+  ws.register_notify_update(this);
 }
 
 ExtruderPanel::~ExtruderPanel() {
   cancel_safety_timer();
+  if (troca_espera != NULL) {
+    lv_timer_del(troca_espera);
+    troca_espera = NULL;
+  }
   if (panel_cont != NULL) {
     lv_obj_del(panel_cont);
     panel_cont = NULL;
@@ -220,16 +267,78 @@ ExtruderPanel::~ExtruderPanel() {
 }
 
 void ExtruderPanel::foreground() {
-  lv_obj_move_foreground(panel_cont);
+  Navegacao::ir_para(Aba::FILAMENTO);
 }
 
 void ExtruderPanel::enable_spoolman() {
-  spoolman_btn.enable();
   spoolman_enabled = true;
 }
 
+// ---- temperatura padrão -----------------------------------------------------
+
+void ExtruderPanel::ler_padrao() {
+  // Aplica /default_extruder_temp quando ele muda (na criação e quando o dono
+  // troca em Configurações); fora isso, o − / + manda.
+  auto v = Config::get_instance()->get_json("/default_extruder_temp");
+  if (v.is_null()) {
+    return;
+  }
+  int def_temp = 0;
+  try {
+    def_temp = v.template get<int>();
+  } catch (const std::exception &) {
+    return;
+  }
+  if (def_temp == padrao_lido) {
+    return;
+  }
+  padrao_lido = def_temp;
+  for (int i = 0; i < N_TEMPS; i++) {
+    if (TEMPS[i] == def_temp) {
+      temp_idx = i;
+      mostrar_temp();
+      break;
+    }
+  }
+}
+
+int ExtruderPanel::temp_escolhida() {
+  if (temp_idx < 0 || temp_idx >= N_TEMPS) {
+    temp_idx = TEMP_IDX_PADRAO;
+  }
+  return TEMPS[temp_idx];
+}
+
+void ExtruderPanel::mostrar_temp() {
+  std::string t = fmt::format("{}°C", temp_escolhida());
+  Marca::texto(temp_valor, t.c_str());
+  if (temp_idx <= 0) {
+    lv_obj_add_state(menos_btn, LV_STATE_DISABLED);
+  } else {
+    lv_obj_clear_state(menos_btn, LV_STATE_DISABLED);
+  }
+  if (temp_idx >= N_TEMPS - 1) {
+    lv_obj_add_state(mais_btn, LV_STATE_DISABLED);
+  } else {
+    lv_obj_clear_state(mais_btn, LV_STATE_DISABLED);
+  }
+}
+
+void ExtruderPanel::mudar_temp(int passo) {
+  int novo = std::max(0, std::min(N_TEMPS - 1, temp_idx + passo));
+  if (novo != temp_idx) {
+    temp_idx = novo;
+    mostrar_temp();
+    if (troca_etapa >= 0) {
+      atualizar_troca();
+    }
+  }
+}
+
+// ---- pergunta do Spoolman (janela em lv_layer_top) ---------------------------
+
 void ExtruderPanel::build_filament_dialog() {
-  fil_cont = lv_obj_create(lv_scr_act());
+  fil_cont = lv_obj_create(lv_layer_top());
   fil_box = lv_obj_create(fil_cont);
   fil_content_cont = lv_obj_create(fil_box);
   fil_row_cont = lv_obj_create(fil_content_cont);
@@ -239,16 +348,22 @@ void ExtruderPanel::build_filament_dialog() {
   fil_yes_btn = lv_btn_create(fil_box);
   fil_no_btn = lv_btn_create(fil_box);
 
+  // fundo PRETO opaco na tela inteira (bloqueia o toque no que está atrás)
   KUtils::style_dialog_overlay(fil_cont);
+  lv_obj_add_flag(fil_cont, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(fil_cont, LV_OBJ_FLAG_HIDDEN);
 
   KUtils::style_dialog_box(fil_box);
-  lv_obj_set_size(fil_box, LV_PCT(80), LV_PCT(62));
+  lv_obj_set_size(fil_box, 400, 180);
   lv_obj_align(fil_box, LV_ALIGN_CENTER, 0, 0);
 
   // header (text swapped per spool state in show_load_filament_dialog)
   fil_title_label = lv_label_create(fil_box);
   lv_label_set_text(fil_title_label, "Usar este filamento?");
+  lv_obj_set_width(fil_title_label, LV_PCT(100));
+  lv_label_set_long_mode(fil_title_label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(fil_title_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_color(fil_title_label, lv_color_hex(Marca::PAPEL), 0);
   KUtils::style_dialog_title(fil_title_label);
 
   lv_obj_remove_style_all(fil_content_cont);
@@ -258,7 +373,7 @@ void ExtruderPanel::build_filament_dialog() {
   lv_obj_set_flex_align(fil_content_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(fil_content_cont, 7, 0);
   lv_obj_clear_flag(fil_content_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(fil_content_cont, LV_ALIGN_CENTER, 0, 2);
+  lv_obj_align(fil_content_cont, LV_ALIGN_CENTER, 0, -6);
 
   lv_obj_remove_style_all(fil_row_cont);
   lv_obj_set_width(fil_row_cont, LV_SIZE_CONTENT);
@@ -268,33 +383,47 @@ void ExtruderPanel::build_filament_dialog() {
   lv_obj_set_style_pad_column(fil_row_cont, 8, 0);
   lv_obj_clear_flag(fil_row_cont, LV_OBJ_FLAG_SCROLLABLE);
 
+  // amostra da cor do carretel (a cor vem do Spoolman; a borda é da marca)
   lv_obj_set_size(fil_swatch, 20, 20);
+  lv_obj_set_style_bg_opa(fil_swatch, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(fil_swatch, 1, 0);
-  lv_obj_set_style_border_color(fil_swatch, lv_color_white(), 0);
+  lv_obj_set_style_border_color(fil_swatch, lv_color_hex(Marca::PAPEL), 0);
   lv_obj_set_style_radius(fil_swatch, 4, 0);
+  lv_obj_set_style_pad_all(fil_swatch, 0, 0);
   lv_obj_clear_flag(fil_swatch, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(fil_swatch, LV_OBJ_FLAG_CLICKABLE);
 
   lv_label_set_long_mode(fil_name_label, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_max_width(fil_name_label, 280, 0);
-  lv_obj_set_style_text_font(fil_name_label, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_max_width(fil_name_label, 300, 0);
+  lv_obj_set_style_text_font(fil_name_label, Marca::f14(), 0);
+  lv_obj_set_style_text_color(fil_name_label, lv_color_hex(Marca::PAPEL), 0);
   lv_label_set_text(fil_name_label, "");
 
   lv_obj_set_style_text_align(fil_detail_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(fil_detail_label, Marca::f12(), 0);
+  lv_obj_set_style_text_color(fil_detail_label, lv_color_hex(Marca::GRAFITE), 0);
   lv_label_set_text(fil_detail_label, "");
 
-  lv_obj_set_size(fil_yes_btn, 96, LV_SIZE_CONTENT);
+  // Sim (esquerda, limão) e Não (direita): mesma posição de antes
+  lv_obj_set_size(fil_yes_btn, 160, 44);
+  lv_obj_set_style_pad_all(fil_yes_btn, 0, 0);
   lv_obj_add_event_cb(fil_yes_btn, &ExtruderPanel::_handle_filament_btns, LV_EVENT_CLICKED, this);
   lv_obj_align(fil_yes_btn, LV_ALIGN_BOTTOM_LEFT, 0, 0);
   lv_obj_t *yl = lv_label_create(fil_yes_btn);
   lv_label_set_text(yl, "Sim");
+  lv_obj_set_style_text_font(yl, Marca::f14(), 0);
   lv_obj_center(yl);
+  Marca::estilo_botao(fil_yes_btn, Marca::Tipo::DESTAQUE);
 
-  lv_obj_set_size(fil_no_btn, 96, LV_SIZE_CONTENT);
+  lv_obj_set_size(fil_no_btn, 160, 44);
+  lv_obj_set_style_pad_all(fil_no_btn, 0, 0);
   lv_obj_add_event_cb(fil_no_btn, &ExtruderPanel::_handle_filament_btns, LV_EVENT_CLICKED, this);
   lv_obj_align(fil_no_btn, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
   lv_obj_t *nl = lv_label_create(fil_no_btn);
   lv_label_set_text(nl, "Não");
+  lv_obj_set_style_text_font(nl, Marca::f14(), 0);
   lv_obj_center(nl);
+  Marca::estilo_botao(fil_no_btn, Marca::Tipo::NORMAL);
 }
 
 void ExtruderPanel::show_load_filament_dialog() {
@@ -346,7 +475,26 @@ void ExtruderPanel::handle_filament_btns(lv_event_t *event) {
   lv_obj_add_flag(fil_cont, LV_OBJ_FLAG_HIDDEN);
 
   if (btn == fil_yes_btn) {
-    run_when_hot(PA_LOAD, "Carregamento", "");
+    if (ocupado()) {
+      return;  // outra ação começou enquanto a pergunta estava aberta
+    }
+    if (travado_imprimindo()) {
+      KUtils::notify_locked();  // uma impressão começou com a pergunta aberta
+      return;
+    }
+    if (dialogo_da_troca) {
+      dialogo_da_troca = false;
+      if (troca_etapa != 2) {
+        return;  // a troca foi cancelada no meio do caminho
+      }
+      botao_ativo = &acao_trocar;
+      troca_passo = true;
+      run_when_hot(PA_LOAD, "Carregando...", "", false);
+      atualizar_troca();
+    } else {
+      botao_ativo = &acao_carregar;
+      run_when_hot(PA_LOAD, "Carregando...", "");
+    }
   } else if (btn == fil_no_btn) {
     // open Spoolman to pick/fix the active spool; re-show this confirm once a
     // spool is chosen so the user re-confirms before the load starts.
@@ -355,112 +503,226 @@ void ExtruderPanel::handle_filament_btns(lv_event_t *event) {
   }
 }
 
+// ---- estado vindo do Moonraker -------------------------------------------------
+
 void ExtruderPanel::consume(json &j) {
   std::lock_guard<std::mutex> lock(lv_lock);
   auto target_value = j["/params/0/extruder/target"_json_pointer];
   if (!target_value.is_null()) {
     current_target = target_value.template get<int>();
-    extruder_temp.update_target(current_target);
   }
 
   auto temp_value = j["/params/0/extruder/temperature"_json_pointer];
   if (!temp_value.is_null()) {
     current_temp = temp_value.template get<int>();
-    extruder_temp.update_value(current_temp);
+  }
+
+  // começou/parou/pausou uma impressão: refaz a trava dos botões
+  auto &pstate = j["/params/0/print_stats/state"_json_pointer];
+  if (!pstate.is_null()) {
+    refresh_button_state();
+  }
+
+  // Uma impressão começou (Orca, Mainsail...) ou foi retomada com uma ação do
+  // filamento em andamento: nada mais é mandado ao bico. Não esfria (a
+  // impressão usa o bico). Nenhum G-code novo, só deixa de mandar.
+  if (travado_imprimindo()) {
+    bool cancelou = false;
+    if (pending_kind != PA_NONE) {
+      auto_cool_after = false;
+      clear_pending();
+      troca_resultado(false);
+      cancelou = true;
+    }
+    if (load_active && !load_stop) {
+      auto_cool_after = false;
+      load_stop = true;            // o pedaço em andamento termina e para
+      cancelou = true;
+    }
+    if (troca_etapa >= 0) {
+      troca_etapa = -1;
+      troca_passo = false;
+      dialogo_da_troca = false;
+      troca.fechar();
+      refresh_button_state();
+      cancelou = true;
+    }
+    if (cancelou) {
+      spdlog::warn("impressão começou: ação do filamento cancelada");
+      KUtils::notify_toast("A impressão começou: a ação do filamento foi cancelada.", 3000);
+    }
   }
 
   if (pending_kind != PA_NONE && current_temp + HEAT_TOLERANCE >= pending_want) {
     fire_pending();
   } else {
-    // Refresh the live "Heating X->YC" readout as the hotend climbs.
-    update_busy_caption();
+    // linha do cartão ("Aquecendo... 180/240°C") e frase da troca
+    atualizar_estado();
   }
 }
 
 int ExtruderPanel::effective_temp() {
-  int sel = 0;
-  try {
-    sel = std::stoi(lv_btnmatrix_get_btn_text(temp_selector.get_selector(),
-      temp_selector.get_selected_idx()));
-  } catch (const std::exception &) {
-    sel = 0;
+  return std::max(temp_escolhida(), current_target);
+}
+
+bool ExtruderPanel::travado_imprimindo() {
+  // Igual à trava de antes (que ficava no botão que abria esta tela):
+  // imprimindo e não pausada. Pausada libera (troca de cor, falta de filamento).
+  return KUtils::is_printing() && !KUtils::is_paused();
+}
+
+// ---- botões ------------------------------------------------------------------
+
+void ExtruderPanel::pintar(Acao &a, bool modo_parar) {
+  Marca::Tipo t = modo_parar ? Marca::Tipo::PERIGO : Marca::Tipo::NORMAL;
+  const char *txt = modo_parar ? "Parar" : a.texto;
+  if (a.bc != NULL) {
+    a.bc->set_tipo(t);
+  } else {
+    Marca::estilo_botao(a.obj, t);
   }
-  return std::max(sel, current_target);
+  Marca::texto(a.rotulo, txt);
+}
+
+void ExtruderPanel::habilitar(Acao &a, bool ok) {
+  if (a.bc != NULL) {
+    if (ok) {
+      a.bc->enable();
+    } else {
+      a.bc->disable();
+    }
+  } else if (ok) {
+    lv_obj_clear_state(a.obj, LV_STATE_DISABLED);
+  } else {
+    lv_obj_add_state(a.obj, LV_STATE_DISABLED);
+  }
 }
 
 void ExtruderPanel::refresh_button_state() {
-  bool busy = action_in_flight || pending_kind != PA_NONE || load_active;
+  bool busy = ocupado();
+  travado = travado_imprimindo();
 
-  if (action_in_flight) {
-    // A gcode is executing on klipper; lock everything until the response.
-    extrude_btn.disable();
-    retract_btn.disable();
-    load_btn.disable();
-    unload_btn.disable();
-    cooldown_btn.disable();
-  } else if (load_active) {
-    // Chunked load feeding. Cooldown stays clickable and doubles as Stop - it
-    // halts the load after the in-flight chunk; the rest are blocked.
-    extrude_btn.disable();
-    retract_btn.disable();
-    load_btn.disable();
-    unload_btn.disable();
-    cooldown_btn.enable();
-  } else if (pending_kind != PA_NONE) {
-    // Waiting for the hotend to heat. Cooldown stays clickable so the user
-    // can cancel; the other actions are blocked until heat-up completes.
-    extrude_btn.disable();
-    retract_btn.disable();
-    load_btn.disable();
-    unload_btn.disable();
-    cooldown_btn.enable();
-  } else {
-    extrude_btn.enable();
-    retract_btn.enable();
-    load_btn.enable();
-    unload_btn.enable();
-    cooldown_btn.enable();
+  if (!busy) {
+    // nada rodando: só a troca (se estiver no meio) continua "dona" do Trocar
+    botao_ativo = troca_etapa >= 0 ? &acao_trocar : NULL;
   }
 
-  if (busy_spinner != NULL) {
-    if (busy) {
-      lv_obj_clear_flag(busy_spinner, LV_OBJ_FLAG_HIDDEN);
-    } else {
-      lv_obj_add_flag(busy_spinner, LV_OBJ_FLAG_HIDDEN);
+  // "Parar" só enquanto dá para parar: esperando aquecer ou carregando em
+  // pedaços. Um G-code único em andamento (descarregar, extrudar, esfriar) não
+  // tem como ser interrompido: aí tudo fica desabilitado até a resposta, como
+  // antes.
+  bool pode_parar = !action_in_flight && (pending_kind != PA_NONE || load_active);
+  Acao *parar_em = pode_parar ? botao_ativo : NULL;
+  if (parar_em != botao_parar) {
+    if (botao_parar != NULL) {
+      pintar(*botao_parar, false);
     }
+    if (parar_em != NULL) {
+      pintar(*parar_em, true);
+    }
+    botao_parar = parar_em;
   }
 
-  update_busy_caption();
+  Acao *todas[] = { &acao_carregar, &acao_descarregar, &acao_trocar, &acao_extrudar, &acao_retrair };
+  for (Acao *a : todas) {
+    bool ok;
+    if (a == botao_parar) {
+      ok = true;                       // o Parar fica sempre à mão
+    } else if (troca_etapa >= 0 && a == &acao_trocar) {
+      ok = true;                       // no meio da troca: Trocar reabre a subtela
+    } else if (busy || travado || troca_etapa >= 0) {
+      ok = false;
+    } else {
+      ok = true;
+    }
+    habilitar(*a, ok);
+  }
+
+  atualizar_estado();
+  vigiar_troca();
 }
 
-void ExtruderPanel::update_busy_caption() {
-  if (busy_label == NULL) {
+void ExtruderPanel::vigiar_troca() {
+  if (troca_espera == NULL) {
+    return;  // ainda no construtor
+  }
+  // conta só enquanto a troca está parada esperando o dono; recomeça do zero
+  // a cada vez que ela volta a ficar parada
+  bool parada = troca_etapa >= 0 && !ocupado();
+  if (parada && !troca_espera_ativa) {
+    lv_timer_reset(troca_espera);
+    lv_timer_resume(troca_espera);
+    troca_espera_ativa = true;
+  } else if (!parada && troca_espera_ativa) {
+    lv_timer_pause(troca_espera);
+    troca_espera_ativa = false;
+  }
+}
+
+void ExtruderPanel::atualizar_estado() {
+  if (estado_label == NULL) {
     return;
   }
 
+  std::string txt;
+  uint32_t ponto = 0;      // 0 = sem bolinha
+  bool duas_linhas = false;
+
   if (load_active) {
-    // Show progress + how to stop, so the slow feed never looks like a hang.
-    int done = LOAD_TOTAL_MM - load_remaining_mm;
-    lv_label_set_text(busy_label,
-      fmt::format("Carregando {}/{} mm\nToque em Esfriar para parar",
-        done, LOAD_TOTAL_MM).c_str());
-    lv_obj_clear_flag(busy_label, LV_OBJ_FLAG_HIDDEN);
+    // Show progress, so the slow feed never looks like a hang.
+    txt = fmt::format("Carregando... {}/{} mm", LOAD_TOTAL_MM - load_remaining_mm, LOAD_TOTAL_MM);
+    ponto = Marca::LIMAO;
   } else if (pending_kind != PA_NONE) {
-    // Heating toward the action. Show live current->target so the number
-    // visibly climbs and it's obvious the press registered. (ASCII arrow/dots:
-    // the small montserrat font lacks the U+2192 / U+2026 glyphs.)
-    lv_label_set_text(busy_label,
-      fmt::format("Aquecendo {}°C -> {}°C\n{} em seguida",
-        current_temp, pending_want, action_name).c_str());
-    lv_obj_clear_flag(busy_label, LV_OBJ_FLAG_HIDDEN);
+    // Heating toward the action: live current/target so the number climbs.
+    txt = fmt::format("Aquecendo... {}/{}°C", current_temp, pending_want);
+    ponto = Marca::LIMAO;
   } else if (action_in_flight) {
-    lv_label_set_text(busy_label,
-      fmt::format("{}\nem andamento...", action_name).c_str());
-    lv_obj_clear_flag(busy_label, LV_OBJ_FLAG_HIDDEN);
+    txt = action_name;
+    ponto = Marca::LIMAO;
+  } else if (travado) {
+    txt = "Indisponível durante a impressão";
+    duas_linhas = true;
+  } else if (troca_etapa >= 0) {
+    txt = fmt::format("Troca: etapa {} de 4", std::min(troca_etapa + 1, 4));
+    ponto = Marca::LIMAO;
   } else {
-    lv_obj_add_flag(busy_label, LV_OBJ_FLAG_HIDDEN);
+    // parado: temperatura do bico e o estado com palavra (como na aba
+    // Temperatura)
+    const char *est;
+    if (current_target <= 0) {
+      est = "Desligado";
+    } else if (std::abs(current_temp - current_target) <= 2) {
+      est = "No alvo";
+      ponto = Marca::OK_PONTO;
+    } else if (current_temp < current_target) {
+      est = "Aquecendo...";
+      ponto = Marca::LIMAO;
+    } else {
+      est = "Esfriando...";
+    }
+    txt = fmt::format("Bico {}°C · {}", current_temp, est);
+  }
+
+  Marca::texto(estado_label, txt.c_str());
+  lv_obj_set_y(estado_label, duas_linhas ? 40 : 48);
+
+  // só mexe na bolinha quando ela muda (consume chama isto várias vezes por segundo)
+  if (ponto != ponto_mostrado) {
+    if (ponto == 0) {
+      lv_obj_add_flag(estado_ponto, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_set_style_bg_color(estado_ponto, lv_color_hex(ponto), 0);
+      lv_obj_clear_flag(estado_ponto, LV_OBJ_FLAG_HIDDEN);
+    }
+    ponto_mostrado = ponto;
+  }
+
+  if (troca_etapa >= 0) {
+    atualizar_troca();
   }
 }
+
+// ---- execução das ações (lógica de antes) ------------------------------------
 
 void ExtruderPanel::arm_safety_timer(uint32_t ms) {
   cancel_safety_timer();
@@ -478,10 +740,12 @@ void ExtruderPanel::arm_safety_timer(uint32_t ms) {
       spdlog::warn("extruder action response timeout, unlocking buttons");
       self->action_in_flight = false;
       self->refresh_button_state();
+      self->troca_resultado(false);
     } else if (self->pending_kind != PA_NONE) {
       spdlog::warn("extruder heat-up timed out, clearing pending action");
       self->clear_pending();
       KUtils::notify_toast("O aquecimento demorou demais.");
+      self->troca_resultado(false);
     }
   }, ms, this);
   lv_timer_set_repeat_count(safety_timer, 1);
@@ -514,6 +778,7 @@ void ExtruderPanel::on_action_response() {
   cancel_safety_timer();
   refresh_button_state();
   maybe_auto_cooldown();  // extrude/retract/unload finished -> drop the heater
+  troca_resultado(true);  // etapa da troca terminou (sem efeito fora da troca)
 }
 
 void ExtruderPanel::maybe_auto_cooldown() {
@@ -521,7 +786,14 @@ void ExtruderPanel::maybe_auto_cooldown() {
     return;
   }
   auto_cool_after = false;  // clear first so the cooldown action can't re-trigger
-  action_name = "Resfriamento";
+  if (KUtils::is_printing()) {
+    // Impressão pausada (troca de cor no meio da impressão) ou em andamento:
+    // não desliga o bico, senão a impressão voltaria com o bico frio.
+    refresh_button_state();
+    return;
+  }
+  action_name = "Esfriando...";
+  botao_ativo = NULL;
   // Wait for all queued extruder moves to FINISH before dropping the heater.
   // Moonraker's gcode.script "done" fires when commands are queued, not when the
   // motion completes -- and _GUPPY_QUIT_MATERIAL has no trailing M400 -- so without
@@ -541,24 +813,32 @@ void ExtruderPanel::clear_pending() {
   refresh_button_state();
 }
 
+void ExtruderPanel::executar_agora(PendingKind kind, const std::string &gcode) {
+  if (kind == PA_LOAD) {
+    begin_load();    // chunked, stoppable - not a one-shot macro
+  } else if (kind == PA_AQUECER) {
+    // só aquecer (etapa 1 da troca): chegou na temperatura, etapa feita
+    refresh_button_state();
+    troca_resultado(true);
+  } else {
+    send_action(gcode);
+  }
+}
+
 void ExtruderPanel::fire_pending() {
   PendingKind kind = pending_kind;
   std::string gcode = pending_gcode;
   clear_pending();   // resets pending state + button enables; the call below re-locks
   // action_name carries over so the caption stays correct.
-  if (kind == PA_LOAD) {
-    begin_load();    // chunked, stoppable - not a one-shot macro
-  } else {
-    send_action(gcode);
-  }
+  executar_agora(kind, gcode);
 }
 
 void ExtruderPanel::begin_load() {
   load_active = true;
   load_stop = false;
   load_remaining_mm = LOAD_TOTAL_MM;
-  action_name = "Carregamento";
-  refresh_button_state();  // spinner + caption; Cooldown stays live as Stop
+  action_name = "Carregando...";
+  refresh_button_state();  // caption; the action's button stays live as Stop
   send_load_chunk();
 }
 
@@ -575,7 +855,7 @@ void ExtruderPanel::send_load_chunk() {
   load_remaining_mm -= chunk;
   // Two-phase: fast until the approach length is fed, then slow to purge.
   int feed = (fed_before < LOAD_FAST_MM) ? LOAD_FAST_FEED : LOAD_SLOW_FEED;
-  update_busy_caption();
+  atualizar_estado();
   // Per-chunk watchdog: if the response never arrives (ws died), stop feeding
   // rather than hang. The next chunk is only sent from the response callback,
   // so the feed naturally halts the moment load_stop is set.
@@ -597,14 +877,16 @@ void ExtruderPanel::finish_load(bool natural) {
   if (natural) {
     maybe_auto_cooldown();  // load fed to completion -> drop the heater
   }
+  troca_resultado(natural);
 }
 
 void ExtruderPanel::run_when_hot(PendingKind kind, const std::string &name,
-                                 const std::string &gcode) {
+                                 const std::string &gcode, bool esfriar_depois) {
   action_name = name;
   // Extrude/retract/load/unload all heat the hotend just for the action; cool it
   // back down once the action completes (on_action_response / finish_load).
-  auto_cool_after = true;
+  // Na troca de filamento o bico fica quente entre as etapas (esfria no fim).
+  auto_cool_after = esfriar_depois;
   int want = effective_temp();
 
   // Non-blocking heat request. Avoids the M109 hang from #65 - we watch the
@@ -616,11 +898,7 @@ void ExtruderPanel::run_when_hot(PendingKind kind, const std::string &name,
   }
 
   if (current_temp + HEAT_TOLERANCE >= want) {
-    if (kind == PA_LOAD) {
-      begin_load();  // chunked, stoppable feed instead of a one-shot macro
-    } else {
-      send_action(gcode);
-    }
+    executar_agora(kind, gcode);
     return;
   }
 
@@ -632,130 +910,308 @@ void ExtruderPanel::run_when_hot(PendingKind kind, const std::string &name,
   arm_safety_timer(HEAT_TIMEOUT_MS);
 }
 
+std::string ExtruderPanel::gcode_descarregar() {
+  // Heat to the selected temp first (run_when_hot), then run the macro.
+  // _GUPPY_QUIT_MATERIAL also takes EXTRUDER_TEMP; a plain UNLOAD_FILAMENT
+  // macro is whatever the user defined, but now always runs hot.
+  return unload_filament_macro == "_GUPPY_QUIT_MATERIAL"
+    ? fmt::format("{} EXTRUDER_TEMP={}", unload_filament_macro, effective_temp())
+    : unload_filament_macro;
+}
+
+void ExtruderPanel::parar() {
+  // O mesmo caminho do antigo "Esfriar" durante uma ação. Um G-code único já
+  // em andamento não tem como parar (o botão fica desabilitado nessa hora).
+  if (action_in_flight) {
+    return;
+  }
+  // Stop: this IS the cooldown, so don't let it auto-chain another.
+  auto_cool_after = false;
+
+  // Parar encerra também a troca de filamento (Cancelar dela vem para cá).
+  bool estava_na_troca = troca_etapa >= 0;
+  troca_passo = false;
+  troca_etapa = -1;
+  dialogo_da_troca = false;
+  if (estava_na_troca) {
+    troca.fechar();
+  }
+
+  // Com impressão pausada ou em andamento: para a ação mas não desliga o bico
+  // (a impressão precisa dele quente).
+  bool esfriar = !KUtils::is_printing();
+
+  if (load_active) {
+    // Stop the load: send_load_chunk() won't queue another chunk, and we
+    // drop the heater now. finish_load() runs from the in-flight chunk's
+    // response, so motion ceases within ~one chunk.
+    load_stop = true;
+    if (esfriar) {
+      ws.gcode_script(cooldown_macro);
+    }
+    KUtils::notify_toast("Parando o carregamento...");
+    refresh_button_state();
+    return;
+  }
+
+  clear_pending();
+  if (esfriar) {
+    action_name = "Esfriando...";
+    botao_ativo = NULL;
+    send_action(cooldown_macro);
+  } else {
+    refresh_button_state();
+  }
+}
+
 void ExtruderPanel::handle_callback(lv_event_t *e) {
   spdlog::trace("handling extruder panel callback");
   if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
     lv_obj_t *selector = lv_event_get_target(e);
     uint32_t idx = lv_btnmatrix_get_selected_btn(selector);
-    const char *v = lv_btnmatrix_get_btn_text(selector, idx);
-
-    if (selector == temp_selector.get_selector()) {
-      temp_selector.set_selected_idx(idx);
-    }
-
-    if (selector == length_selector.get_selector()) {
+    if (selector == length_selector.get_selector() && idx != LV_BTNMATRIX_BTN_NONE) {
       length_selector.set_selected_idx(idx);
     }
+    return;
+  }
 
-    if (selector == speed_selector.get_selector()) {
-      speed_selector.set_selected_idx(idx);
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+    return;
+  }
+  lv_obj_t *btn = lv_event_get_current_target(e);
+
+  // − / + só mudam o número na tela (não mandam nada para a impressora)
+  if (btn == menos_btn) {
+    mudar_temp(-1);
+    return;
+  }
+  if (btn == mais_btn) {
+    mudar_temp(+1);
+    return;
+  }
+
+  // O botão que está mostrando "Parar"
+  if (botao_parar != NULL && btn == botao_parar->obj) {
+    parar();
+    return;
+  }
+
+  // Trocar com a troca já começada: reabre a subtela onde parou
+  if (btn == acao_trocar.obj && troca_etapa >= 0) {
+    troca.abrir();
+    atualizar_troca();
+    troca_espera_ativa = false;   // o dono voltou: a espera recomeça
+    if (troca_espera != NULL) {
+      lv_timer_pause(troca_espera);
     }
+    vigiar_troca();
+    return;
+  }
 
-    spdlog::trace("selector {} {} {}, {} {} {}", fmt::ptr(selector), idx, v,
-      fmt::ptr(temp_selector.get_selector()),
-      fmt::ptr(length_selector.get_selector()),
-      fmt::ptr(speed_selector.get_selector()));
+  // Remaining actions: blocked while another action is running OR while a
+  // heat-up is pending. refresh_button_state() also disables their widgets,
+  // but check the flags too in case of an event in flight before refresh.
+  if (ocupado()) {
+    return;
+  }
 
-  } else if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-    lv_obj_t *btn = lv_event_get_current_target(e);
+  // Trava da impressão (a mesma de antes): imprimindo e não pausada
+  if (travado_imprimindo()) {
+    KUtils::notify_locked();
+    return;
+  }
 
-    if (btn == back_btn.get_container()) {
-      clear_pending();   // don't auto-extrude after the user navigates away
-      load_stop = true;  // and stop any in-flight chunked load
-      lv_obj_move_background(panel_cont);
-      return;
+  if (btn == acao_trocar.obj) {
+    troca_iniciar();
+    return;
+  }
+
+  if (troca_etapa >= 0) {
+    return;  // no meio da troca só o Trocar responde
+  }
+
+  if (btn == acao_extrudar.obj || btn == acao_retrair.obj) {
+    bool retract = btn == acao_retrair.obj;
+    uint32_t li = length_selector.get_selected_idx();
+    int len = COMPRIMENTOS[li < 3 ? li : 0];
+    int feed = EXTRUDE_SPEED_MM_S * 60;
+    botao_ativo = retract ? &acao_retrair : &acao_extrudar;
+    run_when_hot(retract ? PA_RETRACT : PA_EXTRUDE,
+      retract ? "Retraindo..." : "Extrudando...",
+      fmt::format("M83\nG1 E{}{} F{}", retract ? "-" : "", len, feed));
+    return;
+  }
+
+  if (btn == acao_descarregar.obj) {
+    botao_ativo = &acao_descarregar;
+    run_when_hot(PA_UNLOAD, "Descarregando...", gcode_descarregar());
+    return;
+  }
+
+  if (btn == acao_carregar.obj) {
+    // Loading deducts from the active Spoolman spool (Moonraker tracks raw
+    // E-axis movement, not just prints), so confirm the spool first when
+    // Spoolman is configured. Yes -> load, No -> open the Spoolman panel.
+    // The load itself heats then feeds in bounded, stoppable chunks
+    // (run_when_hot -> begin_load), bypassing the uninterruptible stock macro.
+    if (spoolman_enabled) {
+      dialogo_da_troca = false;
+      show_load_filament_dialog();
+    } else {
+      botao_ativo = &acao_carregar;
+      run_when_hot(PA_LOAD, "Carregando...", "");
     }
+    return;
+  }
+}
 
-    if (btn == spoolman_btn.get_container()) {
-      spoolman_panel.foreground();
-      return;
+// ---- troca de filamento (quadro 10) ------------------------------------------
+// Cada etapa usa as mesmas funções dos botões da aba: aquecer e esperar
+// (run_when_hot), descarregar (macro do config), carregar em pedaços
+// (begin_load) e extrudar 10 mm para purgar. O bico fica quente entre as
+// etapas e esfria no "Concluir" ou no "Cancelar" (que é o mesmo "Parar").
+
+void ExtruderPanel::troca_iniciar() {
+  troca_etapa = 0;
+  troca_passo = false;
+  troca.abrir();
+  troca_executar();  // a etapa 1 (aquecer) começa sozinha
+}
+
+void ExtruderPanel::troca_executar() {
+  if (troca_etapa < 0 || ocupado()) {
+    return;
+  }
+  if (travado_imprimindo()) {
+    KUtils::notify_locked();
+    return;
+  }
+
+  botao_ativo = &acao_trocar;
+  switch (troca_etapa) {
+  case 0:
+    troca_passo = true;
+    run_when_hot(PA_AQUECER, "Aquecendo...", "", false);
+    break;
+  case 1:
+    troca_passo = true;
+    run_when_hot(PA_UNLOAD, "Descarregando...", gcode_descarregar(), false);
+    break;
+  case 2:
+    if (spoolman_enabled) {
+      // a mesma pergunta do Carregar; o "Sim" continua a etapa
+      dialogo_da_troca = true;
+      show_load_filament_dialog();
+    } else {
+      troca_passo = true;
+      run_when_hot(PA_LOAD, "Carregando...", "", false);
     }
+    break;
+  default:  // 3 (purgar) e 4 (purgar mais)
+    troca_passo = true;
+    run_when_hot(PA_EXTRUDE, "Purgando...",
+      fmt::format("M83\nG1 E{} F{}", PURGA_MM, EXTRUDE_SPEED_MM_S * 60), false);
+    break;
+  }
+  atualizar_troca();
+}
 
-    if (btn == cooldown_btn.get_container()) {
-      // Cooldown doubles as the cancel for a pending heat-up and the Stop for a
-      // running chunked load. Always allowed unless a one-shot gcode is already
-      // in flight (in which case refresh_button_state disables the button).
-      if (action_in_flight) {
-        return;
-      }
-      // Manual cooldown: this IS the cooldown, so don't let it auto-chain another.
-      auto_cool_after = false;
-      if (load_active) {
-        // Stop the load: send_load_chunk() won't queue another chunk, and we
-        // drop the heater now. finish_load() runs from the in-flight chunk's
-        // response, so motion ceases within ~one chunk.
-        load_stop = true;
-        ws.gcode_script(cooldown_macro);
-        KUtils::notify_toast("Parando o carregamento...");
-        return;
-      }
-      clear_pending();
-      action_name = "Resfriamento";
-      send_action(cooldown_macro);
-      return;
-    }
+void ExtruderPanel::troca_resultado(bool ok) {
+  if (!troca_passo) {
+    return;
+  }
+  troca_passo = false;
+  if (ok && troca_etapa >= 0 && troca_etapa < 4) {
+    troca_etapa++;
+  }
+  // deu errado (tempo esgotado): fica na mesma etapa; Continuar tenta de novo
+  refresh_button_state();
+}
 
-    // Remaining actions: blocked while another action is running OR while a
-    // heat-up is pending. refresh_button_state() also disables their widgets,
-    // but check the flags too in case of an event in flight before refresh.
-    if (action_in_flight || pending_kind != PA_NONE || load_active) {
-      return;
-    }
+void ExtruderPanel::troca_esquerdo() {
+  if (troca_etapa >= 4 && !ocupado()) {
+    troca_executar();  // "Purgar mais"
+    return;
+  }
+  parar();             // "Cancelar": o mesmo caminho do Parar
+}
 
-    if (btn == extrude_btn.get_container() || btn == retract_btn.get_container()) {
-      bool retract = btn == retract_btn.get_container();
-      const char *len = lv_btnmatrix_get_btn_text(length_selector.get_selector(),
-        length_selector.get_selected_idx());
-      const char *speed = lv_btnmatrix_get_btn_text(speed_selector.get_selector(),
-        speed_selector.get_selected_idx());
-      int feed = 300;  // 5 mm/s fallback if the speed text fails to parse
-      try {
-        feed = std::stoi(speed) * 60;
-      } catch (const std::exception &) {}
-      run_when_hot(retract ? PA_RETRACT : PA_EXTRUDE,
-        retract ? "Retração" : "Extrusão",
-        fmt::format("M83\nG1 E{}{} F{}", retract ? "-" : "", len, feed));
-      return;
-    }
+void ExtruderPanel::troca_direito() {
+  if (ocupado()) {
+    return;
+  }
+  if (troca_etapa >= 4) {
+    troca_concluir();
+    return;
+  }
+  troca_executar();    // "Continuar"
+}
 
-    if (btn == unload_btn.get_container()) {
-      // Heat to the selected temp first (run_when_hot), then run the macro.
-      // _GUPPY_QUIT_MATERIAL also takes EXTRUDER_TEMP; a plain UNLOAD_FILAMENT
-      // macro is whatever the user defined, but now always runs hot.
-      std::string gcode = unload_filament_macro == "_GUPPY_QUIT_MATERIAL"
-        ? fmt::format("{} EXTRUDER_TEMP={}", unload_filament_macro, effective_temp())
-        : unload_filament_macro;
-      run_when_hot(PA_UNLOAD, "Descarregamento", gcode);
-      return;
-    }
+void ExtruderPanel::troca_concluir() {
+  troca_etapa = -1;
+  troca_passo = false;
+  dialogo_da_troca = false;
+  troca.fechar();
+  // fim da troca: esfria o bico como no fim das outras ações (com o M400
+  // antes, para a purga terminar de sair)
+  auto_cool_after = true;
+  maybe_auto_cooldown();
+  refresh_button_state();
+}
 
-    if (btn == load_btn.get_container()) {
-      // Loading deducts from the active Spoolman spool (Moonraker tracks raw
-      // E-axis movement, not just prints), so confirm the spool first when
-      // Spoolman is configured. Yes -> load, No -> open the Spoolman panel.
-      // The load itself heats then feeds in bounded, stoppable chunks
-      // (run_when_hot -> begin_load), bypassing the uninterruptible stock macro.
-      if (spoolman_enabled) {
-        show_load_filament_dialog();
-      } else {
-        run_when_hot(PA_LOAD, "Carregamento", "");
-      }
-      return;
+void ExtruderPanel::atualizar_troca() {
+  if (troca_etapa < 0) {
+    return;
+  }
+
+  TrocaFilamentoPanel::Vista v;
+  v.etapa = troca_etapa;
+  v.temp = pending_kind != PA_NONE ? pending_want : effective_temp();
+
+  bool busy = ocupado();
+  if (pending_kind != PA_NONE) {
+    v.frase = fmt::format("Aquecendo o bico: {}/{}°C", current_temp, pending_want);
+  } else if (load_active) {
+    v.frase = fmt::format("Carregando... {}/{} mm", LOAD_TOTAL_MM - load_remaining_mm, LOAD_TOTAL_MM);
+  } else if (action_in_flight) {
+    v.frase = action_name;
+  } else {
+    switch (troca_etapa) {
+    case 0:  v.frase = "Toque em Continuar para aquecer o bico."; break;
+    case 1:  v.frase = "Toque em Continuar para descarregar."; break;
+    case 2:  v.frase = "Carregue o filamento novo e toque em Continuar."; break;
+    case 3:  v.frase = fmt::format("Toque em Continuar para purgar {} mm.", PURGA_MM); break;
+    default: v.frase = "Saiu limpo? Toque em Concluir."; break;
     }
   }
+
+  if (troca_etapa >= 4 && !busy) {
+    v.esquerdo = "Purgar mais";
+    v.direito = LV_SYMBOL_OK " Concluir";
+  } else {
+    v.esquerdo = "Cancelar";
+    v.direito = troca_etapa >= 4 ? LV_SYMBOL_OK " Concluir" : LV_SYMBOL_RIGHT " Continuar";
+  }
+  // Cancelar para a espera do aquecimento ou a carga; um G-code único em
+  // andamento (descarregar, purgar) não tem como parar
+  v.esquerdo_ok = !action_in_flight;
+  v.direito_ok = !busy;
+
+  troca.mostrar(v);
 }
 
 #ifdef SIMULATOR
 void ExtruderPanel::sim_show_busy() {
   // Pretend Extrude was pressed cold: heating toward target, action buttons
-  // disabled, spinner + caption visible. We don't send_action() (no websocket;
-  // the safety timer would also fire ACTION_TIMEOUT_MS later) - just stage the
-  // pending state so the heat-up caption can be visually verified.
-  action_name = "Extrusão";
+  // disabled, caption visible. We don't send_action() (no websocket; the safety
+  // timer would also fire ACTION_TIMEOUT_MS later) - just stage the pending
+  // state so the heat-up caption can be visually verified.
+  action_name = "Extrudando...";
+  botao_ativo = &acao_extrudar;
   pending_kind = PA_EXTRUDE;
   pending_want = 220;
   current_temp = 25;
   refresh_button_state();
-  lv_obj_move_foreground(panel_cont);
+  Navegacao::ir_para(Aba::FILAMENTO);
 }
 #endif

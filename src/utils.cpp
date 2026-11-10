@@ -6,6 +6,7 @@
 #include "websocket_client.h"
 #include "spdlog/spdlog.h"
 #include "platform.h"
+#include "marca.h"
 #include "lvgl/lvgl.h"
 
 #include <cmath>
@@ -86,47 +87,71 @@ namespace KUtils {
   }
 
   void style_dialog_overlay(lv_obj_t *overlay) {
+    // fundo liso e opaco: nada de véu transparente por cima da tela (pesa e
+    // fica borrado em 16 bits)
     lv_obj_set_size(overlay, LV_PCT(100), LV_PCT(100));
     lv_obj_clear_flag(overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_radius(overlay, 0, 0);
     lv_obj_set_style_border_width(overlay, 0, 0);
     lv_obj_set_style_pad_all(overlay, 0, 0);
-    lv_obj_set_style_bg_opa(overlay, LV_OPA_70, 0);
+    lv_obj_set_style_bg_color(overlay, lv_color_hex(Marca::PRETO), 0);
+    lv_obj_set_style_bg_opa(overlay, LV_OPA_COVER, 0);
   }
 
   void style_dialog_box(lv_obj_t *box) {
-    lv_obj_set_style_border_width(box, 2, 0);
-    lv_obj_set_style_radius(box, 8, 0);
-    lv_obj_set_style_bg_color(box, lv_palette_darken(LV_PALETTE_GREY, 1), 0);
+    lv_obj_set_style_border_width(box, 0, 0);
+    lv_obj_set_style_radius(box, Marca::RAIO, 0);
+    lv_obj_set_style_shadow_width(box, 0, 0);
+    lv_obj_set_style_bg_color(box, lv_color_hex(Marca::PRETO_2), 0);
     lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_color(box, lv_color_hex(Marca::PAPEL), 0);
     lv_obj_set_style_pad_all(box, 12, 0);
     lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
   }
 
   void style_dialog_title(lv_obj_t *title) {
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(title, Marca::f16(), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
   }
 
   void style_dialog_msgbox(lv_obj_t *mbox) {
-    lv_obj_set_style_border_width(mbox, 2, 0);
-    lv_obj_set_style_radius(mbox, 8, 0);
-    lv_obj_set_style_bg_color(mbox, lv_palette_darken(LV_PALETTE_GREY, 1), 0);
+    lv_obj_set_style_border_width(mbox, 0, 0);
+    lv_obj_set_style_radius(mbox, Marca::RAIO, 0);
+    lv_obj_set_style_shadow_width(mbox, 0, 0);
+    lv_obj_set_style_bg_color(mbox, lv_color_hex(Marca::PRETO_2), 0);
     lv_obj_set_style_bg_opa(mbox, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_color(mbox, lv_color_hex(Marca::PAPEL), 0);
+    lv_obj_set_style_text_font(mbox, Marca::f14(), 0);
 
-    // lv_msgbox renders its buttons as a button-matrix whose default item style
-    // is dark; restyle the items to the themed (blue) primary so they match the
-    // lv_btn buttons used by the custom-box dialogs.
+    // botões da caixa: PRETO_3 com texto PAPEL, raio 12, 8 px entre eles
     lv_obj_t *btnm = lv_msgbox_get_btns(mbox);
     if (btnm != NULL) {
-      lv_color_t primary = lv_theme_get_color_primary(mbox);
       lv_obj_set_style_bg_opa(btnm, LV_OPA_TRANSP, LV_PART_MAIN);
       lv_obj_set_style_border_width(btnm, 0, LV_PART_MAIN);
+      lv_obj_set_style_pad_all(btnm, 0, LV_PART_MAIN);
+      lv_obj_set_style_pad_gap(btnm, Marca::VAO, LV_PART_MAIN);
       lv_obj_set_style_bg_opa(btnm, LV_OPA_COVER, LV_PART_ITEMS);
-      lv_obj_set_style_bg_color(btnm, primary, LV_PART_ITEMS);
-      lv_obj_set_style_bg_color(btnm, primary, LV_PART_ITEMS | LV_STATE_CHECKED);
-      lv_obj_set_style_text_color(btnm, lv_color_white(), LV_PART_ITEMS);
-      lv_obj_set_style_radius(btnm, 4, LV_PART_ITEMS);
+      lv_obj_set_style_bg_color(btnm, lv_color_hex(Marca::PRETO_3), LV_PART_ITEMS);
+      lv_obj_set_style_text_color(btnm, lv_color_hex(Marca::PAPEL), LV_PART_ITEMS);
+      lv_obj_set_style_radius(btnm, Marca::RAIO, LV_PART_ITEMS);
+      lv_obj_set_style_shadow_width(btnm, 0, LV_PART_ITEMS);
+      lv_obj_set_style_bg_color(btnm, lv_color_hex(Marca::APERTADO), LV_PART_ITEMS | LV_STATE_PRESSED);
+      lv_obj_set_style_color_filter_opa(btnm, LV_OPA_TRANSP, LV_PART_ITEMS | LV_STATE_PRESSED);
+    }
+  }
+
+  // Pergunta modal (lv_msgbox_create com pai NULL): o fundo invisível que
+  // segura o toque passa a cobrir só a área das páginas (56,0 424x272). A
+  // coluna da esquerda, com a parada de emergência, continua respondendo
+  // enquanto a pergunta está aberta. A caixa fica centrada nessa área.
+  static void liberar_coluna(lv_obj_t *mbox) {
+    lv_obj_t *fundo = lv_obj_get_parent(mbox);
+    if (fundo != NULL && lv_obj_check_type(fundo, &lv_msgbox_backdrop_class)) {
+      lv_obj_set_pos(fundo, Marca::NAV_L, 0);
+      lv_obj_set_size(fundo, Marca::CONT_L, Marca::TELA_A);
+      lv_obj_center(mbox);
+    } else {
+      lv_obj_align(mbox, LV_ALIGN_CENTER, Marca::NAV_L / 2, 0);
     }
   }
 
@@ -140,6 +165,7 @@ namespace KUtils {
     if (title != NULL) {
       lv_obj_set_width(title, LV_PCT(100));
       lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+      lv_obj_set_style_text_font(title, Marca::f16(), 0);
     }
 
     lv_obj_t *msg = ((lv_msgbox_t *)mbox)->text;
@@ -151,10 +177,10 @@ namespace KUtils {
     lv_obj_add_flag(btnm, LV_OBJ_FLAG_FLOATING);
     lv_obj_align(btnm, LV_ALIGN_BOTTOM_MID, 0, 0);
 
-    auto hscale = (double)lv_disp_get_physical_ver_res(NULL) / 480.0;
-    lv_obj_set_size(btnm, LV_PCT(btns_pct), 50 * hscale);
-    lv_obj_set_size(mbox, LV_PCT(70), LV_PCT(45));
-    lv_obj_center(mbox);
+    // botões com 44 px de altura (alvo de toque); caixa de 336 x 160
+    lv_obj_set_size(btnm, LV_PCT(btns_pct), Marca::TOQUE);
+    lv_obj_set_size(mbox, 336, 160);
+    liberar_coluna(mbox);
   }
 
   void notify_locked() {
@@ -168,17 +194,28 @@ namespace KUtils {
   }
 
   void notify_toast(const std::string &msg, uint32_t timeout_ms) {
-    lv_obj_t *mbox = lv_msgbox_create(NULL, NULL, msg.c_str(), NULL, false);
+    // Aviso rápido SEM fundo e sem pegar toque: a caixa mora direto em
+    // lv_layer_top() (sem o fundo de tela inteira do lv_msgbox) e nenhum
+    // pedaço dela é tocável. O toque passa para a tela: a coluna, a parada
+    // de emergência e as janelas continuam funcionando enquanto ele aparece.
+    lv_obj_t *mbox = lv_msgbox_create(lv_layer_top(), NULL, msg.c_str(), NULL, false);
     style_dialog_msgbox(mbox);
-    lv_obj_t *txt = ((lv_msgbox_t *)mbox)->text;
-    // Left-align the body so multi-line messages wrap to a clean left margin
-    // instead of ragged centered lines.
-    lv_label_set_long_mode(txt, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(txt, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_width(txt, LV_PCT(100));
-    lv_obj_set_width(mbox, LV_PCT(70));
+    lv_obj_clear_flag(mbox, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *conteudo = lv_msgbox_get_content(mbox);
+    if (conteudo != NULL) {
+      lv_obj_clear_flag(conteudo, LV_OBJ_FLAG_CLICKABLE);
+    }
+    lv_obj_t *txt = lv_msgbox_get_text(mbox);
+    if (txt != NULL) {
+      lv_obj_clear_flag(txt, LV_OBJ_FLAG_CLICKABLE);
+      lv_label_set_long_mode(txt, LV_LABEL_LONG_WRAP);
+      lv_obj_set_style_text_align(txt, LV_TEXT_ALIGN_CENTER, 0);
+      lv_obj_set_width(txt, LV_PCT(100));
+    }
+    // 336 px fixos, centrado na área das páginas (à direita da coluna)
+    lv_obj_set_width(mbox, 336);
     lv_obj_set_height(mbox, LV_SIZE_CONTENT);
-    lv_obj_center(mbox);
+    lv_obj_align(mbox, LV_ALIGN_CENTER, Marca::NAV_L / 2, 0);
 
     // Auto-close once after timeout_ms (repeat_count 1 → LVGL deletes the timer).
     lv_timer_t *t = lv_timer_create([](lv_timer_t *tm) {
@@ -299,68 +336,87 @@ namespace KUtils {
     return result;
   }
 
+  static int thumb_dim(json &thumb, const char *key) {
+    return thumb[key].is_number()
+      ? thumb[key].template get<int>()
+      : std::stoi(thumb[key].template get<std::string>());
+  }
+
+  // Baixa (ou acha no disco, rodando na impressora) a miniatura escolhida.
+  static std::pair<std::string, std::pair<size_t, size_t>> thumbnail_at(const std::string &gcode_file,
+    json &thumbs, uint32_t index) {
+    auto &thumb = thumbs.at(index);
+    size_t thumb_width = thumb_dim(thumb, "width");
+    size_t thumb_height = thumb_dim(thumb, "height");
+    spdlog::debug("using thumb at index {}, {}", index, thumbs.dump());
+
+    std::string relative_path = thumb["relative_path"].template get<std::string>();
+    size_t found = gcode_file.find_last_of("/\\");
+    if (found != std::string::npos) {
+      relative_path = gcode_file.substr(0, found + 1) + relative_path;
+    }
+
+    Config *conf = Config::get_instance();
+    std::string df_host = conf->get<std::string>(conf->df() + "moonraker_host");
+    std::string fname = relative_path.substr(relative_path.find_last_of("/\\") + 1);
+    std::string fullpath = fmt::format("{}/{}", conf->get<std::string>("/thumbnail_path"), fname);
+
+    if (is_running_local()) {
+      spdlog::debug("running locally, skipping thumbnail downloads");
+      auto gcode_root = get_root_path("gcodes");
+      fullpath = fmt::format("{}/{}", gcode_root, relative_path);
+    } else {
+      std::string thumb_url = fmt::format("http://{}:{}/server/files/gcodes/{}",
+        df_host,
+        conf->get<uint32_t>(conf->df() + "moonraker_port"),
+        HUrl::escape(relative_path));
+      spdlog::debug("thumb url {}", thumb_url);
+      auto size = requests::downloadFile(thumb_url.c_str(), fullpath.c_str());
+      spdlog::trace("downloaded size {}", size);
+    }
+
+    return std::make_pair(fullpath, std::make_pair(thumb_width, thumb_height));
+  }
+
   std::pair<std::string, std::pair<size_t, size_t>> get_thumbnail(const std::string &gcode_file, json &j) {
     auto &thumbs = j["/result/thumbnails"_json_pointer];
     if (!thumbs.is_null() && !thumbs.empty()) {
+      // a maior
       uint32_t closest_index = 0;
-
-      auto width = thumbs.at(0)["width"].is_number()
-        ? thumbs.at(0)["width"].template get<int>()
-        : std::stoi(thumbs.at(0)["width"].template get<std::string>());
-
-      auto height = thumbs.at(0)["height"].is_number()
-        ? thumbs.at(0)["height"].template get<int>()
-        : std::stoi(thumbs.at(0)["height"].template get<std::string>());
-
-      size_t thumb_width = width;
-      size_t thumb_height = height;
-      int largest = width;
-
-      for (int i = 1; i < thumbs.size(); i++) {
-        width = thumbs.at(i)["width"].is_number()
-          ? thumbs.at(i)["width"].template get<int>()
-          : std::stoi(thumbs.at(i)["width"].template get<std::string>());
-        height = thumbs.at(i)["height"].is_number()
-          ? thumbs.at(i)["height"].template get<int>()
-          : std::stoi(thumbs.at(i)["height"].template get<std::string>());
-
+      int largest = thumb_dim(thumbs.at(0), "width");
+      for (uint32_t i = 1; i < thumbs.size(); i++) {
+        int width = thumb_dim(thumbs.at(i), "width");
         if (width > largest) {
           largest = width;
           closest_index = i;
-          thumb_width = width;
-          thumb_height = height;
         }
       }
+      return thumbnail_at(gcode_file, thumbs, closest_index);
+    }
 
-      auto &thumb = thumbs.at(closest_index);
-      spdlog::debug("using thumb at index {}, {}", closest_index, thumbs.dump());
+    return std::make_pair("", std::make_pair(0, 0));
+  }
 
-      std::string relative_path = thumb["relative_path"].template get<std::string>();
-      size_t found = gcode_file.find_last_of("/\\");
-      if (found != std::string::npos) {
-        relative_path = gcode_file.substr(0, found + 1) + relative_path;
+  std::pair<std::string, std::pair<size_t, size_t>> get_thumbnail(const std::string &gcode_file, json &j,
+                                                                  int largura_desejada) {
+    auto &thumbs = j["/result/thumbnails"_json_pointer];
+    if (!thumbs.is_null() && !thumbs.empty()) {
+      int menor_ok = -1;        // menor largura >= desejada
+      uint32_t idx_ok = 0;
+      int maior = -1;           // maior largura (se nenhuma chega lá)
+      uint32_t idx_maior = 0;
+      for (uint32_t i = 0; i < thumbs.size(); i++) {
+        int width = thumb_dim(thumbs.at(i), "width");
+        if (width >= largura_desejada && (menor_ok < 0 || width < menor_ok)) {
+          menor_ok = width;
+          idx_ok = i;
+        }
+        if (width > maior) {
+          maior = width;
+          idx_maior = i;
+        }
       }
-
-      Config *conf = Config::get_instance();
-      std::string df_host = conf->get<std::string>(conf->df() + "moonraker_host");
-      std::string fname = relative_path.substr(relative_path.find_last_of("/\\") + 1);
-      std::string fullpath = fmt::format("{}/{}", conf->get<std::string>("/thumbnail_path"), fname);
-
-      if (is_running_local()) {
-        spdlog::debug("running locally, skipping thumbnail downloads");
-        auto gcode_root = get_root_path("gcodes");
-        fullpath = fmt::format("{}/{}", gcode_root, relative_path);
-      } else {
-        std::string thumb_url = fmt::format("http://{}:{}/server/files/gcodes/{}",
-          df_host,
-          conf->get<uint32_t>(conf->df() + "moonraker_port"),
-          HUrl::escape(relative_path));
-        spdlog::debug("thumb url {}", thumb_url);
-        auto size = requests::downloadFile(thumb_url.c_str(), fullpath.c_str());
-        spdlog::trace("downloaded size {}", size);
-      }
-
-      return std::make_pair(fullpath, std::make_pair(thumb_width, thumb_height));
+      return thumbnail_at(gcode_file, thumbs, menor_ok >= 0 ? idx_ok : idx_maior);
     }
 
     return std::make_pair("", std::make_pair(0, 0));
@@ -564,6 +620,39 @@ namespace KUtils {
 
   size_t bytes_to_mb(size_t s) {
     return s / 1024 / 1024;
+  }
+
+  std::string tempo_curto(int64_t s) {
+    if (s < 0) {
+      s = 0;
+    }
+    int64_t h = s / 3600;
+    int64_t m = (s % 3600) / 60;
+    int64_t seg = s % 60;
+    if (h > 0) {
+      return fmt::format("{}h {:02}min", h, m);
+    }
+    if (m > 0) {
+      return fmt::format("{}min {}s", m, seg);
+    }
+    return fmt::format("{}s", seg);
+  }
+
+  std::string tamanho_arquivo(size_t bytes) {
+    const double kb = 1024.0;
+    const double mb = kb * 1024.0;
+    const double gb = mb * 1024.0;
+    if (bytes >= (size_t)gb) {
+      return fmt::format("{:.1f} GB", bytes / gb);
+    }
+    if (bytes >= (size_t)mb) {
+      return fmt::format("{:.1f} MB", bytes / mb);
+    }
+    size_t k = (size_t)(bytes / kb + 0.5);
+    if (k == 0) {
+      k = 1;
+    }
+    return fmt::format("{} KB", k);
   }
 
   // First /sys/class/backlight/<dev>/ found, or "" if no device. Cached

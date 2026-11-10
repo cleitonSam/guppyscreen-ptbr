@@ -8,16 +8,21 @@
 #include "finetune_panel.h"
 #include "zoffset_panel.h"
 #include "exclude_object_panel.h"
-#include "mini_print_status.h"
 #include "lvgl/lvgl.h"
 
 #include <mutex>
 #include <ctime>
 #include <map>
+#include <string>
 
+// Acompanhamento da impressão (Proposta B, quadros 04 e 05) e tela de
+// impressão concluída. É a aba Início "virando" o acompanhamento: subtela
+// registrada em Navegacao::registrar_acompanhamento, que abre sozinha quando
+// uma impressão começa (de qualquer origem: tela, Orca, Mainsail).
 class PrintStatusPanel : public NotifyConsumer {
  public:
-  /* PrintStatusPanel(KWebSocketClient &ws, std::mutex &lock, json &j); */
+  // mini_parent não é mais usado (a sobreposição pequena saiu); fica na
+  // assinatura para não mudar quem cria o painel.
   PrintStatusPanel(KWebSocketClient &ws, std::mutex &lock, lv_obj_t *mini_parent);
   ~PrintStatusPanel();
 
@@ -36,21 +41,14 @@ class PrintStatusPanel : public NotifyConsumer {
   };
 
   void consume(json &j);
-  void show_completion(const std::string &state);  // print finished -> result + stats + Done
+  void show_completion(const std::string &state);  // fim da impressão: tela de concluída
   void update_time_progress(uint32_t time_passed);
-  void update_flow_rate(double filament_used);
   void update_layers(json &info);
   int max_layer(json &info);
   int current_layer(json &info);
 
   FineTunePanel &get_finetune_panel();
   ZOffsetPanel &get_zoffset_panel();
-  // The floating print overlay container, so the home panel can position it
-  // relative to its button cluster.
-  lv_obj_t *get_mini_container() { return mini_print_status.get_container(); }
-  // The tiny "Paused" chip, so the home panel can park it in a corner clear of
-  // the Homing/Extrude buttons.
-  lv_obj_t *get_mini_chip() { return mini_print_status.get_chip(); }
 
 #ifdef SIMULATOR
   // Populate fake print state (filename, progress, elapsed) so the panel can be
@@ -59,49 +57,64 @@ class PrintStatusPanel : public NotifyConsumer {
 #endif
 
  private:
+  // Um dos 4 cartões do meio (Bico, Mesa, Velocidade, Ventoinha).
+  struct Cartao {
+    lv_obj_t *cont;
+    lv_obj_t *valor;
+  };
+  Cartao criar_cartao_info(lv_coord_t x, const char *nome, const char *valor);
+
+  void mostrar_estado(const std::string &st);   // chip + Pausar/Retomar
+  void atualizar_progresso(int pct);
+  void atualizar_resumo();                      // texto do cabeçalho do Ajuste fino
+  void atualizar_ventoinha();
+  void ler_cartoes_do_estado();                 // valores iniciais dos 4 cartões
+  void confirmar_cancelar();
+
   KWebSocketClient &ws;
   FineTunePanel finetune_panel;
   ZOffsetPanel zoffset_panel;
   ExcludeObjectPanel exclude_object_panel;
-  MiniPrintStatus mini_print_status;
   lv_obj_t *status_cont;
-  lv_obj_t *buttons_cont;
-  ButtonContainer finetune_btn;
-  ButtonContainer objects_btn;
-  ButtonContainer pause_btn;
-  ButtonContainer resume_btn;
-  ButtonContainer cancel_btn;
-  ButtonContainer emergency_btn;
-  ButtonContainer back_btn;
-  lv_obj_t *thumbnail_cont;
-  lv_obj_t *filename_label;
-  lv_obj_t *thumbnail;
-  lv_obj_t *pbar_cont;
-  lv_obj_t *progress_bar;
-  lv_obj_t *progress_label;
-  lv_obj_t *detail_cont;
 
-  // completion overlay (shown when a print finishes, instead of auto-dismissing)
+  // miniatura
+  lv_obj_t *thumb_card;
+  lv_obj_t *thumbnail;
+  lv_obj_t *sem_thumb;
+
+  // topo direito
+  lv_obj_t *chip;
+  lv_obj_t *camada_label;
+  lv_obj_t *filename_label;
+  lv_obj_t *progress_label;     // f40, só dígitos e %
+  lv_obj_t *falta_titulo;
+  lv_obj_t *falta_label;
+  lv_obj_t *progress_bar;
+  lv_obj_t *decorrido_label;
+  lv_obj_t *total_label;
+
+  // cartões
+  Cartao bico;
+  Cartao mesa;
+  Cartao velocidade;
+  Cartao ventoinha;
+
+  // faixa de baixo
+  lv_obj_t *pause_btn;
+  lv_obj_t *resume_btn;
+  lv_obj_t *finetune_btn;
+  lv_obj_t *cancel_btn;
+
+  // tela de concluída (subtela própria)
   lv_obj_t *complete_cont;
+  lv_obj_t *complete_selo;
   lv_obj_t *complete_title;
   lv_obj_t *complete_file;
   lv_obj_t *complete_stats;
   lv_obj_t *complete_done_btn;
+  lv_obj_t *complete_again_btn;
+  std::string complete_arquivo;   // caminho do gcode para "Imprimir de novo"
 
-  ImageLabel extruder_temp;
-  ImageLabel bed_temp;
-  ImageLabel chamber_temp;
-  ImageLabel print_speed;
-  ImageLabel z_offset;
-  ImageLabel flow_rate;
-  ImageLabel layers;
-  ImageLabel fan0;
-  ImageLabel elapsed;
-  /* ImageLabel fan1; */
-  ImageLabel time_left;
-  /* ImageLabel fan2; */
-
-  /* json &metadata; */
   uint32_t estimated_time_s;
 
   // Latest virtual_sdcard/progress value (0.0 .. 1.0) and print_stats/filament_used
@@ -110,18 +123,17 @@ class PrintStatusPanel : public NotifyConsumer {
   // slicer's static estimate alone (#126).
   double current_progress = 0.0;
   double current_filament_used = 0.0;
-  // Tracks the previous /printer_state/print_stats/state so we can dismiss the
-  // panel only when we transition out of an active print (#94).
+  // Estado anterior de print_stats.state: o acompanhamento abre na passagem
+  // para "printing" e fecha/mostra a concluída na saída de printing/paused.
   std::string last_print_state;
+  // Arquivo da impressão atual (descarta resposta de metadados atrasada).
+  std::string arquivo_atual;
 
-  // flow rate
-  std::time_t flow_ts;
-  double last_filament_used;
-  double filament_diameter;
-  double flow;
   int extruder_target;
   int heater_bed_target;
-  int chamber_target;
+  int pct_atual = -1;
+  int camada_atual = 0;
+  int camadas_total = 0;
   json current_file;
 
   std::map<std::string, int> fan_speeds;

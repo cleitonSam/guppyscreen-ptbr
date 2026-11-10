@@ -1,4 +1,6 @@
 #include "exclude_object_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "state.h"
 #include "utils.h"
 #include "spdlog/spdlog.h"
@@ -6,8 +8,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-
-LV_IMG_DECLARE(back);
 
 static bool point_in_polygon(lv_coord_t x, lv_coord_t y, const std::vector<lv_point_t> &poly) {
   if (poly.size() < 3) return false;
@@ -26,9 +26,17 @@ static bool point_in_polygon(lv_coord_t x, lv_coord_t y, const std::vector<lv_po
 }
 
 // Square canvas for the bed map; the bed is square on the KE (220x220) so a
-// square keeps the aspect ratio without letterboxing.
-static const lv_coord_t CANVAS_DIM = 250;
+// square keeps the aspect ratio without letterboxing. 212 px cabe embaixo do
+// cabeçalho da subtela (y = 52 .. 264) e gasta menos memória que os 250 de antes.
+static const lv_coord_t CANVAS_DIM = 212;
 static const lv_coord_t MARGIN = 10;  // px inset so edge objects aren't clipped
+
+// Cores do mapa (marca): objeto sendo impresso, objeto que dá para excluir,
+// objeto já excluído e contorno da mesa.
+static const uint32_t COR_ATUAL    = Marca::OK_PONTO;
+static const uint32_t COR_OBJETO   = Marca::PAPEL;
+static const uint32_t COR_EXCLUIDO = Marca::ERRO;
+static const uint32_t COR_MESA     = Marca::GRAFITE;
 
 ExcludeObjectPanel::ExcludeObjectPanel(KWebSocketClient &websocket_client, std::mutex &l)
   : NotifyConsumer(l)
@@ -36,23 +44,18 @@ ExcludeObjectPanel::ExcludeObjectPanel(KWebSocketClient &websocket_client, std::
   , panel_cont(lv_obj_create(lv_scr_act()))
   , canvas(lv_canvas_create(panel_cont))
   , canvas_buf((lv_color_t *)malloc(LV_CANVAS_BUF_SIZE_TRUE_COLOR(CANVAS_DIM, CANVAS_DIM)))
-  , info_cont(lv_obj_create(panel_cont))
-  , title_label(lv_label_create(info_cont))
-  , status_label(lv_label_create(info_cont))
-  , back_btn(info_cont, &back, "Voltar", &ExcludeObjectPanel::_handle_callback, this)
 {
-  lv_obj_move_background(panel_cont);
-  lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(panel_cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_style_pad_all(panel_cont, 6, 0);
+  // Subtela 424 x 272 (pad 0, PRETO) com cabeçalho "Objetos".
+  Navegacao::subtela(panel_cont);
+  Marca::Cabecalho cab = Marca::criar_cabecalho(panel_cont, "Objetos",
+                                                &ExcludeObjectPanel::_handle_callback, this);
+  back_btn = cab.voltar;
+  count_label = cab.direita;   // "Objetos: 3, excluídos: 1"
 
-  // Bed-map canvas on the left, framed like the app's other cards.
+  // Bed-map canvas on the left, liso (PRETO_2, sem borda).
   lv_canvas_set_buffer(canvas, canvas_buf, CANVAS_DIM, CANVAS_DIM, LV_IMG_CF_TRUE_COLOR);
-  lv_obj_align(canvas, LV_ALIGN_LEFT_MID, 4, 0);
-  lv_obj_set_style_border_width(canvas, 2, 0);
-  lv_obj_set_style_border_color(canvas, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
-  lv_obj_set_style_radius(canvas, 4, 0);
-  lv_canvas_fill_bg(canvas, lv_color_make(30, 30, 30), LV_OPA_COVER);
+  lv_obj_set_pos(canvas, 8, 52);
+  lv_canvas_fill_bg(canvas, lv_color_hex(Marca::PRETO_2), LV_OPA_COVER);
 
   // The canvas (an lv_img) isn't clickable, so a tap on the bed map routes up to
   // the nearest clickable ancestor - panel_cont. Handle taps there and hit-test
@@ -62,27 +65,45 @@ ExcludeObjectPanel::ExcludeObjectPanel(KWebSocketClient &websocket_client, std::
   lv_obj_add_event_cb(panel_cont, &ExcludeObjectPanel::_handle_canvas_click,
                       LV_EVENT_RELEASED, this);
 
-  // Right-hand info column: a centered flex stack of title, legend and Back so
-  // everything lines up tidily next to the bed map.
-  lv_obj_set_style_border_width(info_cont, 0, 0);
-  lv_obj_set_style_bg_opa(info_cont, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_pad_all(info_cont, 4, 0);
-  lv_obj_clear_flag(info_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(info_cont, LV_PCT(40), LV_PCT(100));
-  lv_obj_align(info_cont, LV_ALIGN_RIGHT_MID, 0, 0);
-  lv_obj_set_flex_flow(info_cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(info_cont, LV_FLEX_ALIGN_SPACE_BETWEEN,
-                        LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  // Coluna da direita (x = 232, largura 184): legenda com quadradinho na cor
+  // do mapa + palavra (estado sempre com palavra, nunca só cor).
+  legend_cont = lv_obj_create(panel_cont);
+  lv_obj_set_pos(legend_cont, 232, 60);
+  lv_obj_set_size(legend_cont, 184, 72);
+  lv_obj_set_style_pad_all(legend_cont, 0, 0);
+  lv_obj_clear_flag(legend_cont, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(legend_cont, LV_OBJ_FLAG_CLICKABLE);
 
-  lv_label_set_text(title_label, "Excluir objeto");
-  lv_obj_set_style_text_font(title_label, &lv_font_montserrat_16, 0);
+  struct Item { uint32_t cor; const char *txt; };
+  const Item legenda[] = {
+    {COR_ATUAL,    "Imprimindo agora"},
+    {COR_OBJETO,   "Toque para excluir"},
+    {COR_EXCLUIDO, "Excluído"},
+  };
+  for (int i = 0; i < 3; i++) {
+    lv_obj_t *q = lv_obj_create(legend_cont);
+    lv_obj_set_pos(q, 0, 24 * i + 2);
+    lv_obj_set_size(q, 12, 12);
+    lv_obj_set_style_bg_color(q, lv_color_hex(legenda[i].cor), 0);
+    lv_obj_set_style_bg_opa(q, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(q, 3, 0);
+    lv_obj_set_style_border_width(q, 0, 0);
+    lv_obj_set_style_pad_all(q, 0, 0);
+    lv_obj_clear_flag(q, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(q, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_label_set_recolor(status_label, true);  // legend colours match the bed map
+    lv_obj_t *t = Marca::criar_rotulo(legend_cont, legenda[i].txt, Marca::f12(), Marca::PAPEL);
+    lv_obj_set_pos(t, 20, 24 * i);
+    lv_obj_set_width(t, 164);
+    lv_label_set_long_mode(t, LV_LABEL_LONG_DOT);
+  }
+
+  // aviso quando a impressão não tem objetos etiquetados
+  status_label = Marca::criar_rotulo(panel_cont, "", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(status_label, 232, 60);
+  lv_obj_set_width(status_label, 184);
   lv_label_set_long_mode(status_label, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(status_label, LV_PCT(100));
-  lv_obj_set_style_text_align(status_label, LV_TEXT_ALIGN_CENTER, 0);
-
-  lv_obj_set_width(back_btn.get_container(), LV_PCT(80));
+  lv_obj_add_flag(status_label, LV_OBJ_FLAG_HIDDEN);
 
   ws.register_notify_update(this);
 }
@@ -105,7 +126,16 @@ void ExcludeObjectPanel::foreground() {
   is_foreground = true;
   load_bed_bounds();
   redraw();
-  lv_obj_move_foreground(panel_cont);
+  Navegacao::abrir(panel_cont);
+}
+
+bool ExcludeObjectPanel::visivel() {
+  // Aberta = última filha da tela (subtela na frente de tudo). Se a navegação
+  // a fechou (coluna, acompanhamento automático), não redesenha à toa.
+  lv_obj_t *pai = lv_obj_get_parent(panel_cont);
+  if (pai == NULL) return false;
+  uint32_t n = lv_obj_get_child_cnt(pai);
+  return n > 0 && (uint32_t)lv_obj_get_index(panel_cont) == n - 1;
 }
 
 void ExcludeObjectPanel::consume(json &j) {
@@ -116,6 +146,10 @@ void ExcludeObjectPanel::consume(json &j) {
     return;
   }
   std::lock_guard<std::mutex> lock(lv_lock);
+  if (!visivel()) {
+    is_foreground = false;
+    return;
+  }
   redraw();
 }
 
@@ -150,7 +184,7 @@ lv_point_t ExcludeObjectPanel::to_px(double mx, double my) {
 
 void ExcludeObjectPanel::redraw() {
   obj_boxes.clear();
-  lv_canvas_fill_bg(canvas, lv_color_make(30, 30, 30), LV_OPA_COVER);
+  lv_canvas_fill_bg(canvas, lv_color_hex(Marca::PRETO_2), LV_OPA_COVER);
 
   // Bed outline.
   lv_point_t bl = to_px(bed_min_x, bed_min_y);
@@ -158,8 +192,8 @@ void ExcludeObjectPanel::redraw() {
   lv_draw_rect_dsc_t bed_dsc;
   lv_draw_rect_dsc_init(&bed_dsc);
   bed_dsc.bg_opa = LV_OPA_TRANSP;
-  bed_dsc.border_color = lv_palette_darken(LV_PALETTE_GREY, 2);
-  bed_dsc.border_width = 2;
+  bed_dsc.border_color = lv_color_hex(COR_MESA);
+  bed_dsc.border_width = 1;
   bed_dsc.border_opa = LV_OPA_COVER;
   lv_canvas_draw_rect(canvas, tr.x, tr.y, bl.x - tr.x, bl.y - tr.y, &bed_dsc);
 
@@ -179,9 +213,14 @@ void ExcludeObjectPanel::redraw() {
   };
 
   if (!objects.is_array() || objects.empty()) {
-    lv_label_set_text(status_label, "Nenhum objeto para excluir.\n\nO arquivo precisa ser fatiado\ncom a opção \"Etiquetar objetos\".");
+    Marca::texto(status_label, "Nenhum objeto para excluir.\n\nO arquivo precisa ser fatiado\ncom a opção \"Etiquetar objetos\".");
+    lv_obj_clear_flag(status_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(legend_cont, LV_OBJ_FLAG_HIDDEN);
+    Marca::texto(count_label, "");
     return;
   }
+  lv_obj_add_flag(status_label, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(legend_cont, LV_OBJ_FLAG_HIDDEN);
 
   int idx = 0;
   int n_excluded = 0;
@@ -192,9 +231,7 @@ void ExcludeObjectPanel::redraw() {
     bool cur = (name == current_name);
     if (excl) n_excluded++;
 
-    lv_color_t color = excl ? lv_palette_darken(LV_PALETTE_RED, 2)
-                            : (cur ? lv_palette_main(LV_PALETTE_GREEN)
-                                   : lv_palette_main(LV_PALETTE_BLUE));
+    lv_color_t color = lv_color_hex(excl ? COR_EXCLUIDO : (cur ? COR_ATUAL : COR_OBJETO));
 
     // Collect the polygon (fall back to a small box around the center).
     std::vector<lv_point_t> pts;
@@ -249,20 +286,15 @@ void ExcludeObjectPanel::redraw() {
     // Index number at the centroid of the bounding box.
     lv_draw_label_dsc_t lbl;
     lv_draw_label_dsc_init(&lbl);
-    lbl.color = lv_color_white();
-    lbl.font = &lv_font_montserrat_14;
+    lbl.color = lv_color_hex(Marca::PAPEL);
+    lbl.font = Marca::f14();
     lv_canvas_draw_text(canvas, (x0 + x1) / 2 - 6, (y0 + y1) / 2 - 8, 20, &lbl,
                         std::to_string(idx + 1).c_str());
     idx++;
   }
 
-  lv_label_set_text(status_label,
-    fmt::format("#4caf50 Imprimindo agora#\n"
-                "#2196f3 Toque para excluir#\n"
-                "#b71c1c Excluído#\n\n"
-                "Objetos: {}, excluídos: {}",
-                (int)objects.size(), n_excluded).c_str());
-
+  Marca::texto(count_label,
+    fmt::format("Objetos: {}, excluídos: {}", (int)objects.size(), n_excluded).c_str());
 }
 
 void ExcludeObjectPanel::handle_canvas_click(lv_event_t *e) {
@@ -388,7 +420,7 @@ void ExcludeObjectPanel::confirm_exclude(const std::string &name) {
         spdlog::info("exclude_object: last object tapped — cancelling print");
         self->ws.send_jsonrpc("printer.print.cancel");
         self->is_foreground = false;
-        lv_obj_move_background(self->panel_cont);
+        Navegacao::fechar(self->panel_cont);
       } else {
         self->do_exclude();
       }
@@ -398,6 +430,11 @@ void ExcludeObjectPanel::confirm_exclude(const std::string &name) {
     lv_msgbox_close(obj);
   }, LV_EVENT_VALUE_CHANGED, this);
   KUtils::style_lock_mbox(mbox, 90);
+  if (cancel_on_confirm) {
+    // texto do último objeto + espera: até 6 linhas, caixa maior para não cortar
+    lv_obj_set_size(mbox, 400, 232);
+    lv_obj_center(mbox);
+  }
   lv_obj_align(((lv_msgbox_t *)mbox)->text, LV_ALIGN_TOP_MID, 0, 0);
   // For the cancel-print dialog, colour the destructive button (index 0) red.
   if (cancel_on_confirm) {
@@ -405,9 +442,9 @@ void ExcludeObjectPanel::confirm_exclude(const std::string &name) {
     lv_obj_add_event_cb(btnm, [](lv_event_t *e) {
       lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
       if (dsc->part == LV_PART_ITEMS && dsc->id == 0) {
-        dsc->rect_dsc->bg_color = lv_color_hex(0xC62828);
+        dsc->rect_dsc->bg_color = lv_color_hex(Marca::ERRO);
         dsc->rect_dsc->bg_opa   = LV_OPA_COVER;
-        dsc->label_dsc->color   = lv_color_white();
+        dsc->label_dsc->color   = lv_color_hex(Marca::PAPEL);
       }
     }, LV_EVENT_DRAW_PART_BEGIN, NULL);
   }
@@ -423,8 +460,8 @@ void ExcludeObjectPanel::do_exclude() {
 void ExcludeObjectPanel::handle_callback(lv_event_t *e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
   lv_obj_t *btn = lv_event_get_current_target(e);
-  if (btn == back_btn.get_container()) {
+  if (btn == back_btn) {
     is_foreground = false;
-    lv_obj_move_background(panel_cont);
+    Navegacao::fechar(panel_cont);
   }
 }

@@ -44,18 +44,30 @@ int KWebSocketClient::connect(const char* url,
     // }
     auto j = json::parse(msg);
 
-    if (j.contains("id")) {
-      // XXX: get rid of consumers and use function ptrs for callback
-      const auto &entry = consumers.find(j["id"]);
-      if (entry != consumers.end()) {
-        entry->second->consume(j);
-        consumers.erase(entry);
+    if (j.contains("id") && j["id"].is_number_integer()) {
+      // Tira a resposta esperada dos mapas COM a trava e chama FORA dela
+      // (a resposta pode mandar outro pedido, que prende a trava de novo).
+      uint32_t rid = j["id"].template get<uint32_t>();
+      NotifyConsumer *consumer = nullptr;
+      std::function<void(json&)> cb;
+      {
+        std::lock_guard<std::mutex> g(cb_mutex);
+        const auto entry = consumers.find(rid);
+        if (entry != consumers.end()) {
+          consumer = entry->second;
+          consumers.erase(entry);
+        }
+        const auto cb_entry = callbacks.find(rid);
+        if (cb_entry != callbacks.end()) {
+          cb = std::move(cb_entry->second);
+          callbacks.erase(cb_entry);
+        }
       }
-
-      const auto &cb_entry = callbacks.find(j["id"]);
-      if (cb_entry != callbacks.end()) {
-        cb_entry->second(j);
-        callbacks.erase(cb_entry);
+      if (consumer != nullptr) {
+        consumer->consume(j);
+      }
+      if (cb) {
+        cb(j);
       }
     }
 
@@ -108,41 +120,38 @@ int KWebSocketClient::connect(const char* url,
 int KWebSocketClient::send_jsonrpc(const std::string &method,
 				   const json &params,
 				   std::function<void(json&)> cb) {
-  const auto &entry = callbacks.find(id);
-  if (entry == callbacks.end()) {
-    // spdlog::debug("registering consume %d, %x\n", id, consumer);
-    callbacks.insert({id, cb});
-    // XXX: check success, remove consumer if send is unsuccessfull
-    return send_jsonrpc(method, params);
-  } else {
-    // spdlog::debug("WARN: id %d is already register with a consumer\n", id);
+  // Os pedidos com resposta reservam o número (id) e guardam a resposta
+  // esperada com a trava presa; o envio vem depois, sem a trava. Assim a
+  // resposta sempre acha a sua entrada e as duas linhas (tela e websocket)
+  // nunca mexem no mapa ao mesmo tempo.
+  uint64_t rid;
+  {
+    std::lock_guard<std::mutex> g(cb_mutex);
+    rid = id++;
+    callbacks[(uint32_t)rid] = cb;
   }
-
-  return 0;
+  return enviar(method, &params, rid);
 }
 
 int KWebSocketClient::send_jsonrpc(const std::string &method,
 				   std::function<void(json&)> cb) {
-  const auto &entry = callbacks.find(id);
-  if (entry == callbacks.end()) {
-    // spdlog::debug("registering consume %d, %x\n", id, consumer);
-    callbacks.insert({id, cb});
-    // XXX: check success, remove consumer if send is unsuccessfull
-    return send_jsonrpc(method);
-  } else {
-    // spdlog::debug("WARN: id %d is already register with a consumer\n", id);
+  uint64_t rid;
+  {
+    std::lock_guard<std::mutex> g(cb_mutex);
+    rid = id++;
+    callbacks[(uint32_t)rid] = cb;
   }
-
-  return 0;
+  return enviar(method, nullptr, rid);
 }
 
 int KWebSocketClient::send_jsonrpc(const std::string &method, const json &params, NotifyConsumer *consumer) {
-  const auto &entry = consumers.find(id);
-  if (entry == consumers.end()) {
-    consumers.insert({id, consumer});
-    return send_jsonrpc(method, params);
+  uint64_t rid;
+  {
+    std::lock_guard<std::mutex> g(cb_mutex);
+    rid = id++;
+    consumers[(uint32_t)rid] = consumer;
   }
-  return 0;
+  return enviar(method, &params, rid);
 }
 
 void KWebSocketClient::register_notify_update(NotifyConsumer *consumer) {
@@ -159,26 +168,26 @@ void KWebSocketClient::unregister_notify_update(NotifyConsumer *consumer) {
     }));
 }
 
-int KWebSocketClient::send_jsonrpc(const std::string &method,
-				   const json &params) {
+int KWebSocketClient::enviar(const std::string &method, const json *params, uint64_t rid) {
   json rpc;
   rpc["jsonrpc"] = "2.0";
   rpc["method"] = method;
-  rpc["params"] = params;
-  rpc["id"] = id++;
+  if (params != nullptr) {
+    rpc["params"] = *params;
+  }
+  rpc["id"] = (uint32_t)rid;
 
   spdlog::debug("send_jsonrpc: {}", rpc.dump());
   return send(rpc.dump());
 }
 
-int KWebSocketClient::send_jsonrpc(const std::string &method) {
-  json rpc;
-  rpc["jsonrpc"] = "2.0";
-  rpc["method"] = method;
-  rpc["id"] = id++;
+int KWebSocketClient::send_jsonrpc(const std::string &method,
+				   const json &params) {
+  return enviar(method, &params, id++);   // id é atômico: não precisa da trava
+}
 
-  spdlog::debug("send_jsonrpc: {}", rpc.dump());
-  return send(rpc.dump());
+int KWebSocketClient::send_jsonrpc(const std::string &method) {
+  return enviar(method, nullptr, id++);
 }
 
 int KWebSocketClient::gcode_script(const std::string &gcode) {

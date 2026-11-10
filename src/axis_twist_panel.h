@@ -8,7 +8,8 @@
 #include <mutex>
 
 // Guided calibration wizard for Klipper's [axis_twist_compensation], reached
-// from the Tune tab. Three stages share one container:
+// from the Calibração page (card 1). Subtela com cabeçalho (Proposta B).
+// Three stages share one container:
 //   INTRO   - explanation + "Start Calibration"
 //   PROBING - driven by the manual_probe object: live Z, jog steps, Accept/Abort
 //   DONE    - shows the resulting offsets + "Save & Restart" (SAVE_CONFIG)
@@ -38,6 +39,8 @@ class AxisTwistPanel : public NotifyConsumer {
   struct Jog { const char *label; lv_obj_t *btn; };
 
   void show_stage(Stage s);
+  // Fecha a subtela e deixa pronta para começar de novo (voltar e salvar).
+  void encerrar();
   void start_calibration();
   void update_probe_ui();   // reflect last_active / last_z into the probe view
 
@@ -51,7 +54,7 @@ class AxisTwistPanel : public NotifyConsumer {
 
   // intro
   lv_obj_t *start_btn;
-  lv_obj_t *intro_back_btn;
+  lv_obj_t *intro_back_btn;   // voltar do cabeçalho (os três "Voltar" apontam para ele)
   // probe
   lv_obj_t *point_label;
   lv_obj_t *z_label;

@@ -3,7 +3,6 @@
 
 #include "websocket_client.h"
 #include "notify_consumer.h"
-#include "button_container.h"
 #include "lvgl/lvgl.h"
 
 #include <functional>
@@ -11,6 +10,9 @@
 #include <mutex>
 #include <string>
 
+// Subtela "Spoolman" (Configurações › Sistema › Spoolman, ou a ação
+// "spoolman" da Navegacao): tabela dos carretéis, "Mostrar arquivados" e
+// "Recarregar". Os pedidos ao Moonraker são os de sempre.
 class SpoolmanPanel {
  public:
   SpoolmanPanel(KWebSocketClient &c, std::mutex &l);
@@ -35,7 +37,7 @@ class SpoolmanPanel {
   // Spoolman UI can be visually verified without a Moonraker + Spoolman backend.
   void sim_setup_mock_data();
 #endif
-  
+
   void handle_callback(lv_event_t *event);
   void handle_spoolman_action(lv_event_t *event);
 
@@ -43,22 +45,26 @@ class SpoolmanPanel {
     SpoolmanPanel *panel = (SpoolmanPanel*)event->user_data;
     panel->handle_callback(event);
   };
-  
+
   static void _handle_spoolman_action(lv_event_t *event) {
     SpoolmanPanel *panel = (SpoolmanPanel*)event->user_data;
     panel->handle_spoolman_action(event);
   };
 
  private:
+  // Monta a subtela na primeira vez que abre (o painel nasce antes da
+  // navegação; assim a ordem de criação das outras telas não muda).
+  void montar_subtela();
+  void fechar();
+
   KWebSocketClient &ws;
   std::mutex &lv_lock;
   lv_obj_t *cont;
   lv_obj_t *spool_table;
-  lv_obj_t *controls;
-  lv_obj_t *switch_cont;
   lv_obj_t *show_archived;
-  ButtonContainer reload_btn;
-  ButtonContainer back_btn;
+  lv_obj_t *reload_btn;
+  lv_obj_t *back_btn;     // voltar do cabeçalho
+  bool montada;
   int32_t active_id;
   std::map<uint32_t, json> spools;
   uint32_t sorted_by;

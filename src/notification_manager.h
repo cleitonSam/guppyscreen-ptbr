@@ -13,6 +13,8 @@
 // toasts. Subscribes to notify_status_update (webhooks, print_stats, filament
 // sensor, display_status) and notify_gcode_response ("!!" errors). Renders a
 // stacking toast overlay on lv_layer_top() so it shows above every panel.
+// Proposta B: avisos à direita da coluna de 56 px, cartão PRETO_2 raio 12,
+// faixa de 4 px à esquerda na cor da gravidade, texto f14 PAPEL.
 class NotificationManager : public NotifyConsumer {
  public:
   NotificationManager(KWebSocketClient &ws, std::mutex &lock);
@@ -23,6 +25,7 @@ class NotificationManager : public NotifyConsumer {
 
   // toast lifecycle (called from LVGL thread)
   void remove_card(lv_obj_t *card, bool from_timer);
+  void clear_all();                  // tira todos os avisos (impressora pronta de novo)
 
 #ifdef SIMULATOR
   void sim_demo();  // show one toast of each severity (no printer in the sim)

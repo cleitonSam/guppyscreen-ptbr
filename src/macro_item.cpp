@@ -1,4 +1,5 @@
 #include "macro_item.h"
+#include "marca.h"
 #include "utils.h"
 #include "spdlog/spdlog.h"
 
@@ -32,19 +33,23 @@ MacroItem::MacroItem(KWebSocketClient &c,
   lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_all(cont, 4, 0);
-  lv_obj_set_style_pad_row(cont, 0, 0);
-  // match the console-commands row separator: a thin 1px bottom border
+  lv_obj_set_style_pad_left(cont, 8, 0);
+  lv_obj_set_style_pad_row(cont, 4, 0);
+  // separador de 1 px PRETO_3 embaixo, como as linhas do console
   lv_obj_set_style_border_side(cont, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
   lv_obj_set_style_border_width(cont, 1, 0);
-  // transparent by default; set_highlight fills it (the inner rows below are
-  // kept transparent too, so the highlight reads as a solid band like console)
+  lv_obj_set_style_border_color(cont, lv_color_hex(Marca::PRETO_3), 0);
+  // sem fundo; a linha escolhida ganha fundo PRETO_2 liso (set_highlight;
+  // PRETO_2 e não PRETO_3 para o botão de rodar, PRETO_3, continuar à vista)
+  lv_obj_set_style_bg_color(cont, lv_color_hex(Marca::PRETO_2), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(cont, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_radius(cont, Marca::RAIO_MINI, 0);
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
   // top row: [ * ] [ macro name (grows) ] [ play ]
   lv_obj_set_size(top_cont, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_style_pad_all(top_cont, 0, 0);
-  lv_obj_set_style_pad_column(top_cont, 4, 0);
+  lv_obj_set_style_pad_column(top_cont, 8, 0);
   lv_obj_set_style_bg_opa(top_cont, LV_OPA_TRANSP, LV_PART_MAIN);  // let cont highlight show through
   lv_obj_set_flex_flow(top_cont, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(top_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -54,25 +59,24 @@ MacroItem::MacroItem(KWebSocketClient &c,
   // of the name); recolored amber when favorited, grey when not
   lv_img_set_src(fav_img, &img_star);
   lv_obj_add_flag(fav_img, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(fav_img, 8);   // estrela pequena: toque um pouco maior
   update_favorite_icon();
   lv_obj_add_event_cb(fav_img, &MacroItem::_handle_favorite, LV_EVENT_CLICKED, this);
 
   // macro name (tap to expand/collapse params). Long names get an ellipsis;
-  // the highlighted row scrolls (see set_highlight) so the full name is
-  // readable for just the selected item.
+  // the highlighted row wraps (see set_highlight) so the full name is
+  // readable for just the selected item, without scrolling text.
   lv_obj_set_flex_grow(macro_label, 1);
+  lv_obj_set_style_text_font(macro_label, Marca::f14(), 0);
   lv_label_set_long_mode(macro_label, LV_LABEL_LONG_DOT);
   lv_label_set_text(macro_label, mname.c_str());
   lv_obj_add_flag(macro_label, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(macro_label, &MacroItem::_handle_expand, LV_EVENT_CLICKED, this);
 
   // run button
-  lv_obj_t *run_btn = lv_btn_create(top_cont);
-  lv_obj_set_style_text_font(run_btn, &lv_font_montserrat_10, LV_STATE_DEFAULT);
-  lv_obj_set_width(run_btn, 62);
-  lv_obj_t *run_btn_label = lv_label_create(run_btn);
-  lv_label_set_text(run_btn_label, LV_SYMBOL_PLAY);
-  lv_obj_center(run_btn_label);
+  // botão de rodar 56 x 44, NORMAL (o limão fica para a ação principal)
+  lv_obj_t *run_btn = Marca::criar_botao(top_cont, LV_SYMBOL_PLAY, Marca::Tipo::NORMAL, Marca::f16());
+  lv_obj_set_size(run_btn, 56, Marca::TOQUE);
   lv_obj_add_event_cb(run_btn, &MacroItem::_handle_send_macro, LV_EVENT_CLICKED, this);
 
   if (!m_params.empty()) {
@@ -81,6 +85,7 @@ MacroItem::MacroItem(KWebSocketClient &c,
     lv_obj_set_flex_flow(params_cont, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(params_cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_all(params_cont, 0, 0);
+    lv_obj_set_style_pad_row(params_cont, 4, 0);
     lv_obj_set_style_border_width(params_cont, 0, 0);
     lv_obj_set_style_bg_opa(params_cont, LV_OPA_TRANSP, LV_PART_MAIN);  // let cont highlight show through
     lv_obj_clear_flag(params_cont, LV_OBJ_FLAG_SCROLLABLE);
@@ -91,9 +96,13 @@ MacroItem::MacroItem(KWebSocketClient &c,
     for (auto const & [k, v] : m_params) {
       param_name = lv_label_create(params_cont);
       lv_label_set_text(param_name, k.c_str());
+      lv_obj_set_style_text_font(param_name, Marca::f12(), 0);
+      lv_obj_set_style_text_color(param_name, lv_color_hex(Marca::GRAFITE), 0);
+      lv_label_set_long_mode(param_name, LV_LABEL_LONG_DOT);
 
       param_value = lv_textarea_create(params_cont);
       lv_textarea_set_one_line(param_value, true);
+      lv_obj_set_style_text_font(param_value, Marca::f14(), 0);
       lv_textarea_set_text(param_value, v.c_str());
       lv_obj_clear_flag(param_value, LV_OBJ_FLAG_SCROLLABLE);
       lv_obj_add_event_cb(param_value, &MacroItem::_handle_kb_input, LV_EVENT_ALL, this);
@@ -117,12 +126,10 @@ MacroItem::~MacroItem() {
 }
 
 void MacroItem::update_favorite_icon() {
+  // favorita: PAPEL (acesa); não favorita: GRAFITE (apagada)
   lv_obj_set_style_img_recolor_opa(fav_img, LV_OPA_COVER, LV_PART_MAIN);
-  if (favorite) {
-    lv_obj_set_style_img_recolor(fav_img, lv_palette_main(LV_PALETTE_AMBER), LV_PART_MAIN);
-  } else {
-    lv_obj_set_style_img_recolor(fav_img, lv_palette_lighten(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  }
+  lv_obj_set_style_img_recolor(fav_img,
+    lv_color_hex(favorite ? Marca::PAPEL : Marca::GRAFITE), LV_PART_MAIN);
 }
 
 void MacroItem::set_visible(bool v) {
@@ -137,10 +144,9 @@ void MacroItem::set_visible(bool v) {
 void MacroItem::set_highlight(bool h) {
   highlighted = h;
   if (h) {
-    lv_obj_set_style_bg_color(cont, lv_palette_lighten(LV_PALETTE_GREY, 1), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(cont, LV_OPA_30, LV_PART_MAIN);
-    // scroll the selected row's name so a long macro name is fully readable
-    lv_label_set_long_mode(macro_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    // fundo PRETO_2 liso; o nome inteiro quebra em linhas (sem texto rolando)
+    lv_obj_set_style_bg_opa(cont, LV_OPA_COVER, LV_PART_MAIN);
+    lv_label_set_long_mode(macro_label, LV_LABEL_LONG_WRAP);
   } else {
     lv_obj_set_style_bg_opa(cont, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_label_set_long_mode(macro_label, LV_LABEL_LONG_DOT);

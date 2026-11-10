@@ -1,7 +1,6 @@
 #ifndef __PRINTER_SELECT_PANEL_H__
 #define __PRINTER_SELECT_PANEL_H__
 
-#include "button_container.h"
 #include "lvgl/lvgl.h"
 
 #include <string>
@@ -10,6 +9,8 @@
 
 class PrinterSelectPanel;
 
+// Uma impressora da lista: nome (f14), "IP: ... · Porta: ..." (f12 GRAFITE),
+// "Trocar" e o X de excluir (cada um com a sua pergunta).
 class PrinterSelectContainer {
  public:
   PrinterSelectContainer(PrinterSelectPanel &ps,
@@ -29,6 +30,9 @@ class PrinterSelectContainer {
 };
 
 
+// Subtela "Impressoras" (Configurações › Sistema › Impressoras): campos para
+// acrescentar uma impressora (nome, IP e porta do Moonraker) e a lista das
+// impressoras salvas. O teclado fica dentro da subtela.
 class PrinterSelectPanel {
  public:
   PrinterSelectPanel();
@@ -39,19 +43,19 @@ class PrinterSelectPanel {
   void add_printer(const std::string &n,
 		   const std::string &ip,
 		   uint32_t port);
-  
+
   void foreground();
 
  private:
+  void fechar_teclado();
+
   lv_obj_t *cont;
-  lv_obj_t *top;
-  lv_obj_t *left;
   lv_obj_t *printer_name;
   lv_obj_t *moonraker_ip;
   lv_obj_t *moonraker_port;
   /* lv_obj_t *moonraker_apikey; */
-  lv_obj_t *right;
-  ButtonContainer back_btn;
+  lv_obj_t *add_btn;
+  lv_obj_t *right;   // lista das impressoras salvas
   lv_obj_t *kb;
 
   std::map<std::string, std::shared_ptr<PrinterSelectContainer>> printers;

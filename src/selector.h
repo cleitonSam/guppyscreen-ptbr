@@ -29,6 +29,8 @@ class Selector {
   lv_obj_t *get_label();
   uint32_t get_selected_idx();
   void set_selected_idx(uint32_t idx);
+  // Esconde o título (o segmentado fica sozinho no contêiner).
+  void sem_titulo();
 
  private:
   lv_obj_t *cont;

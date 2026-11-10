@@ -10,6 +10,9 @@
 #include <map>
 #include <memory>
 
+// Subtela "Medições TMC" (Proposta B): cabeçalho com voltar, aviso + chave
+// para ligar as medições e, embaixo, um bloco por motor (lista que rola na
+// vertical, sem inércia).
 class TmcStatusPanel : public NotifyConsumer {
  public:
   TmcStatusPanel(KWebSocketClient &ws,
@@ -25,9 +28,9 @@ class TmcStatusPanel : public NotifyConsumer {
  private:
   KWebSocketClient &ws;
   lv_obj_t *cont;
+  lv_obj_t *lista;
   lv_obj_t *top;
   lv_obj_t *toggle;
-  ButtonContainer back_btn;
   std::map<std::string, std::shared_ptr<TmcStatusContainer>> metrics;
 };
 

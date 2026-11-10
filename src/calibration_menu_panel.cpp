@@ -1,109 +1,47 @@
 #include "calibration_menu_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "utils.h"
 #include "state.h"
+#include "spdlog/spdlog.h"
 
 #include <experimental/filesystem>
 
 namespace fs = std::experimental::filesystem;
 
-LV_IMG_DECLARE(arrow_up);
-LV_IMG_DECLARE(arrow_down);
-LV_IMG_DECLARE(home_z);
-LV_IMG_DECLARE(extrude_img);
-LV_IMG_DECLARE(layers_img);
-LV_IMG_DECLARE(inputshaper_img);
-LV_IMG_DECLARE(skew_img);
-LV_IMG_DECLARE(motor_img);
 LV_IMG_DECLARE(bedmesh_img);
+LV_IMG_DECLARE(z_closer);
 
-// Icons are shown at native size (46x46, same material_46 assets the Tune-tab
-// tiles use) - no lv_img_set_zoom/LV_IMG_SIZE_MODE_REAL this time. That
-// combination was tried first to shrink rows further, but produced a visible
-// double-image ghosting artifact across every icon it touched in the sim -
-// looked like an LVGL zoom/real-size-mode interaction bug, not per-icon
-// artwork, so it's not worth the risk for a size-only win. Icon is nullptr
-// for entries that don't need one (none currently, kept for flexibility).
-//
-// One row per calibration flow: optional numbered badge + icon + label + a
-// small chevron chip, styled like macro_item.cpp's rows (thin bottom-border
-// separator, transparent background, no per-row background bar) instead of a
-// filled button - reads as a plain list, and the chip borrows macro_item's
-// compact "Play" button look so the tap affordance still stands out. Number
-// is nullptr for the unordered utility section.
-static lv_obj_t *make_row(lv_obj_t *parent, const void *icon, const char *label,
-                           lv_event_cb_t cb, void *user_data, const char *number = nullptr) {
-  lv_obj_t *row = lv_obj_create(parent);
-  lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_style_radius(row, 0, 0);
-  lv_obj_set_style_pad_all(row, 6, 0);
-  lv_obj_set_style_pad_column(row, 8, 0);
-  lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
-  lv_obj_set_style_border_width(row, 1, 0);
-  lv_obj_set_style_border_color(row, lv_palette_darken(LV_PALETTE_GREY, 3), 0);
-  lv_obj_set_style_bg_color(row, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
-  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+// Posições dos 6 cartões (200 x 48) na página, em 2 colunas (quadro 11).
+static const lv_coord_t CARTAO_X[6] = {8, 216, 8, 216, 8, 216};
+static const lv_coord_t CARTAO_Y[6] = {52, 52, 108, 108, 164, 164};
 
-  if (icon != nullptr) {
-    lv_obj_t *img = lv_img_create(row);
-    lv_img_set_src(img, icon);
-  }
+CalibrationMenuPanel::Cartao CalibrationMenuPanel::criar_cartao(int idx, const char *numero, const char *nome) {
+  Cartao c;
+  c.cartao = lv_obj_create(panel_cont);
+  lv_obj_set_pos(c.cartao, CARTAO_X[idx], CARTAO_Y[idx]);
+  lv_obj_set_size(c.cartao, 200, 48);
+  Marca::cartao_tocavel(c.cartao);
 
-  if (number != nullptr) {
-    // Between the 46px icon and the 14px row label in visual weight.
-    // Plain lv_btn (non-clickable) so it picks up the theme's live
-    // bg_color_primary automatically, instead of baking in a color snapshot
-    // that goes stale on the next theme change.
-    lv_obj_t *badge = lv_btn_create(row);
-    lv_obj_set_size(badge, 26, 26);
-    lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(badge, 0, 0);
-    lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(badge, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_t *num_lbl = lv_label_create(badge);
-    lv_label_set_text(num_lbl, number);
-    lv_obj_set_style_text_font(num_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(num_lbl, lv_color_white(), 0);
-    lv_obj_center(num_lbl);
-  }
+  // selo numerado 28 px em (10,10)
+  c.selo = Marca::criar_selo(c.cartao, 28, Marca::PRETO_3, Marca::PAPEL, numero);
+  lv_obj_set_pos(c.selo, 10, 10);
 
-  lv_obj_t *lbl = lv_label_create(row);
-  lv_label_set_text(lbl, label);
-  // Ellipsis, not wrap, if a label is ever too long for the row - a wrapped
-  // 2-line label would make just that one row taller than the rest, breaking
-  // the row-height consistency (matches macro_item.cpp's own long-name handling).
-  lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(lbl, lv_palette_darken(LV_PALETTE_GREY, 1), LV_STATE_DISABLED);
-  lv_obj_set_flex_grow(lbl, 1);
+  // nome f14 em (46, meio) com 146 px, até 2 linhas, centralizado na vertical
+  c.nome = Marca::criar_rotulo(c.cartao, nome, Marca::f14(), Marca::PAPEL);
+  lv_obj_set_width(c.nome, 146);
+  lv_label_set_long_mode(c.nome, LV_LABEL_LONG_WRAP);
+  lv_obj_align(c.nome, LV_ALIGN_LEFT_MID, 46, 0);
 
-  // compact chevron "chip" - same visual weight as macro_item.cpp's Play
-  // button, but purely decorative here (the whole row is one tap target).
-  lv_obj_t *chip = lv_obj_create(row);
-  lv_obj_set_size(chip, 22, 22);
-  lv_obj_set_style_radius(chip, 4, 0);
-  lv_obj_set_style_bg_color(chip, lv_palette_darken(LV_PALETTE_GREY, 3), 0);
-  lv_obj_set_style_border_width(chip, 0, 0);
-  lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(chip, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_t *chev = lv_label_create(chip);
-  lv_label_set_text(chev, LV_SYMBOL_RIGHT);
-  lv_obj_set_style_text_font(chev, &lv_font_montserrat_10, 0);
-  lv_obj_center(chev);
-
-  lv_obj_add_event_cb(row, cb, LV_EVENT_CLICKED, user_data);
-  return row;
+  lv_obj_add_event_cb(c.cartao, &CalibrationMenuPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  return c;
 }
 
-static lv_obj_t *make_section_label(lv_obj_t *parent, const char *text) {
-  lv_obj_t *lbl = lv_label_create(parent);
-  lv_label_set_text(lbl, text);
-  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_10, 0);
-  lv_obj_set_style_text_color(lbl, lv_palette_main(LV_PALETTE_GREY), 0);
-  return lbl;
+void CalibrationMenuPanel::marcar_disponivel(Cartao &c, bool disponivel) {
+  // Só cor: o cartão continua tocável para mostrar o motivo.
+  uint32_t cor = disponivel ? Marca::PAPEL : Marca::GRAFITE;
+  lv_obj_set_style_text_color(c.nome, lv_color_hex(cor), 0);
+  lv_obj_set_style_text_color(c.selo, lv_color_hex(cor), 0);
 }
 
 CalibrationMenuPanel::CalibrationMenuPanel(KWebSocketClient &websocket_client, std::mutex &l,
@@ -112,7 +50,6 @@ CalibrationMenuPanel::CalibrationMenuPanel(KWebSocketClient &websocket_client, s
                                             TmcTunePanel &tmc_tune)
   : ws(websocket_client)
   , panel_cont(lv_obj_create(lv_scr_act()))
-  , highlight_index(-1)
   , recalibration_wizard_panel(websocket_client, l)
   , esteps_calibration_panel(websocket_client, l)
   , bedmesh_panel(bedmesh)
@@ -122,105 +59,52 @@ CalibrationMenuPanel::CalibrationMenuPanel(KWebSocketClient &websocket_client, s
   , tmc_tune_panel(tmc_tune)
   , tmc_tune_available(false)
 {
-  lv_obj_move_background(panel_cont);
-  lv_obj_set_size(panel_cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(panel_cont, 8, 0);
-  lv_obj_set_style_pad_row(panel_cont, 4, 0);
+  // Vira o conteúdo da página Calibração (424 x 272).
+  Navegacao::colocar(panel_cont, Pagina::CALIBRACAO);
+  // a página já é PRETO opaco: o contêiner fica transparente (não pinta duas vezes)
+  lv_obj_set_style_bg_opa(panel_cont, LV_OPA_TRANSP, 0);
+  lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_pad_all(panel_cont, 0, 0);
   lv_obj_set_style_border_width(panel_cont, 0, 0);
-  // 2x2 grid: row 0 (content-height) is the header - "Calibration" on the
-  // left, Back on the right, level with the title as asked. Row 1 (FR(1),
-  // fills the rest) is the list on the left, Up/OK/Down on the right.
-  // LV_GRID_ALIGN_STRETCH sizes matching cells directly - same technique
-  // printertune_panel.cpp's own Tune-tab grid relies on.
-  static lv_coord_t panel_col_dsc[] = {LV_GRID_FR(1), 48, LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t panel_row_dsc[] = {LV_GRID_CONTENT, LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  lv_obj_set_grid_dsc_array(panel_cont, panel_col_dsc, panel_row_dsc);
+  lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *title = lv_label_create(panel_cont);
-  lv_obj_set_grid_cell(title, LV_GRID_ALIGN_START, 0, 1, LV_GRID_ALIGN_CENTER, 0, 1);
-  lv_label_set_text(title, "Calibração");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+  lv_obj_t *title = Marca::criar_rotulo(panel_cont, "Calibração", Marca::f20(), Marca::PAPEL);
+  lv_obj_set_pos(title, 8, 10);
 
-  back_btn = lv_btn_create(panel_cont);
-  lv_obj_set_grid_cell(back_btn, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
-  lv_obj_set_style_bg_color(back_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *back_lbl = lv_label_create(back_btn);
-  lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
-  lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
-  lv_obj_center(back_lbl);
-  lv_obj_add_event_cb(back_btn, &CalibrationMenuPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  lv_obj_t *ordem = Marca::criar_rotulo(panel_cont, "NESTA ORDEM", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(ordem, 276, 16);
+  lv_obj_set_width(ordem, 140);
+  lv_obj_set_style_text_align(ordem, LV_TEXT_ALIGN_RIGHT, 0);
 
-  list_cont = lv_obj_create(panel_cont);
-  lv_obj_set_grid_cell(list_cont, LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-  lv_obj_set_flex_flow(list_cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_row(list_cont, 2, 0);
-  lv_obj_set_style_border_width(list_cont, 0, 0);
-  lv_obj_set_style_pad_all(list_cont, 0, 0);
-  lv_obj_set_style_pad_right(list_cont, 6, 0);
-  // Six numbered rows + a divider + a utility row never fit a 480x272 screen
-  // at once - scroll rather than cram, matching console_panel's list convention.
-  lv_obj_add_flag(list_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_scrollbar_mode(list_cont, LV_SCROLLBAR_MODE_AUTO);
+  axis_twist_row  = criar_cartao(0, "1", "Torção do eixo X");
+  wizard_row      = criar_cartao(1, "2", "Altura do bico e malha da mesa");
+  inputshaper_row = criar_cartao(2, "3", "Compensação de vibração");
+  esteps_row      = criar_cartao(3, "4", "Calibração da extrusora");
+  skew_row        = criar_cartao(4, "5", "Correção de esquadro");
+  tmc_tune_row    = criar_cartao(5, "6", "Autoajuste dos motores (opcional)");
 
-  make_section_label(list_cont, "NESTA ORDEM");
-  axis_twist_row  = make_row(list_cont, &layers_img,      "Torção do eixo X",                  &CalibrationMenuPanel::_handle_callback, this, "1");
-  wizard_row      = make_row(list_cont, &home_z,          "Altura do bico e malha da mesa",    &CalibrationMenuPanel::_handle_callback, this, "2");
-  inputshaper_row = make_row(list_cont, &inputshaper_img, "Compensação de vibração",           &CalibrationMenuPanel::_handle_callback, this, "3");
-  esteps_row      = make_row(list_cont, &extrude_img,     "Calibração da extrusora",           &CalibrationMenuPanel::_handle_callback, this, "4");
-  skew_row        = make_row(list_cont, &skew_img,        "Correção de esquadro",              &CalibrationMenuPanel::_handle_callback, this, "5");
-  tmc_tune_row    = make_row(list_cont, &motor_img,       "Autoajuste dos motores (opcional)", &CalibrationMenuPanel::_handle_callback, this, "6");
+  // ---- OUTROS ----
+  lv_obj_t *outros = Marca::criar_rotulo(panel_cont, "OUTROS", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(outros, 8, 235);
 
-  make_section_label(list_cont, "OUTROS");
-  bedmesh_row = make_row(list_cont, &bedmesh_img, "Malha da mesa", &CalibrationMenuPanel::_handle_callback, this);
-
-  rows = {axis_twist_row, wizard_row, inputshaper_row, esteps_row, skew_row, tmc_tune_row, bedmesh_row};
-
-  // Right-side nav column - same construction as macros_panel.cpp's nav_cont
-  // (Up/OK/Down). Back moved up to the header row (grid_cell above, level
-  // with "Calibration") since having it as a 4th button down here read as
-  // just another list control instead of the way out of the screen.
-  nav_cont = lv_obj_create(panel_cont);
-  lv_obj_set_grid_cell(nav_cont, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-  lv_obj_set_style_pad_all(nav_cont, 2, 0);
-  lv_obj_set_style_border_width(nav_cont, 0, 0);
-  lv_obj_clear_flag(nav_cont, LV_OBJ_FLAG_SCROLLABLE);
-
-  // Grid again, not flex_grow, for the buttons themselves: flex_grow split
-  // them unevenly even with matching style on all of them - an FR(1) grid
-  // divides evenly, guaranteed, no grow-distribution ambiguity to debug further.
-  static lv_coord_t nav_row_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t nav_col_dsc[] = {LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  lv_obj_set_grid_dsc_array(nav_cont, nav_col_dsc, nav_row_dsc);
-  lv_obj_set_style_pad_row(nav_cont, 4, 0);
-  lv_obj_set_style_pad_column(nav_cont, 4, 0);
-
-  auto style_nav_btn = [](lv_obj_t *btn, int row) {
-    lv_obj_set_grid_cell(btn, LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, row, 1);
-    lv_obj_set_style_bg_color(btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
+  auto botao_icone = [this](const void *img, const char *txt, lv_coord_t x) {
+    lv_obj_t *b = lv_btn_create(panel_cont);
+    lv_obj_set_style_pad_all(b, 0, 0);
+    lv_obj_set_pos(b, x, 220);
+    lv_obj_set_size(b, 168, 44);
+    lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(b, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(b, 6, 0);
+    Marca::criar_icone(b, img, 20, Marca::PAPEL);
+    lv_obj_t *t = lv_label_create(b);
+    lv_label_set_text(t, txt);
+    lv_obj_set_style_text_font(t, Marca::f14(), 0);
+    Marca::estilo_botao(b, Marca::Tipo::NORMAL);  // depois dos filhos (pinta o ícone)
+    lv_obj_add_event_cb(b, &CalibrationMenuPanel::_handle_callback, LV_EVENT_CLICKED, this);
+    return b;
   };
-
-  up_btn = lv_btn_create(nav_cont);
-  style_nav_btn(up_btn, 0);
-  lv_obj_t *up_img = lv_img_create(up_btn);
-  lv_img_set_src(up_img, &arrow_up);
-  lv_obj_center(up_img);
-  lv_obj_add_event_cb(up_btn, &CalibrationMenuPanel::_handle_nav, LV_EVENT_CLICKED, this);
-
-  ok_btn = lv_btn_create(nav_cont);
-  style_nav_btn(ok_btn, 1);
-  lv_obj_t *ok_lbl = lv_label_create(ok_btn);
-  lv_label_set_text(ok_lbl, LV_SYMBOL_OK);
-  lv_obj_set_style_text_font(ok_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
-  lv_obj_center(ok_lbl);
-  lv_obj_add_event_cb(ok_btn, &CalibrationMenuPanel::_handle_nav, LV_EVENT_CLICKED, this);
-
-  down_btn = lv_btn_create(nav_cont);
-  style_nav_btn(down_btn, 2);
-  lv_obj_t *down_img = lv_img_create(down_btn);
-  lv_img_set_src(down_img, &arrow_down);
-  lv_obj_center(down_img);
-  lv_obj_add_event_cb(down_btn, &CalibrationMenuPanel::_handle_nav, LV_EVENT_CLICKED, this);
+  bedmesh_btn = botao_icone(&bedmesh_img, "Malha da mesa", 72);
+  zoffset_btn = botao_icone(&z_closer, "Altura do bico", 248);
 }
 
 CalibrationMenuPanel::~CalibrationMenuPanel() {
@@ -243,70 +127,41 @@ void CalibrationMenuPanel::init(json &j) {
     }
   }
 
-  if (!tmc_tune_available) {
-    lv_obj_add_state(tmc_tune_row, LV_STATE_DISABLED);
-  }
+  // Indisponível = grafite. O toque continua mostrando o motivo.
+  marcar_disponivel(tmc_tune_row, tmc_tune_available);
+  marcar_disponivel(axis_twist_row, AxisTwistPanel::is_enabled());
+  marcar_disponivel(skew_row, SkewCorrectionPanel::is_enabled());
 }
 
 void CalibrationMenuPanel::foreground() {
-  lv_obj_move_foreground(panel_cont);
-  set_highlight(0);
-}
-
-void CalibrationMenuPanel::set_highlight(int idx) {
-  if (idx < 0 || idx >= (int)rows.size()) {
-    return;
-  }
-  if (highlight_index >= 0 && highlight_index < (int)rows.size()) {
-    lv_obj_set_style_bg_opa(rows[highlight_index], LV_OPA_TRANSP, 0);
-  }
-  highlight_index = idx;
-  lv_obj_set_style_bg_opa(rows[highlight_index], LV_OPA_30, 0);
-  lv_obj_scroll_to_view(rows[highlight_index], LV_ANIM_ON);
-}
-
-void CalibrationMenuPanel::move_highlight(int delta) {
-  if (rows.empty()) {
-    return;
-  }
-  int idx = highlight_index < 0 ? 0 : highlight_index + delta;
-  if (idx < 0) {
-    idx = 0;
-  } else if (idx >= (int)rows.size()) {
-    idx = (int)rows.size() - 1;
-  }
-  set_highlight(idx);
-}
-
-void CalibrationMenuPanel::handle_nav(lv_event_t *e) {
-  if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  lv_obj_t *target = lv_event_get_target(e);
-
-  if (target == up_btn) {
-    move_highlight(-1);
-  } else if (target == down_btn) {
-    move_highlight(1);
-  } else if (target == ok_btn) {
-    if (highlight_index >= 0 && highlight_index < (int)rows.size()) {
-      activate_row(rows[highlight_index]);
-    }
-  }
+  Navegacao::ir_para(Pagina::CALIBRACAO);
 }
 
 void CalibrationMenuPanel::handle_callback(lv_event_t *e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  lv_obj_t *btn = lv_event_get_current_target(e);
-
-  if (btn == back_btn) {
-    lv_obj_move_background(panel_cont);
-    return;
-  }
-
-  activate_row(btn);
+  activate_row(lv_event_get_current_target(e));
 }
 
 void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
-  if (row == axis_twist_row) {
+  // Roda dentro de evento do LVGL (lv_lock já preso): nada aqui prende o lock.
+
+  if (row == bedmesh_btn) {
+    // Ver a malha imprimindo pode; as ações que mudam algo (Calibrar /
+    // Limpar / Salvar) já são travadas dentro do próprio painel.
+    if (!Navegacao::executar("malha_da_mesa")) {
+      bedmesh_panel.foreground();
+    }
+    return;
+  }
+
+  if (row == zoffset_btn) {
+    if (!Navegacao::executar("altura_do_bico")) {
+      spdlog::warn("CalibrationMenuPanel: ação altura_do_bico ainda não registrada");
+    }
+    return;
+  }
+
+  if (row == axis_twist_row.cartao) {
     // Detect via the config section: the v0.12.0 module has no get_status, so
     // it never shows up as a live printer object - only configfile.settings.
     if (!AxisTwistPanel::is_enabled()) {
@@ -322,7 +177,7 @@ void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
     return;
   }
 
-  if (row == wizard_row) {
+  if (row == wizard_row.cartao) {
     // The wizard inside probes the bed and ends in a SAVE_CONFIG restart;
     // never mid-print.
     if (KUtils::is_printing()) { KUtils::notify_locked(); return; }
@@ -330,20 +185,20 @@ void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
     return;
   }
 
-  if (row == inputshaper_row) {
+  if (row == inputshaper_row.cartao) {
     if (KUtils::is_printing()) { KUtils::notify_locked(); return; }
     inputshaper_panel.foreground();
     return;
   }
 
-  if (row == esteps_row) {
+  if (row == esteps_row.cartao) {
     // Heats the hotend and probes extrusion accuracy; never mid-print.
     if (KUtils::is_printing()) { KUtils::notify_locked(); return; }
     esteps_calibration_panel.foreground();
     return;
   }
 
-  if (row == skew_row) {
+  if (row == skew_row.cartao) {
     // Detect via the config section (no get_status), like Axis Twist.
     if (!SkewCorrectionPanel::is_enabled()) {
       KUtils::notify_toast(
@@ -358,17 +213,17 @@ void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
     return;
   }
 
-  if (row == tmc_tune_row) {
-    if (!tmc_tune_available) return;  // row is LV_STATE_DISABLED, shouldn't fire, belt-and-suspenders
+  if (row == tmc_tune_row.cartao) {
+    if (!tmc_tune_available) {
+      // Antes a linha ficava desabilitada e não reagia; agora diz o motivo.
+      KUtils::notify_toast(
+        "O autoajuste dos motores não está disponível.\n"
+        "Falta o motor_database.cfg no Klipper.",
+        4000);
+      return;
+    }
     if (KUtils::is_printing()) { KUtils::notify_locked(); return; }
     tmc_tune_panel.foreground();
-    return;
-  }
-
-  if (row == bedmesh_row) {
-    // Viewing the mesh mid-print is fine; the mutating actions (Calibrate /
-    // Clear / Save) are blocked inside the panel itself.
-    bedmesh_panel.foreground();
     return;
   }
 }

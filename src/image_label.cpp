@@ -1,4 +1,5 @@
 #include "image_label.h"
+#include "marca.h"
 #include <cstring>
 #include <cstdio>
 
@@ -27,13 +28,17 @@ ImageLabel::ImageLabel(lv_obj_t *parent,
 {
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_size(cont, LV_PCT(width_pct), LV_PCT(height_pct));
-  lv_obj_set_style_border_width(cont, 2, 0);
-  lv_obj_set_style_radius(cont, 4, 0);
+  // cartão da marca: PRETO_2, raio 12, sem borda; rótulo f14
+  lv_obj_set_style_bg_color(cont, lv_color_hex(Marca::PRETO_2), 0);
+  lv_obj_set_style_bg_opa(cont, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(cont, 0, 0);
+  lv_obj_set_style_radius(cont, Marca::RAIO, 0);
   lv_obj_set_style_pad_left(cont, 5, 0);
   lv_obj_set_style_pad_right(cont, 5, 0);
 
   lv_img_set_src(image, img);
   lv_label_set_text(label, value);
+  lv_obj_set_style_text_font(label, Marca::f14(), 0);
 
   lv_obj_align(image, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_align(label, LV_ALIGN_RIGHT_MID, 0, 0);

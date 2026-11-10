@@ -2,6 +2,7 @@
 #include "state.h"
 #include "config.h"
 #include "utils.h"
+#include "marca.h"
 #include "spdlog/spdlog.h"
 
 #include <algorithm>
@@ -58,8 +59,55 @@ void FilamentRunoutPanel::show() {
   }
   mbox = lv_msgbox_create(NULL, "Fim do filamento",
     "Carregue o filamento novo e toque em Continuar.\nCancelar encerra a impressão.", RUNOUT_BTNS_IDLE, false);
-  KUtils::style_lock_mbox(mbox, 95);  // centered card + blue buttons, like other dialogs
+  // Caixa da marca (PRETO_2, raio 12, título f16, texto f14, botões de 44 px).
+  KUtils::style_lock_mbox(mbox, 100);
+  // Um pouco mais larga que as outras caixas (392 em vez de 336) para a frase
+  // principal caber numa linha, e centralizada na área de conteúdo (à direita
+  // da coluna de 56 px), não na tela inteira. style_lock_mbox já deixou o
+  // fundo da caixa só nessa área (a coluna e a parada continuam tocáveis),
+  // então centrar no fundo é centrar no conteúdo.
+  lv_obj_set_style_pad_all(mbox, 12, 0);
+  lv_obj_set_size(mbox, 392, 168);
+  lv_obj_center(mbox);
+
+  // Cores dos botões: "Continuar" (1) é a próxima ação = limão com texto
+  // preto; "Cancelar" (2) encerra a impressão = vermelho com texto papel;
+  // "Carregar"/"Parar" (0) fica normal. Só desenho: a ordem e os textos dos
+  // botões (que handle_mbox compara pelo índice) não mudam.
+  lv_obj_t *btnm = lv_msgbox_get_btns(mbox);
+  if (btnm != NULL) {
+    lv_obj_add_event_cb(btnm, &FilamentRunoutPanel::_draw_btn_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
+  }
   lv_obj_add_event_cb(mbox, &FilamentRunoutPanel::_mbox_cb, LV_EVENT_VALUE_CHANGED, this);
+}
+
+void FilamentRunoutPanel::_draw_btn_cb(lv_event_t *e) {
+  lv_obj_t *btnm = lv_event_get_target(e);
+  lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
+  if (dsc == NULL || dsc->part != LV_PART_ITEMS || dsc->rect_dsc == NULL || dsc->label_dsc == NULL) {
+    return;
+  }
+  // Cancelando: botões travados ficam com a cor de desabilitado do tema.
+  if (lv_obj_has_state(btnm, LV_STATE_DISABLED)) {
+    return;
+  }
+  uint32_t fundo;
+  uint32_t texto;
+  if (dsc->id == 1) {
+    fundo = Marca::LIMAO;
+    texto = Marca::PRETO;
+  } else if (dsc->id == 2) {
+    fundo = Marca::ERRO;
+    texto = Marca::PAPEL;
+  } else {
+    return;  // botão 0: o estilo normal do tema
+  }
+  lv_color_t cor = lv_color_hex(fundo);
+  bool apertado = lv_obj_has_state(btnm, LV_STATE_PRESSED)
+    && lv_btnmatrix_get_selected_btn(btnm) == dsc->id;
+  dsc->rect_dsc->bg_color = apertado ? lv_color_darken(cor, LV_OPA_20) : cor;
+  dsc->rect_dsc->bg_opa   = LV_OPA_COVER;
+  dsc->label_dsc->color   = lv_color_hex(texto);
 }
 
 void FilamentRunoutPanel::close() {

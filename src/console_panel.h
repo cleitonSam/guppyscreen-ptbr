@@ -11,6 +11,10 @@
 #include <memory>
 #include <string>
 
+// Subtela Console (Proposta B). O contêiner recebido já é subtela 424 x 272
+// (pad 0), criada pelo main_panel. Cabeçalho da marca em cima (voltar +
+// título); o voltar sobe um nível: lista de comandos -> categorias -> terminal
+// -> fecha a subtela. O teclado fica dentro da subtela, embaixo.
 class ConsolePanel {
  public:
   ConsolePanel(KWebSocketClient &ws, std::mutex &lock, lv_obj_t *parent);
@@ -32,7 +36,7 @@ class ConsolePanel {
   // commands browser
   void handle_open_commands(lv_event_t *e); // terminal -> command browser
   void handle_category(lv_event_t *e);      // a category row tapped -> drill in
-  void handle_back(lv_event_t *e);          // back -> category menu
+  void handle_back(lv_event_t *e);          // voltar do cabeçalho: sobe um nível
   void handle_filter_kb(lv_event_t *e);
   void handle_nav(lv_event_t *e);
 
@@ -79,7 +83,9 @@ class ConsolePanel {
   KWebSocketClient &ws;
   std::mutex &lv_lock;
 
+  lv_obj_t *subtela;       // contêiner recebido (subtela registrada)
   lv_obj_t *console_cont;
+  lv_obj_t *titulo;        // título do cabeçalho
 
   // terminal view
   lv_obj_t *term_view;
@@ -89,9 +95,6 @@ class ConsolePanel {
 
   // commands view
   lv_obj_t *cmd_view;
-  lv_obj_t *subhdr;        // back row (level 2 only)
-  lv_obj_t *back_btn;
-  lv_obj_t *title_label;
   lv_obj_t *cmd_body;
   lv_obj_t *cat_cont;      // level-1 category rows
   lv_obj_t *list_cont;     // level-2 pooled command rows

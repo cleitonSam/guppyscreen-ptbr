@@ -1,4 +1,5 @@
 #include "selector.h"
+#include "marca.h"
 #include "spdlog/spdlog.h"
 
 #include <limits>
@@ -34,19 +35,20 @@ Selector::Selector(lv_obj_t *parent,
   lv_obj_set_size(btnm, LV_PCT(100), height);
   lv_label_set_text(label, label_text);
   lv_obj_set_width(label, LV_PCT(100));
-  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-
-  /* Theme default is m10 on small screens now - no need to override per-widget here. */
+  // título 12 G (grafite), alinhado à esquerda como na maquete
+  lv_obj_set_style_text_font(label, Marca::f12(), 0);
+  lv_obj_set_style_text_color(label, lv_color_hex(Marca::GRAFITE), 0);
+  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, 0);
+  lv_obj_set_style_pad_bottom(label, 2, 0);
 
   lv_btnmatrix_set_map(btnm, &map[0]);
-  lv_obj_set_style_pad_all(btnm, small_screen ? 2 : 4, LV_PART_MAIN);
-
-  lv_obj_set_style_outline_width(btnm, 0, LV_PART_ITEMS | LV_STATE_FOCUS_KEY);
+  // visual de segmentado: trilho PRETO_2, escolhido LIMAO com texto PRETO
+  Marca::estilo_segmentado(btnm);
     
   lv_obj_add_event_cb(btnm, cb, LV_EVENT_VALUE_CHANGED, cb_data);
   
   // select one only
-  lv_btnmatrix_set_btn_ctrl_all(btnm, LV_BTNMATRIX_CTRL_CHECKABLE);
+  lv_btnmatrix_set_btn_ctrl_all(btnm, LV_BTNMATRIX_CTRL_CHECKABLE | LV_BTNMATRIX_CTRL_NO_REPEAT);
   lv_btnmatrix_set_one_checked(btnm, true);
   if (selector_idx != std::numeric_limits<uint32_t>::max()) {
     lv_btnmatrix_set_btn_ctrl(btnm, selector_idx, LV_BTNMATRIX_CTRL_CHECKED);
@@ -84,6 +86,10 @@ lv_obj_t *Selector::get_label() {
 
 uint32_t Selector::get_selected_idx() {
   return selector_idx;
+}
+
+void Selector::sem_titulo() {
+  lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
 }
 
 void Selector::set_selected_idx(uint32_t idx) {

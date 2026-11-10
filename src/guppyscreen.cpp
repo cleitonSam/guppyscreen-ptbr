@@ -17,6 +17,8 @@
 #include "state.h"
 #include "theme.h"
 #include "utils.h"
+#include "marca.h"
+#include "navegacao.h"
 
 GuppyScreen *GuppyScreen::instance = NULL;
 lv_style_t GuppyScreen::style_container;
@@ -135,18 +137,19 @@ GuppyScreen *GuppyScreen::init(std::function<void(lv_color_t, lv_color_t)> hal_i
   fbdev_unblank();
 #endif  // OS_ANDROID
 
-  hal_init(primary_color, secondary_color);
+  // Marca fixa (Proposta B): as cores do themes/*.json continuam sendo lidas
+  // (não quebra nada), mas não são usadas. Primária = limão, secundária = erro.
+  (void)primary_color;
+  (void)secondary_color;
+  hal_init(lv_color_hex(Marca::LIMAO), lv_color_hex(Marca::ERRO));
   lv_png_init();
 
   lv_style_init(&style_container);
   lv_style_set_border_width(&style_container, 0);
   lv_style_set_radius(&style_container, 0);
-  /* Force m10 on all lv_obj instances on small screens. Theme cascade alone
-   * doesn't reach plain lv_label children of lv_btn etc.; setting text_font
-   * on style_container (applied to every obj via theme_apply_cb) propagates
-   * via LV_STYLE_PROP_INHERIT to descendant labels too. */
+  /* Fonte base 12 em todo lv_obj (herda para os rótulos filhos). */
   if (lv_disp_get_physical_hor_res(NULL) <= 480) {
-    lv_style_set_text_font(&style_container, &lv_font_montserrat_10);
+    lv_style_set_text_font(&style_container, &lv_font_montserrat_12);
   }
 
 //  lv_style_init(&style_imgbtn_default);
@@ -155,11 +158,24 @@ GuppyScreen *GuppyScreen::init(std::function<void(lv_color_t, lv_color_t)> hal_i
 
   lv_style_init(&style_imgbtn_pressed);
   lv_style_set_img_recolor_opa(&style_imgbtn_pressed, LV_OPA_100);
-  lv_style_set_img_recolor(&style_imgbtn_pressed, primary_color);
+  lv_style_set_img_recolor(&style_imgbtn_pressed, lv_color_hex(Marca::PAPEL));   // limão só como fundo
 
   lv_style_init(&style_imgbtn_disabled);
   lv_style_set_img_recolor_opa(&style_imgbtn_disabled, LV_OPA_100);
-  lv_style_set_img_recolor(&style_imgbtn_disabled, lv_palette_darken(LV_PALETTE_GREY, 1));
+  lv_style_set_img_recolor(&style_imgbtn_disabled, lv_color_hex(Marca::GRAFITE));
+
+  // estilos fixos da marca (antes do tema filho, que os usa)
+  Marca::iniciar();
+
+  // tela e camadas na marca: fundo preto, texto papel, fonte 12
+  lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(Marca::PRETO), 0);
+  lv_obj_set_style_bg_opa(lv_scr_act(), LV_OPA_COVER, 0);
+  lv_obj_set_style_text_color(lv_scr_act(), lv_color_hex(Marca::PAPEL), 0);
+  lv_obj_set_style_text_font(lv_scr_act(), &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(lv_layer_top(), lv_color_hex(Marca::PAPEL), 0);
+  lv_obj_set_style_text_font(lv_layer_top(), &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(lv_layer_sys(), lv_color_hex(Marca::PAPEL), 0);
+  lv_obj_set_style_text_font(lv_layer_sys(), &lv_font_montserrat_12, 0);
 
   /*Initia1ize the new theme from the current theme*/
 
@@ -174,6 +190,9 @@ GuppyScreen *GuppyScreen::init(std::function<void(lv_color_t, lv_color_t)> hal_i
   lv_disp_set_theme(NULL, &th_new);
 
   ws.register_notify_update(State::get_instance());
+
+  // a navegação (parada de emergência) precisa do websocket antes dos painéis
+  Navegacao::definir_ws(&ws);
 
   GuppyScreen *gs = GuppyScreen::get();
   auto printers = conf->get_json("/printers");
@@ -194,12 +213,20 @@ GuppyScreen *GuppyScreen::init(std::function<void(lv_color_t, lv_color_t)> hal_i
   }
 
 #ifndef OS_ANDROID
-  screen_saver = lv_obj_create(lv_scr_act());
+  // Protetor de tela na camada do sistema (acima das janelas de lv_layer_top):
+  // preto, tela inteira, clicável e escondido. O toque que acorda a tela fica
+  // nele (o soltar vai para o mesmo objeto) e não clica em nada embaixo.
+  screen_saver = lv_obj_create(lv_layer_sys());
 
+  lv_obj_set_pos(screen_saver, 0, 0);
   lv_obj_set_size(screen_saver, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_style_bg_color(screen_saver, lv_color_black(), 0);
-  lv_obj_set_style_bg_opa(screen_saver, LV_OPA_100, 0);
-  lv_obj_move_background(screen_saver);
+  lv_obj_set_style_bg_color(screen_saver, lv_color_hex(Marca::PRETO), 0);
+  lv_obj_set_style_bg_opa(screen_saver, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(screen_saver, 0, 0);
+  lv_obj_set_style_radius(screen_saver, 0, 0);
+  lv_obj_clear_flag(screen_saver, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(screen_saver, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(screen_saver, LV_OBJ_FLAG_HIDDEN);
 
   lv_obj_t *main_screen = lv_disp_get_scr_act(NULL);
   auto touch_calibrated = conf->get_json("/touch_calibrated");
@@ -279,15 +306,21 @@ void GuppyScreen::loop() {
           // so the panel is black if the user wakes mid-DSI-refresh.
           saved_brightness = KUtils::backlight_get();
           KUtils::backlight_set(0);
-          lv_obj_move_foreground(screen_saver);
+          {
+            std::lock_guard<std::mutex> guard(lv_lock);
+            lv_obj_clear_flag(screen_saver, LV_OBJ_FLAG_HIDDEN);
+          }
           is_sleeping = true;
         }
       } else {
         if (is_sleeping.load()) {
           spdlog::debug("waking up display");
           fbdev_unblank();
-          lv_obj_move_background(screen_saver);
-          lv_obj_invalidate(lv_scr_act());
+          {
+            std::lock_guard<std::mutex> guard(lv_lock);
+            lv_obj_add_flag(screen_saver, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_invalidate(lv_scr_act());
+          }
           if (saved_brightness > 0) {
             KUtils::backlight_set(saved_brightness);
           }
@@ -324,6 +357,9 @@ void GuppyScreen::new_theme_apply_cb(lv_theme_t *th, lv_obj_t *obj) {
     lv_obj_add_style(obj, &style_imgbtn_pressed, LV_STATE_PRESSED);
     lv_obj_add_style(obj, &style_imgbtn_disabled, LV_STATE_DISABLED);
   }
+
+  // marca (Proposta B): vem depois, então ganha do tema padrão
+  Marca::aplicar_tema(obj);
 }
 
 void GuppyScreen::handle_calibrated(lv_event_t *event) {
@@ -340,20 +376,10 @@ void GuppyScreen::save_calibration_coeff(lv_tc_coeff_t coeff) {
 }
 
 void GuppyScreen::refresh_theme() {
-  lv_theme_t *th = lv_theme_default_get();
-  ThemeConfig *theme_conf = ThemeConfig::get_instance();
-  auto primary_color = theme_conf->get_json("/primary_color").empty()
-                       ? lv_color_hex(0x2196F3)
-                       : lv_color_hex(std::stoul(theme_conf->get<std::string>("/primary_color"), nullptr, 16));
-
-  auto secondary_color = theme_conf->get_json("/secondary_color").empty()
-                         ? lv_color_hex(0xF44336)
-                         : lv_color_hex(std::stoul(theme_conf->get<std::string>("/secondary_color"), nullptr, 16));
-
-  lv_disp_t *disp = lv_disp_get_default();
-  lv_theme_t * new_theme =  lv_theme_default_init(disp, primary_color, secondary_color, true, th->font_normal);
-  lv_disp_set_theme(disp, new_theme);
-  lv_style_set_img_recolor(&style_imgbtn_pressed, primary_color);
+  // Marca fixa (Proposta B): não há mais troca de tema. A versão antiga
+  // recriava o tema padrão e apagava o tema filho (que aplica a marca), por
+  // isso agora não faz nada. O lote de Configurações tira a linha "Tema".
+  return;
 }
 
 /*Set in lv_conf.h as `LV_TICK_CUSTOM_SYS_TIME_EXPR`*/

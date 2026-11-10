@@ -1,6 +1,8 @@
 #include "printer_select_panel.h"
 #include "guppyscreen.h"
 #include "config.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "utils.h"
 #include "hv/json.hpp"
 #include "subprocess.hpp"
@@ -11,7 +13,27 @@ namespace fs = std::experimental::filesystem;
 namespace sp = subprocess;
 using json = nlohmann::json;
 
-LV_IMG_DECLARE(back);
+// Subtela 424 x 272 (coordenadas da subtela):
+//   cabeçalho "Impressoras"
+//   nome (8,52) 176 x 44 · IP (192,52) 224 x 44
+//   porta (8,100) 176 x 44 · "+ Impressora" (192,100) 224 x 44
+//   lista das salvas (8,152) 408 x 112, rola na vertical (linhas de 52)
+//   teclado (0,148) 424 x 124, por cima da lista enquanto digita
+namespace {
+  constexpr lv_coord_t LISTA_L = 408;
+  constexpr lv_coord_t LINHA_IMPRESSORA = 52;
+  constexpr lv_coord_t TECLADO_Y = 148;
+
+  void estilo_campo(lv_obj_t *ta, lv_coord_t x, lv_coord_t y, lv_coord_t w) {
+    lv_textarea_set_one_line(ta, true);
+    lv_obj_set_style_text_font(ta, Marca::f14(), 0);
+    lv_obj_set_style_text_font(ta, Marca::f14(), LV_PART_TEXTAREA_PLACEHOLDER);
+    lv_obj_set_style_pad_hor(ta, 12, 0);
+    lv_obj_set_style_pad_ver(ta, (Marca::TOQUE - 16 - 2) / 2, 0);
+    lv_obj_set_pos(ta, x, y);
+    lv_obj_set_size(ta, w, Marca::TOQUE);
+  }
+}
 
 PrinterSelectContainer::PrinterSelectContainer(PrinterSelectPanel &ps,
 					       lv_obj_t *parent,
@@ -22,20 +44,30 @@ PrinterSelectContainer::PrinterSelectContainer(PrinterSelectPanel &ps,
   , cont(lv_obj_create(parent))
   , name(pname)
 {
-  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
-  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);  
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);  
-  lv_obj_set_style_border_width(cont, 2, 0);
-  
-  lv_obj_t *l = lv_label_create(cont);
-  lv_label_set_text(l, fmt::format("Nome: {}\nIP: {}\nPorta: {}", pname, ip, port).c_str());
-  lv_obj_set_width(l, LV_PCT(55));
+  lv_obj_set_size(cont, LISTA_L, LINHA_IMPRESSORA);
+  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(cont, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_pad_all(cont, 0, 0);
+  lv_obj_set_style_radius(cont, 0, 0);
+  lv_obj_set_style_bg_opa(cont, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(cont, 1, 0);
+  lv_obj_set_style_border_side(cont, LV_BORDER_SIDE_BOTTOM, 0);
+  lv_obj_set_style_border_color(cont, lv_color_hex(Marca::PRETO_3), 0);
 
-  lv_obj_t *btn = lv_btn_create(cont);
-  l = lv_label_create(btn);
-  lv_label_set_text(l, "Trocar");
-  lv_obj_center(l);
+  lv_obj_t *l = Marca::criar_rotulo(cont, pname.c_str(), Marca::f14(), Marca::PAPEL);
+  lv_obj_set_pos(l, 12, 8);
+  lv_obj_set_width(l, 236);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+
+  l = Marca::criar_rotulo(cont, fmt::format("IP: {} · Porta: {}", ip, port).c_str(),
+                          Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(l, 12, 28);
+  lv_obj_set_width(l, 236);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+
+  lv_obj_t *btn = Marca::criar_botao(cont, "Trocar", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(btn, 256, 3);
+  lv_obj_set_size(btn, 96, Marca::TOQUE);
 
   lv_obj_add_event_cb(btn, [](lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
@@ -47,12 +79,12 @@ PrinterSelectContainer::PrinterSelectContainer(PrinterSelectPanel &ps,
 	lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(e));
 	uint32_t clicked_btn = lv_msgbox_get_active_btn(obj);
 	if(clicked_btn == 0) {
-	  
-	  
+
+
 	  Config *conf = Config::get_instance();
 	  conf->set<std::string>("/default_printer", ((PrinterSelectContainer*)e->user_data)->name);
 	  conf->save();
-		  
+
 	  auto init_script = conf->get<std::string>("/guppy_init_script");
 	  const fs::path script(init_script);
 	  if (fs::exists(script)) {
@@ -60,19 +92,18 @@ PrinterSelectContainer::PrinterSelectContainer(PrinterSelectPanel &ps,
 	  }
 
 	}
-	
+
 	lv_msgbox_close(obj);
 
       }, LV_EVENT_VALUE_CHANGED, p);
 
     }
   }, LV_EVENT_CLICKED, this);
-  
 
-  btn = lv_btn_create(cont);
-  l = lv_label_create(btn);
-  lv_label_set_text(l, LV_SYMBOL_CLOSE);
-  lv_obj_center(l);
+
+  btn = Marca::criar_botao(cont, LV_SYMBOL_CLOSE, Marca::Tipo::FANTASMA);
+  lv_obj_set_pos(btn, 360, 3);
+  lv_obj_set_size(btn, Marca::TOQUE, Marca::TOQUE);
 
   lv_obj_add_event_cb(btn, [](lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
@@ -86,7 +117,7 @@ PrinterSelectContainer::PrinterSelectContainer(PrinterSelectPanel &ps,
 	  auto *p = (PrinterSelectContainer*)e->user_data;
 	  p->printer_select_panel.remove_printer(p->name);
 	}
-	
+
 	lv_msgbox_close(obj);
 
       }, LV_EVENT_VALUE_CHANGED, p);
@@ -104,63 +135,34 @@ PrinterSelectContainer::~PrinterSelectContainer() {
 lv_obj_t *PrinterSelectContainer::prompt(const std::string &prompt_text) {
   static const char * btns[] = {"Confirmar", "Cancelar", ""};
 
+  // caixa da marca (336 x 160, botões de 44, sem botão marcado em limão)
   lv_obj_t *mbox1 = lv_msgbox_create(NULL, NULL, prompt_text.c_str(), btns, false);
-  KUtils::style_dialog_msgbox(mbox1);
-  lv_obj_t *msg = ((lv_msgbox_t*)mbox1)->text;
-  lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_width(msg, LV_PCT(100));
-  lv_obj_center(msg);
-  
-  lv_obj_t *btnm = lv_msgbox_get_btns(mbox1);
-  lv_btnmatrix_set_btn_ctrl(btnm, 0, LV_BTNMATRIX_CTRL_CHECKED);
-  lv_btnmatrix_set_btn_ctrl(btnm, 1, LV_BTNMATRIX_CTRL_CHECKED);
-  lv_obj_add_flag(btnm, LV_OBJ_FLAG_FLOATING);
-  lv_obj_align(btnm, LV_ALIGN_BOTTOM_MID, 0, 0);
-  
-  auto hscale = (double)lv_disp_get_physical_ver_res(NULL) / 480.0;
-
-  lv_obj_set_size(btnm, LV_PCT(90), 50 *hscale);
-  lv_obj_set_size(mbox1, LV_PCT(50), LV_PCT(35));
-  lv_obj_center(mbox1);
+  KUtils::style_lock_mbox(mbox1, 90);
   return mbox1;
 }
 
 PrinterSelectPanel::PrinterSelectPanel()
   : cont(lv_obj_create(lv_scr_act()))
-  , top(lv_obj_create(cont))
-  , left(lv_obj_create(top))
-  , printer_name(lv_textarea_create(left))
-  , moonraker_ip(lv_textarea_create(left))
-  , moonraker_port(lv_textarea_create(left))
-  , right(lv_obj_create(top))
-  , back_btn(cont, &back, "Voltar", [](lv_event_t *e) {
-    PrinterSelectPanel *panel = (PrinterSelectPanel*)e->user_data;
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-      lv_obj_move_background(panel->cont);
-    }
-  }, this)
+  , printer_name(lv_textarea_create(cont))
+  , moonraker_ip(lv_textarea_create(cont))
+  , moonraker_port(lv_textarea_create(cont))
+  , add_btn(Marca::criar_botao(cont, LV_SYMBOL_PLUS " Impressora", Marca::Tipo::NORMAL))
+  , right(lv_obj_create(cont))
   , kb(lv_keyboard_create(cont))
 {
-  lv_obj_move_background(cont);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_style_pad_all(cont, 0, 0);  
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  Navegacao::subtela(cont);
 
-  lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_grow(top, 1);
-  lv_obj_set_width(top, LV_PCT(100));
-  lv_obj_set_style_pad_all(top, 0, 0);
+  Marca::criar_cabecalho(cont, "Impressoras", [](lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+      PrinterSelectPanel *panel = (PrinterSelectPanel*)lv_event_get_user_data(e);
+      panel->fechar_teclado();
+      Navegacao::fechar(panel->cont);
+    }
+  }, this);
 
-  // lv_obj_set_style_border_width(left, 2, 0);
-  lv_obj_set_style_border_width(right, 2, 0);
-
-  lv_obj_set_size(left, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(left, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
+  estilo_campo(printer_name, 8, 52, 176);
   lv_textarea_set_placeholder_text(printer_name, "Nome da impressora");
   lv_textarea_set_max_length(printer_name, 128);
-  lv_textarea_set_one_line(printer_name, true);
   lv_textarea_set_accepted_chars(printer_name,
 				 "abcdefghijklmnopqrstuvwxyz"
 				 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -171,18 +173,18 @@ PrinterSelectPanel::PrinterSelectPanel()
     p->handle_input(e);
   }, LV_EVENT_ALL, this);
 
+  estilo_campo(moonraker_ip, 192, 52, 224);
   lv_textarea_set_placeholder_text(moonraker_ip, "Endereço IP do Moonraker");
   lv_textarea_set_max_length(moonraker_ip, 45); // ipv6??
-  lv_textarea_set_one_line(moonraker_ip, true);
   lv_textarea_set_accepted_chars(moonraker_ip, "0123456789abcdef.:");
   lv_obj_add_event_cb(moonraker_ip, [](lv_event_t *e) {
     PrinterSelectPanel *p = (PrinterSelectPanel*)e->user_data;
     p->handle_input(e);
   }, LV_EVENT_ALL, this);
 
+  estilo_campo(moonraker_port, 8, 100, 176);
   lv_textarea_set_text(moonraker_port, "7125");
   lv_textarea_set_placeholder_text(moonraker_port, "Porta do Moonraker");
-  lv_textarea_set_one_line(moonraker_port, true);
   lv_textarea_set_max_length(moonraker_port, 5);
   lv_textarea_set_accepted_chars(moonraker_port, "0123456789");
   lv_obj_add_event_cb(moonraker_port, [](lv_event_t *e) {
@@ -190,13 +192,11 @@ PrinterSelectPanel::PrinterSelectPanel()
     p->handle_input(e);
   }, LV_EVENT_ALL, this);
 
-  lv_obj_t *btn = lv_btn_create(left);
-  lv_obj_t *l = lv_label_create(btn);
-  lv_label_set_text(l, LV_SYMBOL_PLUS " Impressora");
-  lv_obj_center(l);
+  lv_obj_set_pos(add_btn, 192, 100);
+  lv_obj_set_size(add_btn, 224, Marca::TOQUE);
 
   // lv_obj_set_style_bg_img_src(btn, LV_SYMBOL_PLUS, 0);
-  lv_obj_add_event_cb(btn, [](lv_event_t *e) {
+  lv_obj_add_event_cb(add_btn, [](lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
       PrinterSelectPanel *p = (PrinterSelectPanel*)e->user_data;
@@ -204,9 +204,14 @@ PrinterSelectPanel::PrinterSelectPanel()
 
       auto pname = std::string(lv_textarea_get_text(p->printer_name));
       auto ip = std::string(lv_textarea_get_text(p->moonraker_ip));
+      // sem nome ou sem IP não há o que gravar (evita uma impressora vazia)
+      if (pname.empty() || ip.empty()) {
+        return;
+      }
 
       const char *mp = lv_textarea_get_text(p->moonraker_port);
-      auto port = mp != NULL ? std::stoi(mp) : 7125;
+      // porta vazia: a padrão (std::stoi("") derrubava a tela)
+      auto port = (mp != NULL && mp[0] != '\0') ? std::stoi(mp) : 7125;
 
       json new_printer = {
 	      {"moonraker_api_key", false},
@@ -229,7 +234,7 @@ PrinterSelectPanel::PrinterSelectPanel()
 
       p->add_printer(pname, ip, port);
 
-      lv_obj_add_flag(p->kb, LV_OBJ_FLAG_HIDDEN);
+      p->fechar_teclado();
 
       if (conf->get_json("/default_printer").is_null()) {
         // connect to the one and only added printer
@@ -242,11 +247,19 @@ PrinterSelectPanel::PrinterSelectPanel()
     }
   }, LV_EVENT_CLICKED, this);
 
-  lv_obj_set_flex_grow(right, 1);
-  lv_obj_set_height(right, LV_PCT(100));
-  lv_obj_set_flex_flow(right, LV_FLEX_FLOW_ROW_WRAP);
+  // lista das impressoras salvas
+  Marca::cartao(right);
+  lv_obj_set_pos(right, 8, 152);
+  lv_obj_set_size(right, LISTA_L, Marca::TELA_A - 152 - 8);
+  lv_obj_add_flag(right, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(right, LV_DIR_VER);
+  lv_obj_clear_flag(right, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+  lv_obj_clear_flag(right, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_set_scrollbar_mode(right, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_set_flex_flow(right, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(right, 0, 0);
 
-  Config *conf = Config::get_instance();    
+  Config *conf = Config::get_instance();
   const auto &configured_printers = conf->get<json>("/printers");
 
   for (auto &el : configured_printers.items()) {
@@ -259,17 +272,29 @@ PrinterSelectPanel::PrinterSelectPanel()
 			v["moonraker_port"].template get<uint32_t>())});
   }
 
+  // teclado dentro da subtela
+  lv_obj_align(kb, LV_ALIGN_TOP_LEFT, 0, TECLADO_Y);
+  lv_obj_set_size(kb, Marca::CONT_L, Marca::TELA_A - TECLADO_Y);
+  lv_obj_set_style_text_font(kb, Marca::f14(), LV_PART_ITEMS);
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
-
-  lv_obj_add_flag(back_btn.get_container(), LV_OBJ_FLAG_FLOATING);  
-  lv_obj_align(back_btn.get_container(), LV_ALIGN_BOTTOM_RIGHT, 0, -20);
 }
 
 PrinterSelectPanel::~PrinterSelectPanel() {
+  // as linhas apagam o próprio objeto: primeiro elas, depois a subtela
+  printers.clear();
   if (cont != NULL) {
     lv_obj_del(cont);
     cont = NULL;
   }
+}
+
+void PrinterSelectPanel::fechar_teclado() {
+  lv_obj_t *ta = lv_keyboard_get_textarea(kb);
+  if (ta != NULL) {
+    lv_obj_clear_state(ta, LV_STATE_FOCUSED);
+  }
+  lv_keyboard_set_textarea(kb, NULL);
+  lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
 }
 
 void PrinterSelectPanel::handle_input(lv_event_t *e) {
@@ -287,8 +312,10 @@ void PrinterSelectPanel::handle_input(lv_event_t *e) {
     lv_obj_clear_flag(kb, LV_OBJ_FLAG_HIDDEN);
   }
 
-  if (code == LV_EVENT_CANCEL) {
-    lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+  // OK ou fechar do teclado: esconde o teclado (o "+ Impressora" e a lista
+  // ficam embaixo dele)
+  if (code == LV_EVENT_CANCEL || code == LV_EVENT_READY) {
+    fechar_teclado();
   }
 
 }
@@ -298,7 +325,7 @@ void PrinterSelectPanel::remove_printer(const std::string &n) {
   if (el != printers.end()) {
     printers.erase(el);
 
-    Config *conf = Config::get_instance();    
+    Config *conf = Config::get_instance();
     auto printers = conf->get<json>("/printers");
     printers.erase(n);
     conf->set<json>("/printers", printers);
@@ -311,7 +338,7 @@ void PrinterSelectPanel::add_printer(const std::string &n,
 				     uint32_t port) {
   printers.insert({n, std::make_shared<PrinterSelectContainer>(*this, right, n, ip, port)});
 }
-  
+
 void PrinterSelectPanel::foreground() {
-  lv_obj_move_foreground(cont);
+  Navegacao::abrir(cont);
 }

@@ -1,9 +1,32 @@
 #include "limits_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "state.h"
 #include "spdlog/spdlog.h"
 
 LV_IMG_DECLARE(refresh_img);
-LV_IMG_DECLARE(back);
+
+// Botão "Restaurar" do SliderContainer em forma compacta (sem a imagem de
+// 46 px, 104 x 44, símbolo + texto lado a lado), e o botão "máximo" (que aqui
+// não existe) fora do layout, para a barra ganhar a largura.
+static void compactar_linha(SliderContainer &s) {
+  lv_obj_t *off = s.get_off();
+  if (off != NULL) {
+    lv_obj_t *img = lv_obj_get_child(off, 0);
+    if (img != NULL && lv_obj_check_type(img, &lv_imgbtn_class)) {
+      lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_t *txt = lv_obj_get_child(off, 1);
+    if (txt != NULL && lv_obj_check_type(txt, &lv_label_class)) {
+      lv_label_set_text(txt, LV_SYMBOL_REFRESH " Restaurar");
+    }
+    lv_obj_set_size(off, 104, Marca::TOQUE);
+  }
+  lv_obj_t *max = s.get_max();
+  if (max != NULL) {
+    lv_obj_add_flag(max, LV_OBJ_FLAG_HIDDEN);
+  }
+}
 
 LimitsPanel::LimitsPanel(KWebSocketClient &c, std::mutex &l)
   : NotifyConsumer(l)
@@ -14,23 +37,35 @@ LimitsPanel::LimitsPanel(KWebSocketClient &c, std::mutex &l)
   , acceleration(limit_cont, "Aceleração máx. (mm/s²)", &refresh_img, "Restaurar", &refresh_img, NULL, &LimitsPanel::_handle_callback, this, "")
   , square_corner(limit_cont, "Velocidade nos cantos (mm/s)", &refresh_img, "Restaurar", &refresh_img, NULL, &LimitsPanel::_handle_callback, this, "")
   , accel_to_decel(limit_cont, "Aceleração para desaceleração (mm/s²)", &refresh_img, "Restaurar", &refresh_img, NULL, &LimitsPanel::_handle_callback, this, "")
-  , back_btn(cont, &back, "Voltar", &LimitsPanel::_handle_callback, this)
   , max_velocity_default(1000)
   , max_accel_default(20000)
   , max_accel_to_decel_default(10000)
   , square_corner_default(5)
 {
-  lv_obj_move_background(cont);
-  lv_obj_set_style_pad_all(cont, 0, 0);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
+  // subtela 424 x 272 com cabeçalho "Limites" (voltar = fechar a subtela)
+  Navegacao::subtela(cont);
+  Marca::criar_cabecalho(cont, "Limites");
 
-  lv_obj_center(limit_cont);
-  lv_obj_set_size(limit_cont, lv_pct(100), lv_pct(100));
+  // lista das 4 linhas abaixo do cabeçalho; rola na vertical se precisar,
+  // sem inércia e sem elástico
+  lv_obj_set_pos(limit_cont, 0, Marca::TOQUE);
+  lv_obj_set_size(limit_cont, Marca::CONT_L, Marca::TELA_A - Marca::TOQUE);
+  lv_obj_set_style_pad_all(limit_cont, 0, 0);
+  lv_obj_set_style_pad_hor(limit_cont, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_top(limit_cont, 4, 0);
+  lv_obj_set_style_pad_bottom(limit_cont, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(limit_cont, 6, 0);
   lv_obj_set_flex_flow(limit_cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_scroll_dir(limit_cont, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(limit_cont, LV_SCROLLBAR_MODE_ACTIVE);
+  lv_obj_clear_flag(limit_cont, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+  lv_obj_clear_flag(limit_cont, LV_OBJ_FLAG_SCROLL_ELASTIC);
 
-  lv_obj_align(back_btn.get_container(), LV_ALIGN_BOTTOM_RIGHT, 0, -20);
-  
+  compactar_linha(velocity);
+  compactar_linha(acceleration);
+  compactar_linha(square_corner);
+  compactar_linha(accel_to_decel);
+
   ws.register_notify_update(this);
 }
 
@@ -89,7 +124,8 @@ void LimitsPanel::init(json &j) {
 }
 
 void LimitsPanel::foreground() {
-  lv_obj_move_foreground(cont);
+  lv_obj_scroll_to_y(limit_cont, 0, LV_ANIM_OFF);
+  Navegacao::abrir(cont);
 }
 
 void LimitsPanel::consume(json &j) {
@@ -118,11 +154,6 @@ void LimitsPanel::consume(json &j) {
 
 void LimitsPanel::handle_callback(lv_event_t *e) {
   lv_obj_t *btn = lv_event_get_current_target(e);
-
-  if (btn == back_btn.get_container()) {
-    lv_obj_move_background(cont);
-    return;
-  }
 
   if (lv_event_get_code(e) == LV_EVENT_RELEASED) {
     lv_obj_t *obj = lv_event_get_target(e);

@@ -1,83 +1,78 @@
 #include "zoffset_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "state.h"
 #include "spdlog/spdlog.h"
 #include "utils.h"
+
+// Altura do bico: subtela 424 x 272 com cabeçalho (lógica e comandos iguais).
+//   y =  52  cartão 408 x 48: valor f20 à esquerda, aviso de salvamento à direita
+//   y = 108  "Subir  (mais longe da mesa)"   408 x 44
+//   y = 160  "Descer  (mais perto da mesa)"  408 x 44
+//   y = 212  "Passo (mm)" + segmentado 220 x 44 + "Zerar" 104 x 44
+
+namespace {
+  static const char *MAPA_PASSO[] = {"0.001", "0.005", "0.01", "0.025", "0.05", ""};
+}
 
 ZOffsetPanel::ZOffsetPanel(KWebSocketClient &websocket_client, std::mutex &l)
   : NotifyConsumer(l)
   , ws(websocket_client)
   , panel_cont(lv_obj_create(lv_scr_act()))
-  , value_label(lv_label_create(panel_cont))
-  , up_btn(lv_btn_create(panel_cont))
-  , down_btn(lv_btn_create(panel_cont))
-  , reset_btn(lv_btn_create(panel_cont))
-  , auto_save_hint(lv_label_create(panel_cont))
-  , back_btn(lv_btn_create(panel_cont))
-  , step_selector(panel_cont, "Passo (mm)", {"0.001", "0.005", "0.01", "0.025", "0.05", ""}, 2,
-      &ZOffsetPanel::_handle_callback, this)
+  , step_idx(2)   // 0.01 mm
 {
-  lv_obj_move_background(panel_cont);
-  lv_obj_set_size(panel_cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_flex_flow(panel_cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(panel_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_all(panel_cont, 6, 0);
-  lv_obj_set_style_pad_row(panel_cont, 6, 0);
+  Navegacao::subtela(panel_cont);
+  Marca::criar_cabecalho(panel_cont, "Altura do bico");
 
-  // big live readout
-  lv_label_set_text(value_label, "0.000 mm");
-  lv_obj_set_style_text_font(value_label, &lv_font_montserrat_20, 0);
-
-  // raise / lower buttons: full-width, clear physical direction
-  auto style_dir_btn = [](lv_obj_t *b, const char *txt) {
-    lv_obj_set_width(b, LV_PCT(94));
-    lv_obj_set_height(b, 42);
-    lv_obj_set_style_bg_color(b, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-    lv_obj_t *lbl = lv_label_create(b);
-    lv_label_set_text(lbl, txt);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
-    lv_obj_center(lbl);
-  };
-  style_dir_btn(up_btn, LV_SYMBOL_UP "  Subir  (mais longe da mesa)");
-  style_dir_btn(down_btn, LV_SYMBOL_DOWN "  Descer  (mais perto da mesa)");
-  lv_obj_add_event_cb(up_btn, &ZOffsetPanel::_handle_callback, LV_EVENT_CLICKED, this);
-  lv_obj_add_event_cb(down_btn, &ZOffsetPanel::_handle_callback, LV_EVENT_CLICKED, this);
-
-  lv_obj_set_width(step_selector.get_container(), LV_PCT(94));
+  // valor ao vivo + aviso de que salva sozinho
+  lv_obj_t *card = Marca::criar_cartao(panel_cont, 8, 52, 408, 48);
+  lv_obj_clear_flag(card, LV_OBJ_FLAG_CLICKABLE);
+  value_label = Marca::criar_rotulo(card, "0.000 mm", Marca::f20(), Marca::PAPEL);
+  lv_obj_set_pos(value_label, 12, 13);
+  lv_obj_set_width(value_label, 120);
+  lv_label_set_long_mode(value_label, LV_LABEL_LONG_DOT);
 
   // the Helper Script's Save Z-Offset macros persist every adjustment to
   // variables.cfg automatically, so there is no Save button - just say so.
-  lv_label_set_text(auto_save_hint, LV_SYMBOL_OK "  Os ajustes são salvos automaticamente");
-  lv_obj_set_style_text_font(auto_save_hint, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(auto_save_hint, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
+  auto_save_hint = Marca::criar_rotulo(card, LV_SYMBOL_OK "  Os ajustes são salvos automaticamente",
+                                       Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(auto_save_hint, 128, 17);
+  lv_obj_set_width(auto_save_hint, 268);
+  lv_label_set_long_mode(auto_save_hint, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(auto_save_hint, LV_TEXT_ALIGN_RIGHT, 0);
 
-  // bottom row: Reset | Back
-  lv_obj_t *bottom = lv_obj_create(panel_cont);
-  lv_obj_set_width(bottom, LV_PCT(94));
-  lv_obj_set_height(bottom, LV_SIZE_CONTENT);
-  lv_obj_clear_flag(bottom, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(bottom, 0, 0);
-  lv_obj_set_style_pad_column(bottom, 6, 0);
-  lv_obj_set_style_border_width(bottom, 0, 0);
-  lv_obj_set_flex_flow(bottom, LV_FLEX_FLOW_ROW);
+  // raise / lower buttons: full-width, clear physical direction
+  up_btn = Marca::criar_botao(panel_cont, LV_SYMBOL_UP "  Subir  (mais longe da mesa)", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(up_btn, 8, 108);
+  lv_obj_set_size(up_btn, 408, Marca::TOQUE);
+  lv_obj_add_event_cb(up_btn, &ZOffsetPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
-  // the two buttons were created as children of panel_cont so the members stay
-  // simple; move them into the bottom row now and size them evenly.
-  lv_obj_set_parent(reset_btn, bottom);
-  lv_obj_set_parent(back_btn, bottom);
+  down_btn = Marca::criar_botao(panel_cont, LV_SYMBOL_DOWN "  Descer  (mais perto da mesa)", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(down_btn, 8, 160);
+  lv_obj_set_size(down_btn, 408, Marca::TOQUE);
+  lv_obj_add_event_cb(down_btn, &ZOffsetPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
-  auto style_action_btn = [](lv_obj_t *b, const char *txt, lv_color_t col) {
-    lv_obj_set_flex_grow(b, 1);
-    lv_obj_set_height(b, 40);
-    lv_obj_set_style_bg_color(b, col, LV_PART_MAIN);
-    lv_obj_t *lbl = lv_label_create(b);
-    lv_label_set_text(lbl, txt);
-    lv_obj_center(lbl);
-  };
-  style_action_btn(reset_btn, LV_SYMBOL_REFRESH "  Zerar", lv_palette_darken(LV_PALETTE_GREY, 2));
-  style_action_btn(back_btn, LV_SYMBOL_LEFT "  Voltar", lv_palette_darken(LV_PALETTE_GREY, 2));
+  // passo
+  lv_obj_t *passo = Marca::criar_rotulo(panel_cont, "Passo (mm)", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(passo, 8, 226);
+  lv_obj_set_width(passo, 74);
+
+  step_selector = lv_btnmatrix_create(panel_cont);
+  lv_btnmatrix_set_map(step_selector, MAPA_PASSO);
+  lv_obj_set_pos(step_selector, 84, 212);
+  lv_obj_set_size(step_selector, 220, Marca::TOQUE);
+  Marca::estilo_segmentado(step_selector);
+  lv_btnmatrix_set_btn_ctrl_all(step_selector, LV_BTNMATRIX_CTRL_CHECKABLE | LV_BTNMATRIX_CTRL_NO_REPEAT);
+  lv_btnmatrix_set_one_checked(step_selector, true);
+  lv_btnmatrix_set_btn_ctrl(step_selector, step_idx, LV_BTNMATRIX_CTRL_CHECKED);
+  lv_obj_add_event_cb(step_selector, &ZOffsetPanel::_handle_callback, LV_EVENT_VALUE_CHANGED, this);
+
+  reset_btn = Marca::criar_botao(panel_cont, LV_SYMBOL_REFRESH "  Zerar", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(reset_btn, 312, 212);
+  lv_obj_set_size(reset_btn, 104, Marca::TOQUE);
   lv_obj_add_event_cb(reset_btn, &ZOffsetPanel::_handle_callback, LV_EVENT_CLICKED, this);
-  lv_obj_add_event_cb(back_btn, &ZOffsetPanel::_handle_callback, LV_EVENT_CLICKED, this);
+
+  Navegacao::registrar_acao("altura_do_bico", [this](const std::string &) { foreground(); });
 
   ws.register_notify_update(this);
 }
@@ -97,7 +92,7 @@ double ZOffsetPanel::cur_offset() {
 }
 
 void ZOffsetPanel::update_value(double z) {
-  lv_label_set_text(value_label, fmt::format("{:.3f} mm", z).c_str());
+  Marca::texto(value_label, fmt::format("{:.3f} mm", z).c_str());
 }
 
 void ZOffsetPanel::apply_step(bool raise) {
@@ -110,8 +105,10 @@ void ZOffsetPanel::apply_step(bool raise) {
     return;
   }
 
-  const char *step = lv_btnmatrix_get_btn_text(step_selector.get_selector(),
-    step_selector.get_selected_idx());
+  const char *step = lv_btnmatrix_get_btn_text(step_selector, step_idx);
+  if (step == NULL) {
+    return;
+  }
 
   // SET_GCODE_OFFSET operates in Klipper's normalized gcode frame, where
   // negative Z_ADJUST always means closer to the bed - independent of the
@@ -124,7 +121,7 @@ void ZOffsetPanel::apply_step(bool raise) {
 
 void ZOffsetPanel::foreground() {
   update_value(cur_offset());
-  lv_obj_move_foreground(panel_cont);
+  Navegacao::abrir(panel_cont);
 }
 
 void ZOffsetPanel::consume(json &j) {
@@ -138,8 +135,11 @@ void ZOffsetPanel::handle_callback(lv_event_t *e) {
 
   if (code == LV_EVENT_VALUE_CHANGED) {
     lv_obj_t *sel = lv_event_get_target(e);
-    if (sel == step_selector.get_selector()) {
-      step_selector.set_selected_idx(lv_btnmatrix_get_selected_btn(sel));
+    if (sel == step_selector) {
+      uint16_t idx = lv_btnmatrix_get_selected_btn(sel);
+      if (idx != LV_BTNMATRIX_BTN_NONE) {
+        step_idx = idx;
+      }
     }
     return;
   }
@@ -157,7 +157,5 @@ void ZOffsetPanel::handle_callback(lv_event_t *e) {
       return;
     }
     ws.gcode_script("SET_GCODE_OFFSET Z=0 MOVE=1");
-  } else if (btn == back_btn) {
-    lv_obj_move_background(panel_cont);
   }
 }

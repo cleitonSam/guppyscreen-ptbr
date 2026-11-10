@@ -36,7 +36,8 @@ class BeltsCalibrationPanel {
  private:
   KWebSocketClient &ws;
   std::mutex &lv_lock;
-  lv_obj_t *cont;
+  lv_obj_t *cont;   // subtela (Navegacao::subtela), 424 x 272
+  lv_obj_t *corpo;  // grade abaixo do cabeçalho: (0,44) 424 x 228
   lv_obj_t *graph_cont;
   lv_obj_t *graph;
   lv_obj_t *spinner;
@@ -47,8 +48,8 @@ class BeltsCalibrationPanel {
   lv_obj_t *button_cont;
   ButtonContainer calibrate_btn;
   ButtonContainer excite_btn;
-  ButtonContainer emergency_btn;
-  ButtonContainer back_btn;
+  // "Parar tudo" e "Voltar" saíram: a parada é o botão vermelho da coluna
+  // (sempre visível nas subtelas) e o voltar é o do cabeçalho.
   bool image_fullsized;
 
   static std::vector<std::string> axes;

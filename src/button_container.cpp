@@ -1,7 +1,10 @@
 #include "button_container.h"
 #include "config.h"
+#include "navegacao.h"
 #include "utils.h"
 #include "spdlog/spdlog.h"
+
+static const char *TEXTO_PARADA = "Fazer parada de emergência?";
 
 ButtonContainer::ButtonContainer(lv_obj_t *parent,
   const void *btn_img,
@@ -16,14 +19,13 @@ ButtonContainer::ButtonContainer(lv_obj_t *parent,
   , prompt_text(prompt)
   , prompt_callback(pcb)
 {
-  lv_obj_set_style_pad_all(btn_cont, 0, 0);
+  // Visual da marca: contêiner PRETO_3, raio 12, sem borda, pad 4.
+  lv_obj_set_style_pad_all(btn_cont, 4, 0);
   lv_obj_set_style_pad_row(btn_cont, 0, 0);
-  lv_obj_set_style_pad_bottom(btn_cont, 5, 0);
+  lv_obj_set_style_pad_column(btn_cont, 6, 0);
   auto width_scale = (double)lv_disp_get_physical_hor_res(NULL) / 800.0;
   lv_obj_set_size(btn_cont, 110 * width_scale, LV_SIZE_CONTENT);
-  lv_obj_set_style_radius(btn_cont, 10 * width_scale, 0);
-  lv_obj_set_style_border_width(btn_cont, 2, 0);
-  lv_obj_set_style_border_color(btn_cont, lv_palette_darken(LV_PALETTE_GREY, 3), 0);
+  Marca::estilo_botao(btn_cont, Marca::Tipo::NORMAL);
   lv_obj_set_flex_flow(btn_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(btn_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(btn_cont, LV_OBJ_FLAG_SCROLLABLE);
@@ -36,22 +38,16 @@ ButtonContainer::ButtonContainer(lv_obj_t *parent,
   lv_obj_add_flag(btn, LV_OBJ_FLAG_EVENT_BUBBLE);
   // lv_obj_add_flag(btn_cont, LV_OBJ_FLAG_EVENT_BUBBLE);
 
-  Config *conf = Config::get_instance();
-  auto estop = conf->get_json("/prompt_emergency_stop");
-  auto prompt_estop = estop.is_null() ? true : estop.template get<bool>();  // sem a chave: pergunta antes (mais seguro)
-
+  // A parada de emergência SEMPRE pergunta (janela de tela inteira da
+  // Navegacao, em handle_prompt). A chave /prompt_emergency_stop continua no
+  // arquivo, mas não desliga mais a pergunta.
   if (cb != NULL && !pcb) {
     lv_obj_add_event_cb(btn_cont, &ButtonContainer::_handle_callback, LV_EVENT_PRESSED, this);
     lv_obj_add_event_cb(btn_cont, &ButtonContainer::_handle_callback, LV_EVENT_RELEASED, this);
 
     lv_obj_add_event_cb(btn_cont, cb, LV_EVENT_CLICKED, user_data);
   } else if (cb != NULL && pcb) {
-    if (prompt_text == "Fazer parada de emergência?" && !prompt_estop) {
-      lv_obj_add_event_cb(btn_cont, &ButtonContainer::_handle_callback, LV_EVENT_PRESSED, this);
-      lv_obj_add_event_cb(btn_cont, &ButtonContainer::_handle_callback, LV_EVENT_RELEASED, this);
-
-      lv_obj_add_event_cb(btn_cont, cb, LV_EVENT_CLICKED, user_data);
-    } else {
+    {
       lv_obj_add_event_cb(btn_cont, [](lv_event_t *e) {
         lv_event_code_t code = lv_event_get_code(e);
         if (code == LV_EVENT_CLICKED) {
@@ -64,14 +60,9 @@ ButtonContainer::ButtonContainer(lv_obj_t *parent,
   lv_label_set_text(label, text);
   lv_obj_set_size(label, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_color(label, lv_palette_darken(LV_PALETTE_GREY, 1), LV_STATE_DISABLED);
-
-  /* On small screens (e.g. 480x272 KE) the theme's default m12 truncates 7-8 char
-   * button labels like "Spoolman"/"Cooldown"/"Reload"/"Modified". Use m10 globally
-   * so all panels get readable, non-wrapping labels without each having to override. */
-  if (lv_disp_get_physical_hor_res(NULL) <= 480) {
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_10, 0);
-  }
+  // texto f14 PAPEL (herda a cor do contêiner); desabilitado GRAFITE
+  lv_obj_set_style_text_font(label, Marca::f14(), 0);
+  lv_obj_set_style_text_color(label, lv_color_hex(Marca::GRAFITE), LV_STATE_DISABLED);
 
   // lv_obj_align_to(label, btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
   // lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, 5);
@@ -128,34 +119,26 @@ void ButtonContainer::handle_callback(lv_event_t *e) {
 }
 
 void ButtonContainer::handle_prompt() {
+  // parada de emergência: sempre a janela de tela inteira
+  if (prompt_text == TEXTO_PARADA) {
+    Navegacao::confirmar_parada();
+    return;
+  }
+
   // Safe action on the left, destructive on the right (red).
   static const char *btns[] = {"Cancelar", "Confirmar", ""};
 
   lv_obj_t *mbox1 = lv_msgbox_create(NULL, NULL, prompt_text.c_str(), btns, false);
-  KUtils::style_dialog_msgbox(mbox1);
-  lv_obj_t *msg = ((lv_msgbox_t *)mbox1)->text;
-  lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_width(msg, LV_PCT(100));
-  lv_obj_center(msg);
-
+  KUtils::style_lock_mbox(mbox1, 90);
   lv_obj_t *btnm = lv_msgbox_get_btns(mbox1);
-  lv_btnmatrix_set_btn_ctrl(btnm, 0, LV_BTNMATRIX_CTRL_CHECKED);
-  lv_btnmatrix_set_btn_ctrl(btnm, 1, LV_BTNMATRIX_CTRL_CHECKED);
-  lv_obj_add_flag(btnm, LV_OBJ_FLAG_FLOATING);
-  lv_obj_align(btnm, LV_ALIGN_BOTTOM_MID, 0, 0);
-
-  auto hscale = (double)lv_disp_get_physical_ver_res(NULL) / 480.0;
-
-  lv_obj_set_size(btnm, LV_PCT(90), 50 * hscale);
-  lv_obj_set_size(mbox1, LV_PCT(50), LV_PCT(35));
 
   // Draw the right (Confirm) button in red.
   lv_obj_add_event_cb(btnm, [](lv_event_t *e) {
     lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
-    if (dsc->part == LV_PART_ITEMS && dsc->id == 1) {
-      dsc->rect_dsc->bg_color = lv_color_hex(0xC62828);
+    if (dsc->part == LV_PART_ITEMS && dsc->id == 1 && dsc->rect_dsc != NULL && dsc->label_dsc != NULL) {
+      dsc->rect_dsc->bg_color = lv_color_hex(Marca::ERRO);
       dsc->rect_dsc->bg_opa   = LV_OPA_COVER;
-      dsc->label_dsc->color   = lv_color_white();
+      dsc->label_dsc->color   = lv_color_hex(Marca::PAPEL);
     }
   }, LV_EVENT_DRAW_PART_BEGIN, NULL);
 
@@ -173,4 +156,44 @@ void ButtonContainer::handle_prompt() {
 
 void ButtonContainer::run_callback() {
   prompt_callback();
+}
+
+void ButtonContainer::set_tipo(Marca::Tipo t) {
+  Marca::estilo_botao(btn_cont, t);
+  if (t == Marca::Tipo::DESTAQUE) {
+    // ícone preto no limão (também apertado, para não sumir no limão)
+    lv_obj_set_style_img_recolor(btn, lv_color_hex(Marca::PRETO), 0);
+    lv_obj_set_style_img_recolor_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_img_recolor(btn, lv_color_hex(Marca::PRETO), LV_STATE_PRESSED);
+    lv_obj_set_style_img_recolor_opa(btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    // desabilitado o fundo vira PRETO_3: ícone grafite (preto sumiria)
+    lv_obj_set_style_img_recolor(btn, lv_color_hex(Marca::GRAFITE), LV_STATE_DISABLED);
+    lv_obj_set_style_img_recolor_opa(btn, LV_OPA_COVER, LV_STATE_DISABLED);
+  } else {
+    lv_obj_remove_local_style_prop(btn, LV_STYLE_IMG_RECOLOR, 0);
+    lv_obj_remove_local_style_prop(btn, LV_STYLE_IMG_RECOLOR_OPA, 0);
+    lv_obj_remove_local_style_prop(btn, LV_STYLE_IMG_RECOLOR, LV_STATE_PRESSED);
+    lv_obj_remove_local_style_prop(btn, LV_STYLE_IMG_RECOLOR_OPA, LV_STATE_PRESSED);
+    lv_obj_remove_local_style_prop(btn, LV_STYLE_IMG_RECOLOR, LV_STATE_DISABLED);
+    lv_obj_remove_local_style_prop(btn, LV_STYLE_IMG_RECOLOR_OPA, LV_STATE_DISABLED);
+  }
+}
+
+void ButtonContainer::set_deitado(bool deitado) {
+  if (deitado) {
+    lv_obj_set_flex_flow(btn_cont, LV_FLEX_FLOW_ROW);
+    lv_obj_set_width(label, LV_SIZE_CONTENT);
+  } else {
+    lv_obj_set_flex_flow(btn_cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_width(label, LV_PCT(100));
+  }
+  lv_obj_set_flex_align(btn_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+}
+
+void ButtonContainer::sem_icone() {
+  lv_obj_add_flag(btn, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ButtonContainer::set_fonte(const lv_font_t *f) {
+  lv_obj_set_style_text_font(label, f, 0);
 }

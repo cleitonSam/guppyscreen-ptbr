@@ -13,8 +13,15 @@
 // crammed a status icon and an edit icon into two adjacent narrow table
 // columns instead - a mistap between them deleted a saved network's password
 // live on-device, which is the failure mode this row layout exists to avoid.
+//
+// Visual da marca (Proposta B): linha de 44 com o símbolo do Wi-Fi, o nome
+// (f14) e embaixo "Conectado" ou o sinal em palavra (f12 GRAFITE); à direita a
+// seta (rede conectada) ou o "esquecer" num alvo de 44 x 44 (rede salva).
 class WifiRowItem {
 public:
+  // largura da lista do WifiPanel (as posições da linha contam com ela)
+  static constexpr lv_coord_t LARGURA = 248;
+
   WifiRowItem(lv_obj_t *parent,
               const std::string &ssid,
               int signal_dbm,
@@ -38,8 +45,6 @@ public:
   }
 
 private:
-  void build_signal_bars(lv_obj_t *parent, int dbm);
-
   std::string ssid;
   std::string nid;
   lv_obj_t *cont;

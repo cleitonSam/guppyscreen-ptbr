@@ -66,7 +66,8 @@ class InputShaperPanel {
  private:
   KWebSocketClient &ws;
   std::mutex &lv_lock;
-  lv_obj_t *cont;
+  lv_obj_t *cont;   // subtela (Navegacao::subtela), 424 x 272
+  lv_obj_t *corpo;  // grade abaixo do cabeçalho: (0,44) 424 x 228
 
   // xgraph
   lv_obj_t *xgraph_cont;
@@ -104,8 +105,8 @@ class InputShaperPanel {
   lv_obj_t *graph_switch;
   ButtonContainer calibrate_btn;
   ButtonContainer save_btn;
-  ButtonContainer emergency_btn;
-  ButtonContainer back_btn;
+  // "Parar tudo" e "Voltar" saíram: a parada é o botão vermelho da coluna
+  // (sempre visível nas subtelas) e o voltar é o do cabeçalho.
   bool ximage_fullsized;
   bool yimage_fullsized;
   json calibrate_output;

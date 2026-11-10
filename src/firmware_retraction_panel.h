@@ -8,10 +8,12 @@
 
 #include <mutex>
 
-// Live-tuning panel for Klipper's [firmware_retraction], reached from the Tune
-// tab. One labelled row per SET_RETRACTION value (name + current value + -/+),
-// a length-step and speed-step selector, and a Reset-all. Gated on the
-// firmware_retraction object existing; shows an empty-state when it's absent.
+// Live-tuning panel for Klipper's [firmware_retraction], reached from
+// Configurações > Avançado. Subtela 424 x 272 (Proposta B): cabeçalho
+// "Retração" com "Restaurar tudo" à direita; 4 cartões 200 x 76 (nome, - valor +)
+// como os do Ajuste fino; embaixo os passos de comprimento e de velocidade.
+// Gated on the firmware_retraction object existing; shows an empty-state when
+// it's absent.
 class FirmwareRetractionPanel : public NotifyConsumer {
  public:
   FirmwareRetractionPanel(KWebSocketClient &, std::mutex &);
@@ -35,7 +37,7 @@ class FirmwareRetractionPanel : public NotifyConsumer {
     lv_obj_t *value;
   };
 
-  void build_row(Field &f);
+  void build_card(Field &f, lv_coord_t x, lv_coord_t y);
   void apply_step(Field &f, bool up);
   void send_field(const Field &f, double value);
   double cur_value(const Field &f);
@@ -46,13 +48,8 @@ class FirmwareRetractionPanel : public NotifyConsumer {
   KWebSocketClient &ws;
   lv_obj_t *panel_cont;
   lv_obj_t *body;
-  lv_obj_t *list_area;
-  lv_obj_t *step_row;
-  lv_obj_t *bottom_row;
   lv_obj_t *empty_cont;
   lv_obj_t *reset_all_btn;
-  lv_obj_t *back_btn;
-  lv_obj_t *empty_back_btn;
   Selector length_step_selector;
   Selector speed_step_selector;
 

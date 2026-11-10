@@ -9,6 +9,7 @@
 #include <vector>
 #include <atomic>
 #include <functional>
+#include <mutex>
 
 using json = nlohmann::json;
 
@@ -39,6 +40,13 @@ class KWebSocketClient : public hv::WebSocketClient {
 				std::function<void(json&)> cb);
   
  private:
+  // Monta e manda o pedido com o número rid já reservado.
+  int enviar(const std::string &method, const json *params, uint64_t rid);
+
+  // callbacks, consumers e a reserva do id são mexidos pela linha da tela e
+  // pela do websocket: cb_mutex protege os três. Nunca chamar uma resposta,
+  // send() ou o lv_lock com ele preso.
+  std::mutex cb_mutex;
   std::map<uint32_t, std::function<void(json&)>> callbacks;
   std::map<uint32_t, NotifyConsumer*> consumers;
   std::vector<NotifyConsumer*> notify_consumers;

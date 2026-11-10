@@ -10,7 +10,9 @@
 #include <string>
 
 // Watches the filament sensor; on runout during a print it pops a styled dialog
-// (same look as the app's other msgbox dialogs). The first button feeds filament
+// (same look as the app's other msgbox dialogs: brand box PRETO_2, raio 12,
+// title f16, body f14, 44 px buttons; Continue in lime with black text,
+// Cancel in red). The first button feeds filament
 // in stoppable chunks and toggles its label Load <-> Stop while feeding; the
 // others are Continue (re-checks the sensor, then RESUME) and Cancel
 // (CANCEL_PRINT).
@@ -32,6 +34,8 @@ class FilamentRunoutPanel : public NotifyConsumer {
   void consume(json &j);
   void handle_mbox(lv_event_t *e);
   static void _mbox_cb(lv_event_t *e) { ((FilamentRunoutPanel*)e->user_data)->handle_mbox(e); }
+  // Pinta os botões da caixa na marca (Continuar limão, Cancelar vermelho).
+  static void _draw_btn_cb(lv_event_t *e);
 
   // Set once by InitPanel from the raw, unfiltered objects/list response -
   // gcode_macro objects are deliberately excluded from this panel's own

@@ -1,29 +1,40 @@
 #include "network_detail_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "spdlog/spdlog.h"
 
-LV_IMG_DECLARE(back);
-
+// Subtela 424 x 272:
+//   cabeçalho com o nome da rede
+//   cartão (8,52) 408 x 132: Sinal / Segurança / Endereço IP (linhas de 44)
+//   "Configurar IP fixo" (8,212) 200 x 44 · "Esquecer esta rede" (216,212) 200 x 44
 namespace {
 
-lv_obj_t *make_info_row(lv_obj_t *parent, const char *label_text, lv_obj_t **val_out) {
-  lv_obj_t *row = lv_obj_create(parent);
-  lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_border_width(row, 0, 0);
-  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_pad_all(row, 2, 0);
-  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+constexpr lv_coord_t LINHA = 44;
 
-  lv_obj_t *lbl = lv_label_create(row);
-  lv_label_set_text(lbl, label_text);
-  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
-  lv_obj_set_style_text_color(lbl, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
+lv_obj_t *make_info_row(lv_obj_t *card, int i, const char *label_text) {
+  if (i > 0) {
+    lv_obj_t *sep = lv_obj_create(card);
+    lv_obj_set_pos(sep, 14, LINHA * i);
+    lv_obj_set_size(sep, 380, 1);
+    lv_obj_set_style_bg_color(sep, lv_color_hex(Marca::PRETO_3), 0);
+    lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(sep, 0, 0);
+    lv_obj_set_style_pad_all(sep, 0, 0);
+    lv_obj_clear_flag(sep, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(sep, LV_OBJ_FLAG_SCROLLABLE);
+  }
 
-  lv_obj_t *val = lv_label_create(row);
-  lv_obj_set_style_text_font(val, &lv_font_montserrat_12, 0);
-  *val_out = val;
-  return row;
+  lv_obj_t *lbl = Marca::criar_rotulo(card, label_text, Marca::f14(), Marca::GRAFITE);
+  lv_obj_set_pos(lbl, 14, LINHA * i + 13);
+  lv_obj_set_width(lbl, 130);
+  lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
+
+  lv_obj_t *val = Marca::criar_rotulo(card, "", Marca::f14(), Marca::PAPEL);
+  lv_obj_set_pos(val, 150, LINHA * i + 13);
+  lv_obj_set_width(val, 244);
+  lv_label_set_long_mode(val, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(val, LV_TEXT_ALIGN_RIGHT, 0);
+  return val;
 }
 
 } // namespace
@@ -33,66 +44,35 @@ NetworkDetailPanel::NetworkDetailPanel(std::mutex &l,
                                        std::function<void()> on_forget_)
   : lv_lock(l)
   , cont(lv_obj_create(lv_scr_act()))
-  , title_label(lv_label_create(cont))
-  , info_card(lv_obj_create(cont))
+  , title_label(nullptr)
+  , info_card(nullptr)
   , signal_val(nullptr)
   , security_val(nullptr)
   , ip_val(nullptr)
-  , configure_btn(lv_btn_create(cont))
-  , forget_btn(lv_btn_create(cont))
-  , back_btn(cont, &back, "Voltar", &NetworkDetailPanel::_handle_back_btn, this)
+  , configure_btn(nullptr)
+  , forget_btn(nullptr)
   , on_configure_static_ip(std::move(on_configure_static_ip_))
   , on_forget(std::move(on_forget_))
 {
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_style_pad_all(cont, 10, 0);
-  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_row(cont, 8, 0);
+  Navegacao::subtela(cont);
 
-  lv_obj_set_style_text_font(title_label, &lv_font_montserrat_16, 0);
+  Marca::Cabecalho cab = Marca::criar_cabecalho(cont, "", &NetworkDetailPanel::_handle_back_btn, this);
+  title_label = cab.titulo;
 
-  lv_obj_set_size(info_card, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_clear_flag(info_card, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(info_card, 8, 0);
-  lv_obj_set_style_pad_row(info_card, 2, 0);
-  lv_obj_set_style_radius(info_card, 4, 0);
-  lv_obj_set_style_bg_color(info_card, lv_palette_darken(LV_PALETTE_GREY, 4), 0);
-  lv_obj_set_flex_flow(info_card, LV_FLEX_FLOW_COLUMN);
+  info_card = Marca::criar_cartao(cont, 8, 52, 408, LINHA * 3);
+  signal_val = make_info_row(info_card, 0, "Sinal");
+  security_val = make_info_row(info_card, 1, "Segurança");
+  ip_val = make_info_row(info_card, 2, "Endereço IP");
 
-  make_info_row(info_card, "Sinal", &signal_val);
-  make_info_row(info_card, "Segurança", &security_val);
-  make_info_row(info_card, "Endereço IP", &ip_val);
-
-  // Fixed width, not 100% - the floating Back button is a 110px-wide box
-  // pinned to the bottom-right corner (button_container.cpp), and a
-  // full-width button here lands squarely under it (confirmed live
-  // 2026-07-12). Narrowing keeps this clear of Back's footprint regardless
-  // of exact vertical position, rather than fine-tuning y-offsets to dodge it.
-  lv_obj_set_size(configure_btn, 320, 42);
-  {
-    lv_obj_t *l = lv_label_create(configure_btn);
-    lv_label_set_text(l, "Configurar IP fixo");
-    lv_obj_center(l);
-  }
+  configure_btn = Marca::criar_botao(cont, "Configurar IP fixo", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(configure_btn, 8, 212);
+  lv_obj_set_size(configure_btn, 200, Marca::TOQUE);
   lv_obj_add_event_cb(configure_btn, &NetworkDetailPanel::_handle_configure_btn, LV_EVENT_CLICKED, this);
 
-  lv_obj_set_size(forget_btn, 320, 42);
-  lv_obj_set_style_bg_opa(forget_btn, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_width(forget_btn, 1, LV_PART_MAIN);
-  lv_obj_set_style_border_color(forget_btn, lv_palette_main(LV_PALETTE_RED), LV_PART_MAIN);
-  {
-    lv_obj_t *l = lv_label_create(forget_btn);
-    lv_label_set_text(l, "Esquecer esta rede");
-    lv_obj_set_style_text_color(l, lv_palette_main(LV_PALETTE_RED), 0);
-    lv_obj_center(l);
-  }
+  forget_btn = Marca::criar_botao(cont, "Esquecer esta rede", Marca::Tipo::CONTORNO_PERIGO);
+  lv_obj_set_pos(forget_btn, 216, 212);
+  lv_obj_set_size(forget_btn, 200, Marca::TOQUE);
   lv_obj_add_event_cb(forget_btn, &NetworkDetailPanel::_handle_forget_btn, LV_EVENT_CLICKED, this);
-
-  lv_obj_add_flag(back_btn.get_container(), LV_OBJ_FLAG_FLOATING);
-  lv_obj_align(back_btn.get_container(), LV_ALIGN_BOTTOM_RIGHT, 0, -20);
-
-  lv_obj_move_background(cont);
 }
 
 NetworkDetailPanel::~NetworkDetailPanel() {
@@ -110,11 +90,11 @@ void NetworkDetailPanel::foreground(const std::string &ssid,
   lv_label_set_text(signal_val, signal_text.c_str());
   lv_label_set_text(security_val, security_text.c_str());
   lv_label_set_text(ip_val, ip_text.c_str());
-  lv_obj_move_foreground(cont);
+  Navegacao::abrir(cont);
 }
 
 void NetworkDetailPanel::hide() {
-  lv_obj_move_background(cont);
+  Navegacao::fechar(cont);
 }
 
 void NetworkDetailPanel::handle_back_btn(lv_event_t *e) {

@@ -1,26 +1,110 @@
 #include "main_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "state.h"
 #include "utils.h"
+#include "sysinfo_panel.h"
 #include "lvgl/lvgl.h"
 #include "spdlog/spdlog.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
-LV_IMG_DECLARE(filament_img);
 LV_IMG_DECLARE(light_img);
-LV_IMG_DECLARE(move);
-LV_IMG_DECLARE(print);
 LV_IMG_DECLARE(extruder);
 LV_IMG_DECLARE(bed);
-LV_IMG_DECLARE(fan);
 LV_IMG_DECLARE(heater);
+LV_IMG_DECLARE(cooldown_img);
 
-LV_FONT_DECLARE(materialdesign_font_40);
-#define MACROS_SYMBOL "\xF3\xB1\xB2\x83"
-#define CONSOLE_SYMBOL "\xF3\xB0\x86\x8D"
-#define TUNE_SYMBOL "\xF3\xB1\x95\x82"
-#define HOME_SYMBOL "\xF3\xB0\x8B\x9C"
-#define SETTING_SYMBOL "\xF3\xB0\x92\x93"
+namespace {
+  // Leitura segura do json (não cria chaves nulas no json da notificação,
+  // que ainda passa pelos outros consumidores).
+  const json *status_da_notificacao(const json &j) {
+    auto it = j.find("params");
+    if (it == j.end() || !it->is_array() || it->empty()) {
+      return nullptr;
+    }
+    const json &p0 = (*it)[0];
+    return p0.is_object() ? &p0 : nullptr;
+  }
+
+  const json *status_da_assinatura(const json &j) {
+    auto r = j.find("result");
+    if (r == j.end() || !r->is_object()) {
+      return nullptr;
+    }
+    auto s = r->find("status");
+    if (s == r->end() || !s->is_object()) {
+      return nullptr;
+    }
+    return &*s;
+  }
+
+  const json *objeto(const json *status, const std::string &nome) {
+    if (status == nullptr) {
+      return nullptr;
+    }
+    auto o = status->find(nome);
+    if (o == status->end() || !o->is_object()) {
+      return nullptr;
+    }
+    return &*o;
+  }
+
+  const json *campo(const json *status, const std::string &nome, const char *chave) {
+    const json *o = objeto(status, nome);
+    if (o == nullptr) {
+      return nullptr;
+    }
+    auto v = o->find(chave);
+    if (v == o->end() || v->is_null()) {
+      return nullptr;
+    }
+    return &*v;
+  }
+
+  // -1 = não dá para saber, 0 = desligada, 1 = ligada
+  int luz_de(const json &o) {
+    if (!o.is_object()) {
+      return -1;
+    }
+    auto v = o.find("value");
+    if (v != o.end() && v->is_number()) {
+      return v->template get<double>() > 0 ? 1 : 0;
+    }
+    auto cd = o.find("color_data");
+    if (cd != o.end() && cd->is_array() && !cd->empty() && (*cd)[0].is_array()) {
+      for (auto &canal : (*cd)[0]) {
+        if (canal.is_number() && canal.template get<double>() > 0) {
+          return 1;
+        }
+      }
+      return 0;
+    }
+    return -1;
+  }
+
+  // "pasta/teste_PETG.gcode" -> "teste_PETG"
+  std::string nome_curto(const std::string &arquivo) {
+    std::string n = arquivo;
+    size_t barra = n.find_last_of('/');
+    if (barra != std::string::npos) {
+      n = n.substr(barra + 1);
+    }
+    const std::string ext = ".gcode";
+    if (n.size() > ext.size() && n.compare(n.size() - ext.size(), ext.size(), ext) == 0) {
+      n = n.substr(0, n.size() - ext.size());
+    }
+    return n;
+  }
+
+  lv_obj_t *nova_subtela() {
+    lv_obj_t *c = lv_obj_create(lv_scr_act());
+    Navegacao::subtela(c);
+    return c;
+  }
+}
 
 MainPanel::MainPanel(KWebSocketClient &websocket,
   std::mutex &lock,
@@ -30,46 +114,40 @@ MainPanel::MainPanel(KWebSocketClient &websocket,
   , homing_panel(ws, lock)
   , fan_panel(ws, lock)
   , led_panel(ws, lock)
-  , tabview(lv_tabview_create(lv_scr_act(), LV_DIR_LEFT, 60))
-  , main_tab(lv_tabview_add_tab(tabview, HOME_SYMBOL))
-  , macros_tab(lv_tabview_add_tab(tabview, MACROS_SYMBOL))
-  , macros_panel(ws, lock, macros_tab, [this]() { show_console(); })
-  , console_tab(lv_tabview_add_tab(tabview, CONSOLE_SYMBOL))
-  , console_panel(ws, lock, console_tab)
-  , printertune_tab(lv_tabview_add_tab(tabview, TUNE_SYMBOL))
-  , setting_tab(lv_tabview_add_tab(tabview, SETTING_SYMBOL))
-  , setting_panel(websocket, lock, setting_tab, sm)
-  , main_cont(lv_obj_create(main_tab))
-  , print_status_panel(websocket, lock, main_cont)
+  , macros_cont(nova_subtela())
+  , macros_panel(ws, lock, macros_cont, [this]() { show_console(); })
+  , console_cont(nova_subtela())
+  , console_panel(ws, lock, console_cont)
+  , setting_panel(websocket, lock, Navegacao::aba(Aba::SISTEMA), sm)
+  , print_status_panel(websocket, lock, Navegacao::pagina(Pagina::INICIO))
   , print_panel(ws, lock, print_status_panel, sm)
-  , printertune_panel(ws, lock, printertune_tab, print_status_panel.get_finetune_panel(), print_status_panel.get_zoffset_panel())
-  , numpad(Numpad(main_cont))
+  , printertune_panel(ws, lock, Navegacao::aba(Aba::AVANCADO),
+                      print_status_panel.get_finetune_panel(), print_status_panel.get_zoffset_panel())
+  , numpad(lv_layer_top())
   , extruder_panel(ws, lock, numpad, sm)
-  , prompt_panel(websocket, lock, main_cont)
+  , prompt_panel(websocket, lock, Navegacao::pagina(Pagina::INICIO))
   , spoolman_panel(sm)
-  , temp_cont(lv_obj_create(main_cont))
-  , temp_chart(lv_chart_create(main_cont))
-  , homing_btn(main_cont, &move, "Mover", &MainPanel::_handle_homing_cb, this)
-  , extrude_btn(main_cont, &filament_img, "Filamento", &MainPanel::_handle_extrude_cb, this)
-  , action_btn(main_cont, &fan, "Ventoinhas", &MainPanel::_handle_fanpanel_cb, this)
-  , led_btn(main_cont, &light_img, "Luz", &MainPanel::_handle_ledpanel_cb, this)
-  , print_btn(main_cont, &print, "Imprimir", &MainPanel::_handle_print_cb, this)
+  , inicio_chip(NULL)
+  , bico_alvo(NULL)
+  , bico_valor(NULL)
+  , mesa_alvo(NULL)
+  , mesa_valor(NULL)
+  , cartao_luz(NULL)
+  , luz_icone(NULL)
+  , luz_valor(NULL)
+  , ultima_thumb(NULL)
+  , ultima_sem_thumb(NULL)
+  , ultima_nome(NULL)
+  , ultima_selo(NULL)
+  , ultima_status(NULL)
+  , ultima_btn(NULL)
+  , ultima_estado(-1)
+  , luz_ligada(-1)
 {
-  lv_style_init(&style);
-  lv_style_set_img_recolor_opa(&style, LV_OPA_30);
-  lv_style_set_img_recolor(&style, lv_color_black());
-  lv_style_set_border_width(&style, 0);
-  lv_style_set_bg_color(&style, lv_palette_darken(LV_PALETTE_GREY, 4));
-
   ws.register_notify_update(this);
 }
 
 MainPanel::~MainPanel() {
-  if (tabview != NULL) {
-    lv_obj_del(tabview);
-    tabview = NULL;
-  }
-
   sensors.clear();
 }
 
@@ -85,274 +163,588 @@ PrinterTunePanel &MainPanel::get_tune_panel() {
 
 void MainPanel::init(json &j) {
   std::lock_guard<std::mutex> lock(lv_lock);
-  for (const auto &el : sensors) {
-    auto target_value = j[json::json_pointer(fmt::format("/result/status/{}/target", el.first))];
-    if (!target_value.is_null()) {
-      int target = target_value.template get<int>();
-      el.second->update_target(target);
-    }
-
-    auto temp_value = j[json::json_pointer(fmt::format("/result/status/{}/temperature", el.first))];
-    if (!temp_value.is_null()) {
-      int value = temp_value.template get<int>();
-      el.second->update_series(value);
-      el.second->update_value(value);
-    }
-  }
+  atualizar_de(status_da_assinatura(j), false);
 
   macros_panel.populate();
 
   auto fans = State::get_instance()->get_display_fans();
   print_status_panel.init(fans);
   printertune_panel.init(j);
+
+  pedir_ultima_impressao();
 }
 
 void MainPanel::consume(json &j) {
   std::lock_guard<std::mutex> lock(lv_lock);
+  atualizar_de(status_da_notificacao(j), true);
+}
+
+void MainPanel::atualizar_de(const json *st, bool transicoes) {
+  if (st == nullptr) {
+    return;
+  }
+
+  // cartões de temperatura (aba Temperatura)
   for (const auto &el : sensors) {
-    auto target_value = j[json::json_pointer(fmt::format("/params/0/{}/target", el.first))];
-    if (!target_value.is_null()) {
-      int target = target_value.template get<int>();
-      el.second->update_target(target);
+    const json *alvo = campo(st, el.first, "target");
+    if (alvo != nullptr && alvo->is_number()) {
+      el.second->update_target(alvo->template get<int>());
     }
 
-    auto temp_value = j[json::json_pointer(fmt::format("/params/0/{}/temperature", el.first))];
-    if (!temp_value.is_null()) {
-      int value = temp_value.template get<int>();
+    const json *temp = campo(st, el.first, "temperature");
+    if (temp != nullptr && temp->is_number()) {
+      int value = temp->template get<int>();
       el.second->update_series(value);
       el.second->update_value(value);
     }
   }
+
+  if (inicio_chip == NULL) {
+    return;  // Início ainda não montado
+  }
+
+  // cartões Bico e Mesa do Início
+  struct { const char *id; lv_obj_t *valor; lv_obj_t *alvo; } aquecedores[] = {
+    {"extruder", bico_valor, bico_alvo},
+    {"heater_bed", mesa_valor, mesa_alvo},
+  };
+  for (auto &a : aquecedores) {
+    const json *temp = campo(st, a.id, "temperature");
+    if (temp != nullptr && temp->is_number()) {
+      Marca::texto(a.valor, fmt::format("{}°C", temp->template get<int>()).c_str());
+    }
+    const json *alvo = campo(st, a.id, "target");
+    if (alvo != nullptr && alvo->is_number()) {
+      int t = alvo->template get<int>();
+      Marca::texto(a.alvo, t > 0 ? fmt::format("/{}", t).c_str() : "");
+    }
+  }
+
+  // estado da impressão
+  const json *ps = campo(st, "print_stats", "state");
+  if (ps != nullptr && ps->is_string()) {
+    std::string novo = ps->template get<std::string>();
+    bool era_ativo = estado_impressao == "printing" || estado_impressao == "paused";
+    bool ativo = novo == "printing" || novo == "paused";
+    estado_impressao = novo;
+    atualizar_chip();
+    if (transicoes && era_ativo && !ativo) {
+      // terminou (concluída, cancelada, erro): a última impressão mudou
+      agendar_ultima_impressao();
+    }
+  }
+
+  // luz
+  if (!luz_id.empty()) {
+    const json *o = objeto(st, luz_id);
+    if (o != nullptr) {
+      atualizar_luz(*o);
+    }
+  }
 }
 
-static void scroll_begin_event(lv_event_t *e)
-{
-  /*Disable the scroll animations. Triggered when a tab button is clicked */
-  if (lv_event_get_code(e) == LV_EVENT_SCROLL_BEGIN) {
-    lv_anim_t *a = (lv_anim_t *)lv_event_get_param(e);
-    if (a)  a->time = 0;
+void MainPanel::atualizar_chip() {
+  if (inicio_chip == NULL) {
+    return;
   }
+  const std::string &s = estado_impressao;
+  // maquete: 92 px no "Pausada", 112 nos outros (só muda se for diferente)
+  lv_coord_t largura = s == "paused" ? 92 : 112;
+  if (lv_obj_get_style_width(inicio_chip, LV_PART_MAIN) != largura) {
+    lv_obj_set_width(inicio_chip, largura);
+    lv_obj_set_x(inicio_chip, 416 - largura);   // a borda direita fica no lugar (x = 416)
+  }
+  if (s == "printing") {
+    Marca::chip_estado(inicio_chip, Marca::Estado::IMPRIMINDO, "Imprimindo");
+  } else if (s == "paused") {
+    Marca::chip_estado(inicio_chip, Marca::Estado::PAUSADA, "Pausada");
+  } else if (s == "error") {
+    Marca::chip_estado(inicio_chip, Marca::Estado::ERRO, "Erro");
+  } else {
+    // standby, complete, cancelled e vazio
+    Marca::chip_estado(inicio_chip, Marca::Estado::PRONTA, "Pronta");
+  }
+}
+
+void MainPanel::atualizar_luz(const json &o) {
+  int l = luz_de(o);
+  if (l < 0 || l == luz_ligada || luz_valor == NULL) {
+    return;
+  }
+  luz_ligada = l;
+  Marca::texto(luz_valor, l ? "Ligada" : "Desligada");
+  Marca::cor_icone(luz_icone, l ? Marca::LIMAO : Marca::GRAFITE);
 }
 
 void MainPanel::create_panel() {
-  lv_obj_clear_flag(lv_tabview_get_content(tabview), LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_event_cb(lv_tabview_get_content(tabview), scroll_begin_event, LV_EVENT_SCROLL_BEGIN, NULL);
+  criar_inicio();
+  criar_temperatura();
 
-  // always reset the Macros tab to its Favorites view whenever it's opened
-  lv_obj_add_event_cb(tabview, &MainPanel::_handle_tab_changed, LV_EVENT_VALUE_CHANGED, this);
+  // Macros e Console: subtelas abertas pela aba Avançado
+  Navegacao::registrar_acao("macros", [this](const std::string &) {
+    Navegacao::abrir(macros_cont);
+    macros_panel.reset_to_favorites();
+  });
+  Navegacao::registrar_acao("console", [this](const std::string &) {
+    Navegacao::abrir(console_cont);
+    console_panel.reset_to_terminal();
+  });
 
-  lv_obj_t *tab_btns = lv_tabview_get_tab_btns(tabview);
-  // catch re-taps of the already-active tab (no VALUE_CHANGED is raised then)
-  lv_obj_add_event_cb(tab_btns, &MainPanel::_handle_tab_btn_clicked, LV_EVENT_CLICKED, this);
-  lv_obj_set_style_bg_color(tab_btns, lv_palette_main(LV_PALETTE_GREY), LV_STATE_CHECKED | LV_PART_ITEMS);
-  lv_obj_set_style_outline_width(tab_btns, 0, LV_PART_ITEMS | LV_STATE_FOCUS_KEY | LV_STATE_FOCUS_KEY);
-  lv_obj_set_style_border_side(tab_btns, 0, LV_PART_ITEMS | LV_STATE_CHECKED);
-  lv_obj_set_style_text_font(tab_btns, &materialdesign_font_40, LV_STATE_DEFAULT);
-
-  // lv_obj_set_style_text_font(lv_scr_act(), LV_FONT_DEFAULT, 0);
-
-  lv_obj_set_style_pad_all(main_tab, 0, 0);
-  lv_obj_set_style_pad_all(macros_tab, 0, 0);
-  lv_obj_set_style_pad_all(console_tab, 0, 0);
-  lv_obj_set_style_pad_all(printertune_tab, 0, 0);
-  lv_obj_set_style_pad_all(setting_tab, 0, 0);
-
-  create_main(main_tab);
-
+  // tudo pronto: começa no Início (fecha qualquer subtela que ficou na frente)
+  Navegacao::ir_para(Pagina::INICIO);
 }
 
-void MainPanel::handle_homing_cb(lv_event_t *event) {
-  spdlog::trace("clicked homing1");
-  if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
-    spdlog::trace("clicked homing");
-    // Allowed while paused (toolhead is parked) - only block mid-print.
-    if (KUtils::is_printing() && !KUtils::is_paused()) {
-      KUtils::notify_locked();
+void MainPanel::criar_inicio() {
+  lv_obj_t *pg = Navegacao::pagina(Pagina::INICIO);
+
+  lv_obj_t *titulo = Marca::criar_rotulo(pg, "Início", Marca::f20(), Marca::PAPEL);
+  lv_obj_set_pos(titulo, 8, 10);
+  lv_obj_set_width(titulo, 260);
+  lv_label_set_long_mode(titulo, LV_LABEL_LONG_DOT);
+
+  // indicador de rede: PAPEL com endereço no Wi-Fi, GRAFITE sem. Conferido
+  // ao mostrar o Início (só lê as interfaces, não fala com o wpa_supplicant).
+  lv_obj_t *wifi = Marca::criar_rotulo(pg, LV_SYMBOL_WIFI, Marca::f16(), Marca::GRAFITE);
+  lv_obj_set_pos(wifi, 276, 12);
+  auto cor_wifi = [wifi]() {
+    uint32_t cor = ListaCfg::ip_atual(true).empty() ? Marca::GRAFITE : Marca::PAPEL;
+    lv_color_t nova = lv_color_hex(cor);
+    if (lv_obj_get_style_text_color(wifi, LV_PART_MAIN).full != nova.full) {
+      lv_obj_set_style_text_color(wifi, nova, 0);
+    }
+  };
+  cor_wifi();
+  Navegacao::ao_mostrar(Pagina::INICIO, cor_wifi);
+
+  inicio_chip = Marca::criar_chip(pg);
+  lv_obj_set_pos(inicio_chip, 304, 10);
+  lv_obj_set_width(inicio_chip, 112);
+  atualizar_chip();
+
+  // ---- 3 cartões: Bico, Mesa, Luz ----
+  struct Cartao { const void *img; const char *nome; lv_coord_t x; };
+  const Cartao cartoes[] = {
+    {&extruder, "Bico", 8},
+    {&bed, "Mesa", 147},
+    {&light_img, "Luz", 286},
+  };
+  lv_obj_t *alvos[3];
+  lv_obj_t *valores[3];
+  lv_obj_t *icones[3];
+  lv_obj_t *objs[3];
+  for (int i = 0; i < 3; i++) {
+    lv_obj_t *c = Marca::criar_cartao(pg, cartoes[i].x, 52, 130, 72);
+    Marca::cartao_tocavel(c);
+    objs[i] = c;
+
+    icones[i] = Marca::criar_icone(c, cartoes[i].img, 24, Marca::GRAFITE);
+    lv_obj_set_pos(icones[i], 10, 10);
+
+    lv_obj_t *nome = Marca::criar_rotulo(c, cartoes[i].nome, Marca::f12(), Marca::GRAFITE);
+    lv_obj_set_pos(nome, 40, 14);
+
+    alvos[i] = Marca::criar_rotulo(c, "", Marca::f12(), Marca::GRAFITE);
+    lv_obj_set_pos(alvos[i], 70, 14);
+    lv_obj_set_width(alvos[i], 50);
+    lv_obj_set_style_text_align(alvos[i], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_label_set_long_mode(alvos[i], LV_LABEL_LONG_CLIP);
+
+    valores[i] = Marca::criar_rotulo(c, "--", Marca::f20(), Marca::PAPEL);
+    lv_obj_set_pos(valores[i], 10, 40);
+    lv_obj_set_width(valores[i], 110);
+    lv_label_set_long_mode(valores[i], LV_LABEL_LONG_CLIP);
+  }
+  bico_valor = valores[0];
+  bico_alvo = alvos[0];
+  mesa_valor = valores[1];
+  mesa_alvo = alvos[1];
+  cartao_luz = objs[2];
+  luz_icone = icones[2];
+  luz_valor = valores[2];
+  lv_obj_add_flag(alvos[2], LV_OBJ_FLAG_HIDDEN);
+  // sem luz configurada o cartão não reage (create_leds liga quando houver)
+  lv_obj_clear_flag(cartao_luz, LV_OBJ_FLAG_CLICKABLE);
+
+  auto ir_temperatura = [](lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+      Navegacao::ir_para(Aba::TEMPERATURA);
+    }
+  };
+  lv_obj_add_event_cb(objs[0], ir_temperatura, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(objs[1], ir_temperatura, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(cartao_luz, [](lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
       return;
     }
-    homing_panel.foreground();
-  }
-}
-
-void MainPanel::handle_extrude_cb(lv_event_t *event) {
-  if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
-    spdlog::trace("clicked extruder");
-    // Allowed while paused so the user can purge/load filament (runout, manual
-    // colour change) - only block mid-print.
-    if (KUtils::is_printing() && !KUtils::is_paused()) {
-      KUtils::notify_locked();
+    MainPanel *mp = (MainPanel *)lv_event_get_user_data(e);
+    if (mp->luz_id.empty()) {
       return;
     }
-    extruder_panel.foreground();
-  }
-}
-
-void MainPanel::handle_fanpanel_cb(lv_event_t *event) {
-  if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
-    spdlog::trace("clicked fan panel");
-    fan_panel.foreground();
-  }
-}
-
-void MainPanel::handle_ledpanel_cb(lv_event_t *event) {
-  if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
-    spdlog::trace("clicked led panel");
-    led_panel.foreground();
-  }
-}
-
-void MainPanel::handle_print_cb(lv_event_t *event) {
-  if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
-    spdlog::trace("clicked print");
-    print_panel.foreground();
-  }
-}
-
-void MainPanel::handle_tab_changed(lv_event_t *event) {
-  if (lv_event_get_code(event) == LV_EVENT_VALUE_CHANGED) {
-    uint32_t act = lv_tabview_get_tab_act(tabview);
-    // macros_tab (index 1) resets to Favorites; console_tab (index 2) to Terminal
-    if (act == 1) {
-      macros_panel.reset_to_favorites();
-    } else if (act == 2) {
-      console_panel.reset_to_terminal();
+    if (!Navegacao::executar("luz")) {
+      mp->led_panel.foreground();  // até o lote Controle registrar a ação
     }
-  }
+  }, LV_EVENT_CLICKED, this);
+
+  // ---- Última impressão ----
+  lv_obj_t *ult = Marca::criar_cartao(pg, 8, 132, 272, 132);
+
+  lv_obj_t *mini = lv_obj_create(ult);
+  lv_obj_set_pos(mini, 12, 12);
+  lv_obj_set_size(mini, 64, 64);
+  lv_obj_set_style_bg_color(mini, lv_color_hex(Marca::PRETO_3), 0);
+  lv_obj_set_style_bg_opa(mini, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(mini, Marca::RAIO_MINI, 0);
+  lv_obj_set_style_border_width(mini, 0, 0);
+  lv_obj_set_style_pad_all(mini, 0, 0);
+  lv_obj_clear_flag(mini, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(mini, LV_OBJ_FLAG_CLICKABLE);
+
+  ultima_sem_thumb = Marca::criar_rotulo(mini, LV_SYMBOL_FILE, Marca::f20(), Marca::GRAFITE);
+  lv_obj_center(ultima_sem_thumb);
+
+  ultima_thumb = lv_img_create(mini);
+  lv_img_set_size_mode(ultima_thumb, LV_IMG_SIZE_MODE_REAL);
+  lv_obj_add_flag(ultima_thumb, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t *ult_titulo = Marca::criar_rotulo(ult, "Última impressão", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(ult_titulo, 88, 12);
+  lv_obj_set_width(ult_titulo, 172);
+  lv_label_set_long_mode(ult_titulo, LV_LABEL_LONG_DOT);
+
+  ultima_nome = Marca::criar_rotulo(ult, "", Marca::f14(), Marca::PAPEL);
+  lv_obj_set_pos(ultima_nome, 88, 29);
+  lv_obj_set_size(ultima_nome, 172, 34);
+  lv_label_set_long_mode(ultima_nome, LV_LABEL_LONG_DOT);
+
+  ultima_selo = Marca::criar_selo(ult, 14, Marca::OK, Marca::PAPEL, LV_SYMBOL_OK);
+  lv_obj_set_pos(ultima_selo, 88, 65);
+  lv_obj_add_flag(ultima_selo, LV_OBJ_FLAG_HIDDEN);
+
+  ultima_status = Marca::criar_rotulo(ult, "", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(ultima_status, 106, 64);
+  lv_obj_set_width(ultima_status, 154);
+  lv_label_set_long_mode(ultima_status, LV_LABEL_LONG_DOT);
+
+  ultima_btn = Marca::criar_botao(ult, "Ver arquivos", Marca::Tipo::NORMAL, Marca::f14());
+  lv_obj_set_pos(ultima_btn, 12, 82);
+  lv_obj_set_size(ultima_btn, 248, 44);
+  lv_obj_add_event_cb(ultima_btn, [](lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+      return;
+    }
+    MainPanel *mp = (MainPanel *)lv_event_get_user_data(e);
+    // Não imprime direto: abre os Detalhes do arquivo, e lá o dono toca
+    // Imprimir (pergunta do Spoolman e trava de "já está imprimindo").
+    if (mp->ultima_estado == 1 && !mp->ultima_arquivo.empty()
+        && Navegacao::executar("abrir_arquivo", mp->ultima_arquivo)) {
+      return;
+    }
+    Navegacao::ir_para(Pagina::ARQUIVOS);
+  }, LV_EVENT_CLICKED, this);
+
+  mostrar_ultima_impressao(nullptr);
+
+  // ---- Atalhos: Preaquecer e Mover ----
+  lv_obj_t *pre = Marca::criar_cartao(pg, 288, 132, 128, 62);
+  Marca::cartao_tocavel(pre);
+  lv_obj_t *pre_t = Marca::criar_rotulo(pre, "Preaquecer", Marca::f14(), Marca::PAPEL);
+  lv_obj_set_pos(pre_t, 12, 12);
+  lv_obj_t *pre_s = Marca::criar_rotulo(pre,
+    fmt::format("PETG · {}/{}°C", Marca::PETG_BICO, Marca::PETG_MESA).c_str(), Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(pre_s, 12, 34);
+  lv_obj_set_width(pre_s, 104);
+  lv_label_set_long_mode(pre_s, LV_LABEL_LONG_DOT);
+  // não aquece direto: leva à aba Temperatura
+  lv_obj_add_event_cb(pre, ir_temperatura, LV_EVENT_CLICKED, NULL);
+
+  lv_obj_t *mov = Marca::criar_cartao(pg, 288, 202, 128, 62);
+  Marca::cartao_tocavel(mov);
+  lv_obj_t *mov_t = Marca::criar_rotulo(mov, "Mover", Marca::f14(), Marca::PAPEL);
+  lv_obj_set_pos(mov_t, 12, 12);
+  lv_obj_t *mov_s = Marca::criar_rotulo(mov, "Eixos e origem", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(mov_s, 12, 34);
+  lv_obj_set_width(mov_s, 104);
+  lv_label_set_long_mode(mov_s, LV_LABEL_LONG_DOT);
+  lv_obj_add_event_cb(mov, [](lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+      Navegacao::ir_para(Aba::MOVER);
+    }
+  }, LV_EVENT_CLICKED, NULL);
 }
 
-void MainPanel::show_console() {
-  // console tab is index 2; switch to it and show the terminal so a macro
-  // launched from the Macros screen is visible executing
-  lv_tabview_set_act(tabview, 2, LV_ANIM_OFF);
-  console_panel.reset_to_terminal();
+void MainPanel::criar_temperatura() {
+  lv_obj_t *aba = Navegacao::aba(Aba::TEMPERATURA);
+
+  // PETG (destaque: é o filamento do dono)
+  lv_obj_t *petg = lv_btn_create(aba);
+  lv_obj_set_style_pad_all(petg, 0, 0);
+  lv_obj_set_pos(petg, 8, 175);
+  lv_obj_set_size(petg, 130, 44);
+  lv_obj_set_flex_flow(petg, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(petg, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(petg, 1, 0);
+  lv_obj_t *petg_t = lv_label_create(petg);
+  lv_label_set_text(petg_t, "PETG");
+  lv_obj_set_style_text_font(petg_t, Marca::f14(), 0);
+  lv_obj_t *petg_s = lv_label_create(petg);
+  lv_label_set_text(petg_s, fmt::format("{}°C · {}°C", Marca::PETG_BICO, Marca::PETG_MESA).c_str());
+  lv_obj_set_style_text_font(petg_s, Marca::f12(), 0);
+  Marca::estilo_botao(petg, Marca::Tipo::DESTAQUE);   // os dois textos herdam o PRETO
+  lv_obj_add_event_cb(petg, [](lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+      ((MainPanel *)lv_event_get_user_data(e))->preaquecer(Marca::PETG_BICO, Marca::PETG_MESA);
+    }
+  }, LV_EVENT_CLICKED, this);
+
+  // PLA
+  lv_obj_t *pla = lv_btn_create(aba);
+  lv_obj_set_style_pad_all(pla, 0, 0);
+  lv_obj_set_pos(pla, 147, 175);
+  lv_obj_set_size(pla, 131, 44);
+  lv_obj_set_flex_flow(pla, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(pla, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(pla, 1, 0);
+  lv_obj_t *pla_t = lv_label_create(pla);
+  lv_label_set_text(pla_t, "PLA");
+  lv_obj_set_style_text_font(pla_t, Marca::f14(), 0);
+  lv_obj_t *pla_s = Marca::criar_rotulo(pla,
+    fmt::format("{}°C · {}°C", Marca::PLA_BICO, Marca::PLA_MESA).c_str(), Marca::f12(), Marca::GRAFITE);
+  LV_UNUSED(pla_s);
+  Marca::estilo_botao(pla, Marca::Tipo::NORMAL);
+  lv_obj_add_event_cb(pla, [](lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+      ((MainPanel *)lv_event_get_user_data(e))->preaquecer(Marca::PLA_BICO, Marca::PLA_MESA);
+    }
+  }, LV_EVENT_CLICKED, this);
+
+  // Esfriar
+  lv_obj_t *esfriar = lv_btn_create(aba);
+  lv_obj_set_style_pad_all(esfriar, 0, 0);
+  lv_obj_set_pos(esfriar, 287, 175);
+  lv_obj_set_size(esfriar, 129, 44);
+  lv_obj_set_flex_flow(esfriar, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(esfriar, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(esfriar, 6, 0);
+  Marca::criar_icone(esfriar, &cooldown_img, 20, Marca::PAPEL);
+  lv_obj_t *esfriar_t = lv_label_create(esfriar);
+  lv_label_set_text(esfriar_t, "Esfriar");
+  lv_obj_set_style_text_font(esfriar_t, Marca::f14(), 0);
+  Marca::estilo_botao(esfriar, Marca::Tipo::NORMAL);
+  lv_obj_add_event_cb(esfriar, [](lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+      ((MainPanel *)lv_event_get_user_data(e))->preaquecer(0, 0);
+    }
+  }, LV_EVENT_CLICKED, this);
 }
 
-void MainPanel::handle_tab_btn_clicked(lv_event_t *event) {
-  // Fires on every tab-button click, including re-tapping the already-active
-  // tab (which does NOT raise VALUE_CHANGED). Mirror handle_tab_changed so the
-  // Console tab always drops back to its terminal, and Macros back to Favorites.
-  if (lv_event_get_code(event) != LV_EVENT_CLICKED) {
+void MainPanel::preaquecer(int bico, int mesa) {
+  // roda dentro de evento do LVGL (lv_lock já preso): não prende de novo
+  KUtils::confirm_if_printing("A impressora está imprimindo.\nMudar as temperaturas mesmo assim?",
+    [this, bico, mesa]() {
+      ws.gcode_script(fmt::format("SET_HEATER_TEMPERATURE HEATER=extruder TARGET={}", bico));
+      ws.gcode_script(fmt::format("SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET={}", mesa));
+    });
+}
+
+void MainPanel::agendar_ultima_impressao() {
+  // O histórico do Moonraker fecha o trabalho logo depois do fim da
+  // impressão: pergunta 2 s depois (timer de uma vez só, apaga sozinho).
+  lv_timer_t *t = lv_timer_create([](lv_timer_t *tm) {
+    ((MainPanel *)tm->user_data)->pedir_ultima_impressao();
+  }, 2000, this);
+  lv_timer_set_repeat_count(t, 1);
+}
+
+void MainPanel::pedir_ultima_impressao() {
+  json params = {{"limit", 1}, {"order", "desc"}};
+  ws.send_jsonrpc("server.history.list", params, [this](json &d) {
+    // resposta chega na thread do websocket
+    json job;
+    bool tem = false;
+    auto r = d.find("result");
+    if (r != d.end() && r->is_object()) {
+      auto jobs = r->find("jobs");
+      if (jobs != r->end() && jobs->is_array() && !jobs->empty() && (*jobs)[0].is_object()) {
+        job = (*jobs)[0];
+        tem = true;
+      }
+    }
+
+    std::string arquivo;
+    {
+      std::lock_guard<std::mutex> lock(lv_lock);
+      mostrar_ultima_impressao(tem ? &job : nullptr);
+      arquivo = ultima_arquivo;
+    }
+
+    if (tem && !arquivo.empty()) {
+      carregar_miniatura(arquivo);
+    }
+  });
+}
+
+void MainPanel::mostrar_ultima_impressao(const json *job) {
+  if (ultima_nome == NULL) {
     return;
   }
-  uint32_t act = lv_tabview_get_tab_act(tabview);
-  if (act == 1) {
-    macros_panel.reset_to_favorites();
-  } else if (act == 2) {
-    console_panel.reset_to_terminal();
+
+  std::string arquivo;
+  if (job != nullptr) {
+    auto f = job->find("filename");
+    if (f != job->end() && f->is_string()) {
+      arquivo = f->template get<std::string>();
+    }
+  }
+
+  if (arquivo.empty()) {
+    // sem histórico
+    ultima_arquivo.clear();
+    lv_obj_add_flag(ultima_thumb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(ultima_sem_thumb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ultima_selo, LV_OBJ_FLAG_HIDDEN);
+    Marca::texto(ultima_status, "");
+    Marca::texto(ultima_nome, "Nenhuma impressão ainda");
+    if (ultima_estado != 0) {
+      ultima_estado = 0;
+      Marca::estilo_botao(ultima_btn, Marca::Tipo::NORMAL);
+      Marca::texto(lv_obj_get_child(ultima_btn, 0), "Ver arquivos");
+    }
+    return;
+  }
+
+  if (arquivo != ultima_arquivo) {
+    // outro arquivo: a miniatura antiga sai até a nova chegar
+    lv_obj_add_flag(ultima_thumb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(ultima_sem_thumb, LV_OBJ_FLAG_HIDDEN);
+  }
+  ultima_arquivo = arquivo;
+  Marca::texto(ultima_nome, nome_curto(arquivo).c_str());
+
+  std::string status;
+  auto st = job->find("status");
+  if (st != job->end() && st->is_string()) {
+    status = st->template get<std::string>();
+  }
+
+  double dur = 0;
+  auto pd = job->find("print_duration");
+  if (pd != job->end() && pd->is_number()) {
+    dur = pd->template get<double>();
+  }
+  if (dur <= 0) {
+    auto td = job->find("total_duration");
+    if (td != job->end() && td->is_number()) {
+      dur = td->template get<double>();
+    }
+  }
+  std::string tempo = KUtils::tempo_curto((int64_t)dur);
+
+  lv_obj_t *selo_txt = lv_obj_get_child(ultima_selo, 0);
+  if (status == "completed") {
+    lv_obj_set_style_bg_color(ultima_selo, lv_color_hex(Marca::OK), 0);
+    lv_obj_set_style_text_color(ultima_selo, lv_color_hex(Marca::PAPEL), 0);
+    Marca::texto(selo_txt, LV_SYMBOL_OK);
+    Marca::texto(ultima_status, fmt::format("Concluída · {}", tempo).c_str());
+  } else if (status == "in_progress") {
+    lv_obj_set_style_bg_color(ultima_selo, lv_color_hex(Marca::LIMAO), 0);
+    lv_obj_set_style_text_color(ultima_selo, lv_color_hex(Marca::PRETO), 0);
+    Marca::texto(selo_txt, LV_SYMBOL_PLAY);
+    Marca::texto(ultima_status, "Imprimindo");
+  } else if (status == "cancelled") {
+    lv_obj_set_style_bg_color(ultima_selo, lv_color_hex(Marca::ERRO), 0);
+    lv_obj_set_style_text_color(ultima_selo, lv_color_hex(Marca::PAPEL), 0);
+    Marca::texto(selo_txt, LV_SYMBOL_CLOSE);
+    Marca::texto(ultima_status, fmt::format("Cancelada · {}", tempo).c_str());
+  } else {
+    // error, klippy_shutdown, klippy_disconnect, server_exit...
+    lv_obj_set_style_bg_color(ultima_selo, lv_color_hex(Marca::ERRO), 0);
+    lv_obj_set_style_text_color(ultima_selo, lv_color_hex(Marca::PAPEL), 0);
+    Marca::texto(selo_txt, LV_SYMBOL_CLOSE);
+    Marca::texto(ultima_status, fmt::format("Erro · {}", tempo).c_str());
+  }
+  lv_obj_clear_flag(ultima_selo, LV_OBJ_FLAG_HIDDEN);
+
+  if (ultima_estado != 1) {
+    ultima_estado = 1;
+    Marca::estilo_botao(ultima_btn, Marca::Tipo::DESTAQUE);
+    Marca::texto(lv_obj_get_child(ultima_btn, 0), LV_SYMBOL_PLAY " Imprimir de novo");
   }
 }
 
-void MainPanel::create_main(lv_obj_t *parent)
-{
-  lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_ROW_WRAP);
+void MainPanel::carregar_miniatura(const std::string &arquivo) {
+  json params = {{"filename", arquivo}};
+  ws.send_jsonrpc("server.files.metadata", params, [this, arquivo](json &d) {
+    // thread do websocket: o download (se houver) acontece fora do lv_lock
+    // miniatura com dados estranhos não pode derrubar a tela (exceção na
+    // thread do websocket encerra o programa)
+    std::pair<std::string, std::pair<size_t, size_t>> thumb;
+    try {
+      thumb = KUtils::get_thumbnail(arquivo, d, 64);
+    } catch (const std::exception &e) {
+      spdlog::warn("miniatura de {} ilegível: {}", arquivo, e.what());
+    }
+    std::string caminho = thumb.first;
+    size_t w = thumb.second.first;
+    size_t h = thumb.second.second;
 
-  /* Row 0: sensors (CONTENT-sized). Row 1: chart fills the rest. The
-   * previous buffer row left a visible whitespace gap between sensors and chart. */
-  static lv_coord_t grid_main_row_dsc[] = {LV_GRID_CONTENT, LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t grid_main_col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
-    LV_GRID_TEMPLATE_LAST};
+    std::lock_guard<std::mutex> lock(lv_lock);
+    if (arquivo != ultima_arquivo) {
+      return;  // chegou atrasado: já é outro arquivo
+    }
+    if (caminho.empty() || w == 0 || h == 0) {
+      lv_obj_add_flag(ultima_thumb, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_clear_flag(ultima_sem_thumb, LV_OBJ_FLAG_HIDDEN);
+      return;
+    }
 
-  lv_obj_clear_flag(main_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_height(main_cont, LV_PCT(100));
-
-  lv_obj_set_flex_grow(main_cont, 1);
-  lv_obj_set_grid_dsc_array(main_cont, grid_main_col_dsc, grid_main_row_dsc);
-
-  // Wrap all buttons in a container spanning cols 2-3 across all 3 rows so
-  // button heights are uniform and independent of the CONTENT-sized sensor row.
-  lv_obj_t *btn_wrapper = lv_obj_create(main_cont);
-  lv_obj_clear_flag(btn_wrapper, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(btn_wrapper, 0, 0);
-  lv_obj_set_style_border_width(btn_wrapper, 0, 0);
-  lv_obj_set_style_bg_opa(btn_wrapper, LV_OPA_TRANSP, 0);
-  lv_obj_set_grid_cell(btn_wrapper, LV_GRID_ALIGN_STRETCH, 2, 2, LV_GRID_ALIGN_STRETCH, 0, 2);
-
-  static lv_coord_t btn_col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t btn_row_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  lv_obj_set_grid_dsc_array(btn_wrapper, btn_col_dsc, btn_row_dsc);
-
-  lv_obj_set_parent(homing_btn.get_container(), btn_wrapper);
-  lv_obj_set_parent(extrude_btn.get_container(), btn_wrapper);
-  lv_obj_set_parent(action_btn.get_container(), btn_wrapper);
-  lv_obj_set_parent(led_btn.get_container(), btn_wrapper);
-  lv_obj_set_parent(print_btn.get_container(), btn_wrapper);
-
-  lv_obj_set_grid_cell(homing_btn.get_container(), LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
-  lv_obj_set_grid_cell(extrude_btn.get_container(), LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
-  lv_obj_set_grid_cell(action_btn.get_container(), LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-  lv_obj_set_grid_cell(led_btn.get_container(), LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-  lv_obj_set_grid_cell(print_btn.get_container(), LV_GRID_ALIGN_STRETCH, 0, 2, LV_GRID_ALIGN_STRETCH, 2, 1);
-
-  // The print overlay (shown only while printing, when Homing/Extrude are
-  // locked) lives in the button cluster, left-aligned with the Homing box.
-  lv_obj_t *mini = print_status_panel.get_mini_container();
-  lv_obj_set_parent(mini, btn_wrapper);
-  lv_obj_align(mini, LV_ALIGN_TOP_LEFT, 0, 0);
-
-  // The "Paused" chip (shown only while paused, when the buttons are live)
-  // parks in the top-right corner. It's small enough to leave the buttons
-  // underneath it tappable while staying clearly visible.
-  lv_obj_t *paused_chip = print_status_panel.get_mini_chip();
-  lv_obj_set_parent(paused_chip, main_cont);
-  lv_obj_align(paused_chip, LV_ALIGN_TOP_RIGHT, -4, 4);
-
-  /* Disable scrolling on the sensor container - the 5px left border on each
-   * sensor row was tripping the horizontal scrollbar even though everything
-   * fits visually. */
-  lv_obj_clear_flag(temp_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_scrollbar_mode(temp_cont, LV_SCROLLBAR_MODE_OFF);
-  lv_obj_set_style_pad_all(temp_cont, 0, 0);
-  /* Zero row gap so sensor rows stack flush - default flex pad_row eats vertical space. */
-  lv_obj_set_style_pad_row(temp_cont, 0, 0);
-
-  lv_obj_set_flex_flow(temp_cont, LV_FLEX_FLOW_COLUMN);
-  /* Row 0 is CONTENT-sized - it shrinks to fit only the sensor rows. */
-  lv_obj_set_grid_cell(temp_cont, LV_GRID_ALIGN_STRETCH, 0, 2, LV_GRID_ALIGN_STRETCH, 0, 1);
-
-  lv_obj_align(temp_chart, LV_ALIGN_CENTER, 0, 0);
-  lv_obj_set_width(temp_chart, LV_PCT(45));
-  lv_obj_set_style_size(temp_chart, 0, LV_PART_INDICATOR);
-
-  lv_chart_set_range(temp_chart, LV_CHART_AXIS_PRIMARY_Y, 0, 300);
-  /* Chart in row 1, stretches to fill remaining space below the sensor rows. */
-  lv_obj_set_grid_cell(temp_chart, LV_GRID_ALIGN_END, 0, 2, LV_GRID_ALIGN_STRETCH, 1, 1);
-  /* 7 major ticks = labels at 0,50,100,...,300 - 50° steps for easier reading. */
-  lv_chart_set_axis_tick(temp_chart, LV_CHART_AXIS_PRIMARY_Y, 0, 0, 7, 5, true, 25);
-  lv_obj_set_style_text_font(temp_chart, &lv_font_montserrat_8, LV_PART_TICKS);
-
-  /* 5 interior horizontal div lines align with the 50° tick interval (50,100,150,200,250). */
-  lv_chart_set_div_line_count(temp_chart, 5, 8);
-  /* point_count + zoom_x previously 5000 each, which compressed all data into
-   * the rightmost slice of the chart. With zoom 256 (1x) and a smaller point
-   * buffer, the pre-populated samples spread across the full chart width. */
-  lv_chart_set_point_count(temp_chart, 300);
-  lv_chart_set_zoom_x(temp_chart, 256);
-  /* Scroll is set in create_sensors() after sensors are added and layout is stable. */
+    const std::string src = "A:" + caminho;
+    lv_img_set_src(ultima_thumb, src.c_str());
+    size_t maior = std::max(w, h);
+    uint32_t zoom = (uint32_t)(64 * 256 / maior);
+    if (zoom == 0) zoom = 1;
+    lv_img_set_zoom(ultima_thumb, (uint16_t)zoom);
+    lv_obj_center(ultima_thumb);
+    lv_obj_clear_flag(ultima_thumb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ultima_sem_thumb, LV_OBJ_FLAG_HIDDEN);
+  });
 }
 
 void MainPanel::create_sensors(json &temp_sensors) {
   std::lock_guard<std::mutex> lock(lv_lock);
+  // os cartões vão ser apagados: o teclado não pode ficar aberto guardando o
+  // "this" de um cartão que deixou de existir
+  numpad.fechar();
+  numpad.set_callback([](double) {});
   sensors.clear();
+
+  // Só os aquecedores controláveis (bico e mesa), bico primeiro.
+  std::vector<std::string> chaves;
   for (auto &sensor : temp_sensors.items()) {
     std::string key = sensor.key();
-    std::string sensor_name = key;
-    bool controllable = sensor.value()["controllable"].template get<bool>();
-
-    lv_color_t color_code = lv_palette_main(LV_PALETTE_ORANGE);
-    if (!sensor.value()["color"].is_number()) {
-      std::string color = sensor.value()["color"].template get<std::string>();
-      if (color == "red") {
-        color_code = lv_palette_main(LV_PALETTE_RED);
-      } else if (color == "purple") {
-        color_code = lv_palette_main(LV_PALETTE_PURPLE);
-      } else if (color == "blue") {
-        color_code = lv_palette_main(LV_PALETTE_BLUE);
-      }
-    } else {
-      color_code = lv_palette_main((lv_palette_t)sensor.value()["color"].template get<int>());
+    auto ctrl = sensor.value().find("controllable");
+    bool controllable = ctrl != sensor.value().end() && ctrl->is_boolean() && ctrl->template get<bool>();
+    bool aquecedor = key.rfind("temperature_fan ", 0) != 0 && key.rfind("temperature_sensor ", 0) != 0;
+    if (controllable && aquecedor) {
+      chaves.push_back(key);
     }
+  }
+  std::stable_sort(chaves.begin(), chaves.end(), [](const std::string &a, const std::string &b) {
+    auto ordem = [](const std::string &k) { return k == "extruder" ? 0 : (k == "heater_bed" ? 1 : 2); };
+    return ordem(a) < ordem(b);
+  });
+  if (chaves.size() > 2) {
+    spdlog::warn("Temperatura: {} aquecedores controláveis; a tela mostra só os dois primeiros", chaves.size());
+    chaves.resize(2);
+  }
 
-    std::string display_name = sensor.value()["display_name"].template get<std::string>();
+  lv_obj_t *aba = Navegacao::aba(Aba::TEMPERATURA);
+  int i = 0;
+  for (auto &key : chaves) {
+    json &sensor = temp_sensors[key];
+    std::string sensor_name = key;
+
+    std::string display_name = sensor["display_name"].is_string()
+      ? sensor["display_name"].template get<std::string>() : key;
     // pt-BR: o guppyconfig.json da impressora guarda os nomes padrão em inglês.
     // Traduz só o que aparece; o arquivo e as comparações ("Chamber") ficam iguais.
     if (display_name == "Extruder") display_name = "Bico";
@@ -360,16 +752,9 @@ void MainPanel::create_sensors(json &temp_sensors) {
     else if (display_name == "MCU Temp") display_name = "Placa-mãe";
     else if (display_name == "Chamber") display_name = "Câmara";
 
-    SensorType type = SensorType::Heater;
     auto space_idx = key.find(' ');
     if (space_idx != std::string::npos) {
-      std::string sensor_type = key.substr(0, space_idx);
       sensor_name = key.substr(space_idx + 1);
-      if (sensor_type == "temperature_fan") {
-        type = SensorType::TempFan;
-      } else if (sensor_type == "temperature_sensor") {
-        type = SensorType::Sensor;
-      }
     }
 
     const void *sensor_img = &heater;
@@ -379,34 +764,14 @@ void MainPanel::create_sensors(json &temp_sensors) {
       sensor_img = &bed;
     }
 
-    lv_chart_series_t *temp_series =
-      lv_chart_add_series(temp_chart, color_code, LV_CHART_AXIS_PRIMARY_Y);
-    lv_chart_set_all_value(temp_chart, temp_series, 0);
-
-    auto sc = std::make_shared<SensorContainer>(ws, temp_cont, sensor_img, 150,
-      display_name.c_str(), color_code, controllable, false, numpad, sensor_name,
-      temp_chart, temp_series, type);
-
-    /* Controllable sensors (extruder, bed) get a second series rendered as a
-     * faint horizontal line at the target temperature so the user can see
-     * actual vs set at a glance. */
-    if (controllable) {
-      lv_color_t target_color = lv_color_mix(color_code, lv_color_white(), 128);
-      lv_chart_series_t *target_series =
-        lv_chart_add_series(temp_chart, target_color, LV_CHART_AXIS_PRIMARY_Y);
-      lv_chart_set_all_value(temp_chart, target_series, 0);
-      sc->set_target_series(target_series);
-    }
+    auto sc = std::make_shared<SensorContainer>(ws, aba, sensor_img,
+      display_name.c_str(), lv_color_hex(Marca::GRAFITE), true, false, numpad, sensor_name,
+      (lv_obj_t *)NULL, (lv_chart_series_t *)NULL, SensorType::Heater);
+    lv_obj_set_pos(sc->get_sensor(), 8, 7 + 84 * i);
 
     sensors.insert({key, sc});
+    i++;
   }
-
-  /* Layout is now stable (sensors added to temp_cont, CONTENT row resolved).
-   * Scroll chart to show the newest data (right end of the ring buffer). */
-  /* Force main_cont grid to recalculate: row 0 was LV_GRID_CONTENT but temp_cont
-   * was empty when create_main() ran, so its height was 0. Now sensors are present. */
-  lv_obj_update_layout(main_cont);
-  lv_obj_scroll_to_x(temp_chart, LV_COORD_MAX, LV_ANIM_OFF);
 }
 
 void MainPanel::create_fans(json &fans) {
@@ -414,7 +779,32 @@ void MainPanel::create_fans(json &fans) {
 }
 
 void MainPanel::create_leds(json &leds) {
-  led_panel.init(leds);
+  led_panel.init(leds);  // prende o lv_lock por dentro
+
+  std::string id;
+  for (auto &led : leds.items()) {
+    id = led.key();
+    break;
+  }
+
+  std::lock_guard<std::mutex> lock(lv_lock);
+  luz_id = id;
+  luz_ligada = -1;
+  if (cartao_luz == NULL) {
+    return;
+  }
+  if (luz_id.empty()) {
+    lv_obj_clear_flag(cartao_luz, LV_OBJ_FLAG_CLICKABLE);
+    Marca::texto(luz_valor, "--");
+    Marca::cor_icone(luz_icone, Marca::GRAFITE);
+    return;
+  }
+  lv_obj_add_flag(cartao_luz, LV_OBJ_FLAG_CLICKABLE);
+  auto o = State::get_instance()->get_data(json::json_pointer("/printer_state/" + luz_id));
+  if (luz_de(o) < 0) {
+    Marca::texto(luz_valor, "Desligada");
+  }
+  atualizar_luz(o);
 }
 
 void MainPanel::enable_spoolman() {
@@ -422,6 +812,12 @@ void MainPanel::enable_spoolman() {
   setting_panel.enable_spoolman();
   extruder_panel.enable_spoolman();
   print_panel.enable_spoolman();
+}
+
+void MainPanel::show_console() {
+  // abre a subtela do Console no terminal, para ver a macro rodando
+  Navegacao::abrir(console_cont);
+  console_panel.reset_to_terminal();
 }
 
 #ifdef SIMULATOR
@@ -454,24 +850,6 @@ void MainPanel::sim_setup_mock_data() {
       s->update_value(62); s->update_target(65);
     } else {
       s->update_value(38);
-    }
-  }
-
-  /* Pre-populate the chart with ~200 historical points so the graph
-   * looks alive immediately rather than starting empty. */
-  for (int i = 0; i < 200; i++) {
-    for (auto &kv : sensors) {
-      const std::string &key = kv.first;
-      auto &s = kv.second;
-      int v;
-      if (key.find("extruder") != std::string::npos) {
-        v = 200 + (i % 12) - 6;
-      } else if (key.find("heater_bed") != std::string::npos) {
-        v = 60 + (i % 6) - 3;
-      } else {
-        v = 35 + (i % 8) - 4;
-      }
-      s->update_series(v);
     }
   }
 
@@ -610,32 +988,10 @@ void MainPanel::sim_setup_mock_data() {
     console_panel.handle_macro_response(resp);
   }
 
-  /* Drive the print status panel so its new widgets (filename label,
-   * dynamic ETA, spinner-on-extruder etc.) render with sensible values. */
+  /* Drive the print status panel so its widgets render with sensible values. */
   print_status_panel.sim_setup_mock_data();
 
-  /* Then bring the extruder panel up in its busy state so #48's spinner is
-   * visible at startup. Foregrounded *after* the print status panel so the
-   * extruder is what we see; press Back from there to inspect each panel. */
-  extruder_panel.sim_show_busy();
-
-  /* Enable the Spoolman entry points and populate the panel with fake spools
-   * so the Spoolman UI is testable without a live Moonraker + Spoolman backend.
-   * Foregrounded last so it covers the others - press Back to step back through
-   * the stack (spoolman → extruder → home). */
-  setting_panel.enable_spoolman();
-  extruder_panel.enable_spoolman();
-  print_panel.enable_spoolman();
-  spoolman_panel.sim_setup_mock_data();
-  spoolman_panel.foreground();
-
-  /* Top-most: the System settings panel, so the new brightness slider is the
-   * first thing visible in the sim. Press Back to step back through the stack:
-   * sysinfo → spoolman → extruder → home. */
-  setting_panel.get_sysinfo_panel().foreground();
-
-  /* Faster timer (300ms) gives a denser live chart since SIMULATOR mode
-   * bypasses the 1s throttle in SensorContainer::update_series. */
+  /* Mock temperatures: 300 ms timer (simulator only) moving the card values. */
   lv_timer_t *t = lv_timer_create([](lv_timer_t *timer) {
     auto *self = static_cast<MainPanel *>(timer->user_data);
     static int n = 0;
@@ -652,7 +1008,6 @@ void MainPanel::sim_setup_mock_data() {
         v = 38 + (n % 8) - 4;
       }
       s->update_value(v);
-      s->update_series(v);
     }
   }, 300, this);
   (void)t;

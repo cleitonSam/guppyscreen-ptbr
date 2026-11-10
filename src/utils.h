@@ -47,21 +47,23 @@ namespace KUtils {
   int print_uses_firmware_retraction();
 
   // ---- Shared dialog look ----------------------------------------------------
-  // One definition of the app's modal look so every popup matches and can't
-  // drift. Custom dialogs (their own overlay + box) use the first three; the
-  // last styles an LVGL lv_msgbox to the same card look. Sizes/alignment stay
-  // per-dialog; these set only the shared visuals (dim backdrop, rounded grey
-  // bordered card, montserrat_14 title).
-  void style_dialog_overlay(lv_obj_t *overlay);  // full-screen dim backdrop
-  void style_dialog_box(lv_obj_t *box);          // the centered card
-  void style_dialog_title(lv_obj_t *title);      // top-aligned header label
-  void style_dialog_msgbox(lv_obj_t *mbox);      // card look for an lv_msgbox
-  // Full modal look for an lv_msgbox: card + centered body + floating, centered
-  // button row (btns_pct = button-row width). Matches the print-lock dialogs.
+  // Visual das janelas na marca (Proposta B). Diálogos feitos à mão (fundo +
+  // caixa) usam os três primeiros; os dois últimos pintam um lv_msgbox.
+  // Tamanho/alinhamento ficam com cada diálogo; aqui só o visual.
+  void style_dialog_overlay(lv_obj_t *overlay);  // fundo da tela inteira, PRETO opaco
+  void style_dialog_box(lv_obj_t *box);          // caixa PRETO_2, raio 12, sem borda
+  void style_dialog_title(lv_obj_t *title);      // título f16 no alto
+  void style_dialog_msgbox(lv_obj_t *mbox);      // caixa + botões da marca num lv_msgbox
+  // Caixa completa: título e corpo centralizados e a fileira de botões de 44 px
+  // flutuando embaixo (btns_pct = largura da fileira).
   void style_lock_mbox(lv_obj_t *mbox, lv_coord_t btns_pct);
 
   // path, width
   std::pair<std::string, std::pair<size_t, size_t>> get_thumbnail(const std::string &gcode_file, json &j);
+  // Mesma coisa (mesmo retorno e mesmo download), mas escolhe a MENOR miniatura
+  // com largura >= largura_desejada; se nenhuma chega lá, a maior.
+  std::pair<std::string, std::pair<size_t, size_t>> get_thumbnail(const std::string &gcode_file, json &j,
+                                                                  int largura_desejada);
 
   std::string download_file(const std::string &root,
     const std::string &fname,
@@ -85,6 +87,10 @@ namespace KUtils {
   std::string fan_display_name(const std::string &key);
   std::string eta_string(int64_t s);
   size_t bytes_to_mb(size_t s);
+  // Tempo curto: "2h 21min", "1h 09min", "4min 42s", "45s".
+  std::string tempo_curto(int64_t s);
+  // Tamanho de arquivo: "20 KB", "7.8 MB", "1.2 GB".
+  std::string tamanho_arquivo(size_t bytes);
 
   // Backlight helpers. Scan /sys/class/backlight/ on first call; pick the first
   // device. backlight_max() returns 0 if no device is found, in which case the

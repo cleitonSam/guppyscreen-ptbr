@@ -1,24 +1,27 @@
 #include "firmware_retraction_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "state.h"
 #include "spdlog/spdlog.h"
 
 #include <cmath>
+
+// Medidas (subtela 424 x 272; o corpo começa em y = 44, logo abaixo do
+// cabeçalho, e as coordenadas abaixo são relativas ao corpo).
+static const lv_coord_t CORPO_Y = 44;
+static const lv_coord_t CARTAO_L = 200, CARTAO_A = 76;
+static const lv_coord_t PASSO_Y = 176;   // 220 na subtela
 
 FirmwareRetractionPanel::FirmwareRetractionPanel(KWebSocketClient &websocket_client, std::mutex &l)
   : NotifyConsumer(l)
   , ws(websocket_client)
   , panel_cont(lv_obj_create(lv_scr_act()))
   , body(lv_obj_create(panel_cont))
-  , list_area(lv_obj_create(body))
-  , step_row(lv_obj_create(body))
-  , bottom_row(lv_obj_create(body))
   , empty_cont(lv_obj_create(panel_cont))
-  , reset_all_btn(lv_btn_create(bottom_row))
-  , back_btn(lv_btn_create(bottom_row))
-  , empty_back_btn(lv_btn_create(empty_cont))
-  , length_step_selector(step_row, "Passo do comprimento (mm)", {"0.05", "0.10", "0.25", ""}, 1,
+  , reset_all_btn(NULL)
+  , length_step_selector(body, "Passo do comprimento (mm)", {"0.05", "0.10", "0.25", ""}, 1,
       &FirmwareRetractionPanel::_handle_callback, this)
-  , speed_step_selector(step_row, "Passo da velocidade (mm/s)", {"1", "5", "10", ""}, 1,
+  , speed_step_selector(body, "Passo da velocidade (mm/s)", {"1", "5", "10", ""}, 1,
       &FirmwareRetractionPanel::_handle_callback, this)
 {
   fields[0] = {"Compr. da retração",     "RETRACT_LENGTH",         "retract_length",         "mm",   false, nullptr, nullptr, nullptr};
@@ -26,86 +29,61 @@ FirmwareRetractionPanel::FirmwareRetractionPanel(KWebSocketClient &websocket_cli
   fields[2] = {"Extra ao voltar",        "UNRETRACT_EXTRA_LENGTH", "unretract_extra_length", "mm",   false, nullptr, nullptr, nullptr};
   fields[3] = {"Velocidade ao voltar",   "UNRETRACT_SPEED",        "unretract_speed",        "mm/s", true,  nullptr, nullptr, nullptr};
 
-  lv_obj_move_background(panel_cont);
-  lv_obj_set_size(panel_cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(panel_cont, 0, 0);
+  // subtela com cabeçalho "Retração" (voltar = fechar a subtela)
+  Navegacao::subtela(panel_cont);
+  Marca::Cabecalho cab = Marca::criar_cabecalho(panel_cont, "Retração");
+  lv_obj_set_width(cab.titulo, 200);
 
-  // ---- body (live controls) ----
-  lv_obj_set_size(body, LV_PCT(100), LV_PCT(100));
-  lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(body, 3, 0);
-  lv_obj_set_style_pad_row(body, 3, 0);
-  lv_obj_set_style_border_width(body, 0, 0);
-  lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
-
-  // list of parameter rows (fills the space above the step/bottom bars)
-  lv_obj_set_width(list_area, LV_PCT(100));
-  lv_obj_set_flex_grow(list_area, 1);
-  lv_obj_clear_flag(list_area, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(list_area, 0, 0);
-  lv_obj_set_style_pad_row(list_area, 0, 0);
-  lv_obj_set_style_border_width(list_area, 0, 0);
-  lv_obj_set_flex_flow(list_area, LV_FLEX_FLOW_COLUMN);
-
-  for (auto &f : fields) {
-    build_row(f);
-  }
-
-  // ---- step selectors row ----
-  lv_obj_set_width(step_row, LV_PCT(100));
-  lv_obj_set_height(step_row, LV_SIZE_CONTENT);
-  lv_obj_clear_flag(step_row, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(step_row, 0, 0);
-  lv_obj_set_style_pad_column(step_row, 6, 0);
-  lv_obj_set_style_border_width(step_row, 0, 0);
-  lv_obj_set_flex_flow(step_row, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_grow(length_step_selector.get_container(), 1);
-  lv_obj_set_flex_grow(speed_step_selector.get_container(), 1);
-
-  // ---- bottom row: Reset all | Back ----
-  lv_obj_set_width(bottom_row, LV_PCT(100));
-  lv_obj_set_height(bottom_row, LV_SIZE_CONTENT);
-  lv_obj_clear_flag(bottom_row, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(bottom_row, 0, 0);
-  lv_obj_set_style_pad_column(bottom_row, 6, 0);
-  lv_obj_set_style_border_width(bottom_row, 0, 0);
-  lv_obj_set_flex_flow(bottom_row, LV_FLEX_FLOW_ROW);
-
-  lv_obj_set_flex_grow(reset_all_btn, 1);
-  lv_obj_set_height(reset_all_btn, 36);
-  lv_obj_set_style_bg_color(reset_all_btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-  lv_obj_t *ra_lbl = lv_label_create(reset_all_btn);
-  lv_label_set_text(ra_lbl, LV_SYMBOL_REFRESH "  Restaurar tudo");
-  lv_obj_center(ra_lbl);
+  // "Restaurar tudo" à direita do cabeçalho (fantasma 140 x 44)
+  reset_all_btn = Marca::criar_botao(panel_cont, LV_SYMBOL_REFRESH " Restaurar tudo", Marca::Tipo::FANTASMA);
+  lv_obj_set_pos(reset_all_btn, 276, 0);
+  lv_obj_set_size(reset_all_btn, 140, Marca::TOQUE);
   lv_obj_add_event_cb(reset_all_btn, &FirmwareRetractionPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
-  lv_obj_set_flex_grow(back_btn, 1);
-  lv_obj_set_height(back_btn, 36);
-  lv_obj_t *bk_lbl = lv_label_create(back_btn);
-  lv_label_set_text(bk_lbl, LV_SYMBOL_LEFT "  Voltar");
-  lv_obj_center(bk_lbl);
-  lv_obj_add_event_cb(back_btn, &FirmwareRetractionPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  // ---- corpo (controles ao vivo) ----
+  lv_obj_set_pos(body, 0, CORPO_Y);
+  lv_obj_set_size(body, Marca::CONT_L, Marca::TELA_A - CORPO_Y);
+  lv_obj_set_style_pad_all(body, 0, 0);
+  lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+
+  // 4 cartões 200 x 76 em (8,8), (216,8), (8,92), (216,92) do corpo
+  build_card(fields[0], 8, 8);
+  build_card(fields[1], 216, 8);
+  build_card(fields[2], 8, 92);
+  build_card(fields[3], 216, 92);
+
+  // ---- passos: "Passo (mm)" + segmentado 132 x 44; "Passo (mm/s)" + segmentado ----
+  lv_obj_t *l = Marca::criar_rotulo(body, "Passo (mm)", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(l, 8, PASSO_Y + 7);
+  lv_obj_set_width(l, 58);
+
+  length_step_selector.sem_titulo();
+  lv_obj_set_pos(length_step_selector.get_container(), 70, PASSO_Y);
+  lv_obj_set_size(length_step_selector.get_container(), 132, Marca::TOQUE);
+  lv_obj_set_size(length_step_selector.get_selector(), 132, Marca::TOQUE);
+
+  l = Marca::criar_rotulo(body, "Passo (mm/s)", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(l, 216, PASSO_Y + 7);
+  lv_obj_set_width(l, 58);
+
+  speed_step_selector.sem_titulo();
+  lv_obj_set_pos(speed_step_selector.get_container(), 278, PASSO_Y);
+  lv_obj_set_size(speed_step_selector.get_container(), 132, Marca::TOQUE);
+  lv_obj_set_size(speed_step_selector.get_selector(), 132, Marca::TOQUE);
 
   // ---- empty state ----
-  lv_obj_set_size(empty_cont, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_pos(empty_cont, 0, CORPO_Y);
+  lv_obj_set_size(empty_cont, Marca::CONT_L, Marca::TELA_A - CORPO_Y);
+  lv_obj_set_style_pad_all(empty_cont, 16, 0);
   lv_obj_clear_flag(empty_cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_flex_flow(empty_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(empty_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(empty_cont, 16, 0);
-  lv_obj_t *empty_lbl = lv_label_create(empty_cont);
-  lv_label_set_text(empty_lbl,
+  lv_obj_t *empty_lbl = Marca::criar_rotulo(empty_cont,
     "A retração pelo firmware não está ativada.\n\n"
     "Adicione a seção [firmware_retraction]\n"
-    "ao printer.cfg e reinicie o Klipper.");
+    "ao printer.cfg e reinicie o Klipper.", Marca::f14(), Marca::PAPEL);
+  lv_obj_set_width(empty_lbl, LV_PCT(100));
   lv_obj_set_style_text_align(empty_lbl, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(empty_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_set_height(empty_back_btn, 40);
-  lv_obj_set_width(empty_back_btn, 140);
-  lv_obj_t *eb_lbl = lv_label_create(empty_back_btn);
-  lv_label_set_text(eb_lbl, LV_SYMBOL_LEFT "  Voltar");
-  lv_obj_center(eb_lbl);
-  lv_obj_add_event_cb(empty_back_btn, &FirmwareRetractionPanel::_handle_callback, LV_EVENT_CLICKED, this);
   lv_obj_add_flag(empty_cont, LV_OBJ_FLAG_HIDDEN);
 
   ws.register_notify_update(this);
@@ -119,47 +97,39 @@ FirmwareRetractionPanel::~FirmwareRetractionPanel() {
   ws.unregister_notify_update(this);
 }
 
-void FirmwareRetractionPanel::build_row(Field &f) {
-  // one line: [ name .......... ] [ value ] [ - ] [ + ], all vertically centred
-  lv_obj_t *row = lv_obj_create(list_area);
-  lv_obj_set_width(row, LV_PCT(100));
-  lv_obj_set_flex_grow(row, 1);  // the 4 rows share list_area's height evenly
-  lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_hor(row, 8, 0);
-  lv_obj_set_style_pad_ver(row, 0, 0);
-  lv_obj_set_style_pad_column(row, 8, 0);
-  lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
-  lv_obj_set_style_border_width(row, 1, 0);
-  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+void FirmwareRetractionPanel::build_card(Field &f, lv_coord_t x, lv_coord_t y) {
+  // cartão como o do Ajuste fino: nome 12 G em (10,8); "-" 48 x 44 em (8,26);
+  // valor 88 x 44 em (56,26) (fundo PRETO, borda 1 PRETO_3, f16); "+" em (144,26)
+  lv_obj_t *card = Marca::criar_cartao(body, x, y, CARTAO_L, CARTAO_A);
 
-  lv_obj_t *name = lv_label_create(row);
-  lv_label_set_text(name, f.name);
-  lv_obj_set_flex_grow(name, 1);
-  lv_obj_set_style_text_font(name, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(name, lv_palette_lighten(LV_PALETTE_GREY, 2), 0);
+  lv_obj_t *name = Marca::criar_rotulo(card, f.name, Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(name, 10, 8);
+  lv_obj_set_width(name, 180);
+  lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
 
-  f.value = lv_label_create(row);
-  lv_label_set_text(f.value, "-");
-  lv_obj_set_width(f.value, 110);
-  lv_obj_set_style_text_font(f.value, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_align(f.value, LV_TEXT_ALIGN_RIGHT, 0);
+  f.minus = Marca::criar_botao(card, LV_SYMBOL_MINUS, Marca::Tipo::NORMAL, Marca::f16());
+  lv_obj_set_pos(f.minus, 8, 26);
+  lv_obj_set_size(f.minus, 48, Marca::TOQUE);
+  lv_obj_add_event_cb(f.minus, &FirmwareRetractionPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
-  // - / + buttons
-  auto make_btn = [&](const char *sym) {
-    lv_obj_t *b = lv_btn_create(row);
-    lv_obj_set_size(b, 58, LV_PCT(78));
-    lv_obj_set_style_bg_color(b, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
-    lv_obj_t *lbl = lv_label_create(b);
-    lv_label_set_text(lbl, sym);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, 0);
-    lv_obj_center(lbl);
-    lv_obj_add_event_cb(b, &FirmwareRetractionPanel::_handle_callback, LV_EVENT_CLICKED, this);
-    return b;
-  };
-  f.minus = make_btn(LV_SYMBOL_MINUS);
-  f.plus = make_btn(LV_SYMBOL_PLUS);
+  // o valor é um rótulo só, com a moldura no próprio rótulo (um objeto a menos)
+  f.value = Marca::criar_rotulo(card, "-", Marca::f16(), Marca::PAPEL);
+  lv_obj_set_pos(f.value, 56, 26);
+  lv_obj_set_size(f.value, 88, Marca::TOQUE);
+  lv_label_set_long_mode(f.value, LV_LABEL_LONG_CLIP);
+  lv_obj_set_style_text_align(f.value, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_bg_color(f.value, lv_color_hex(Marca::PRETO), 0);
+  lv_obj_set_style_bg_opa(f.value, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(f.value, lv_color_hex(Marca::PRETO_3), 0);
+  lv_obj_set_style_border_width(f.value, 1, 0);
+  lv_obj_set_style_radius(f.value, Marca::RAIO, 0);
+  lv_obj_set_style_pad_hor(f.value, 0, 0);
+  lv_obj_set_style_pad_top(f.value, 12, 0);   // (44 - 2 de borda - 18 da linha) / 2
+
+  f.plus = Marca::criar_botao(card, LV_SYMBOL_PLUS, Marca::Tipo::NORMAL, Marca::f16());
+  lv_obj_set_pos(f.plus, 144, 26);
+  lv_obj_set_size(f.plus, 48, Marca::TOQUE);
+  lv_obj_add_event_cb(f.plus, &FirmwareRetractionPanel::_handle_callback, LV_EVENT_CLICKED, this);
 }
 
 double FirmwareRetractionPanel::cur_value(const Field &f) {
@@ -197,10 +167,10 @@ void FirmwareRetractionPanel::update_from(json &fr) {
     auto v = fr[f.key];
     if (!v.is_number()) continue;
     if (f.is_speed) {
-      lv_label_set_text(f.value,
+      Marca::texto(f.value,
         fmt::format("{} {}", static_cast<int>(std::lround(v.template get<double>())), f.unit).c_str());
     } else {
-      lv_label_set_text(f.value,
+      Marca::texto(f.value,
         fmt::format("{:.2f} {}", v.template get<double>(), f.unit).c_str());
     }
   }
@@ -215,13 +185,15 @@ void FirmwareRetractionPanel::foreground() {
   auto fr = State::get_instance()->get_data("/printer_state/firmware_retraction"_json_pointer);
   if (!fr.is_null()) {
     lv_obj_clear_flag(body, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(reset_all_btn, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(empty_cont, LV_OBJ_FLAG_HIDDEN);
     refresh_values();
   } else {
     lv_obj_add_flag(body, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(reset_all_btn, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(empty_cont, LV_OBJ_FLAG_HIDDEN);
   }
-  lv_obj_move_foreground(panel_cont);
+  Navegacao::abrir(panel_cont);
 }
 
 void FirmwareRetractionPanel::consume(json &j) {
@@ -246,11 +218,6 @@ void FirmwareRetractionPanel::handle_callback(lv_event_t *e) {
 
   if (code != LV_EVENT_CLICKED) return;
   lv_obj_t *btn = lv_event_get_current_target(e);
-
-  if (btn == back_btn || btn == empty_back_btn) {
-    lv_obj_move_background(panel_cont);
-    return;
-  }
 
   if (btn == reset_all_btn) {
     for (auto &f : fields) {

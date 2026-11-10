@@ -4,7 +4,8 @@
 #include "lvgl/lvgl.h"
 #include "websocket_client.h"
 
-// Skew correction helper, reached from the Tune tab. Software-compensates a
+// Skew correction helper, reached from the Calibração page (card 5).
+// Subtela com cabeçalho (Proposta B). Software-compensates a
 // frame that isn't perfectly square (parts come out as faint parallelograms).
 // The user prints a skew calibration object, measures the three XY diagonals
 // (A-C, B-D, A-D) with calipers, types them in, and Apply & Save issues
@@ -43,7 +44,7 @@ class SkewCorrectionPanel {
   lv_obj_t *ta[3];        // A-C, B-D, A-D measurement inputs (mm)
   lv_obj_t *kb;           // decimal numeric keyboard (hidden until a field is tapped)
   lv_obj_t *apply_btn;
-  lv_obj_t *back_btn;
+  lv_obj_t *back_btn;     // = voltar do cabeçalho
 };
 
 #endif  // __SKEW_CORRECTION_PANEL_H__

@@ -6,7 +6,12 @@
 #include "websocket_client.h"
 
 #include <string>
+#include <map>
 #include <mutex>
+
+// Subtela "Energia" (Proposta B): cabeçalho com voltar; cartão "Queda de
+// energia" (retomar a impressão interrompida) e, abaixo, uma linha por
+// dispositivo de energia do Moonraker (nome + chave).
 
 class PowerPanel {
   public:
@@ -38,7 +43,7 @@ class PowerPanel {
     std::mutex &lv_lock;
 
     lv_obj_t *cont;
-    ButtonContainer back_btn;
+    lv_obj_t *lista;
 
     std::map<std::string, lv_obj_t*> devices;
 

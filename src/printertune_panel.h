@@ -17,6 +17,12 @@
 #include "lvgl/lvgl.h"
 
 #include <mutex>
+
+// Aba Configurações > Avançado (Proposta B, tela deitada).
+// Grade 2 x 4 de botões 200 x 44 que abrem as subtelas do que quase não se
+// usa: Macros, Console, Limites, Retração, Medições TMC, Energia e Ajuste fino.
+// Continua dono dos painéis (malha, calibração, TMC, energia...), porque
+// outros arquivos chegam a eles por get_bedmesh_panel() / get_power_panel().
 class PrinterTunePanel {
  public:
   PrinterTunePanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent, FineTunePanel &, ZOffsetPanel &);
@@ -34,6 +40,9 @@ class PrinterTunePanel {
   };
 
  private:
+  lv_obj_t *criar_item(const char *texto, lv_coord_t x, lv_coord_t y);
+  void abrir_retracao();
+
   lv_obj_t *cont;
   BedMeshPanel bedmesh_panel;
   FineTunePanel &finetune_panel;
@@ -46,20 +55,18 @@ class PrinterTunePanel {
   FirmwareRetractionPanel firmware_retraction_panel;
   AxisTwistPanel axis_twist_panel;
   SkewCorrectionPanel skew_correction_panel;
-  // Constructed last: takes references to several of the panels above, which
-  // it now owns the Tune-tab entry point for (Input Shaper, Axis Twist, Skew,
-  // TMC Autotune, plus Bed Mesh - Bed Mesh doubles as its own top-level tile
-  // below since viewing it is routine even though calibrating it isn't).
+  // Construído por último: recebe referências de vários painéis acima. A
+  // página Calibração (lote Calibração) é quem mostra este menu.
   CalibrationMenuPanel calibration_menu_panel;
-  ButtonContainer bedmesh_btn;
-  ButtonContainer finetune_btn;
-  ButtonContainer limits_btn;
-  ButtonContainer tmc_status_btn;
-  ButtonContainer power_devices_btn;
-  ButtonContainer retraction_btn;
-  ButtonContainer zoffset_btn;
-  ButtonContainer calibration_btn;
 
+  // botões da aba Avançado (criados uma vez)
+  lv_obj_t *macros_btn;
+  lv_obj_t *console_btn;
+  lv_obj_t *limits_btn;
+  lv_obj_t *retraction_btn;
+  lv_obj_t *tmc_status_btn;
+  lv_obj_t *power_devices_btn;
+  lv_obj_t *finetune_btn;
 };
 
 #endif // __PRINTERTUNE_PANEL_H__

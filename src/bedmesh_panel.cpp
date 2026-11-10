@@ -1,4 +1,6 @@
 #include "bedmesh_panel.h"
+#include "marca.h"
+#include "navegacao.h"
 #include "state.h"
 #include "utils.h"
 #include "spdlog/spdlog.h"
@@ -33,7 +35,6 @@ const double MAX_CAMERA_DISTANCE = 800.0;
 #define M_PI 3.14159265358979323846
 #endif
 
-LV_IMG_DECLARE(back);
 LV_IMG_DECLARE(delete_img);
 LV_IMG_DECLARE(bedmesh_img);
 LV_IMG_DECLARE(sd_img);
@@ -46,8 +47,10 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
   : NotifyConsumer(l)
   , ws(c)
   , cont(lv_obj_create(lv_scr_act()))
-  , prompt(lv_obj_create(lv_scr_act()))
-  , top_cont(lv_obj_create(cont))
+  , cab_direita(nullptr)
+  , prompt(lv_obj_create(lv_layer_top()))
+  , corpo(lv_obj_create(cont))
+  , top_cont(lv_obj_create(corpo))
   , display_cont(lv_obj_create(top_cont))
   , mesh_table(lv_table_create(display_cont))
   , mesh_canvas(lv_canvas_create(display_cont))
@@ -59,12 +62,11 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
   , profile_cont(lv_obj_create(top_cont))
   , profile_table(lv_table_create(profile_cont))
   , profile_info(lv_table_create(profile_cont))
-  , controls_cont(lv_obj_create(cont))
+  , controls_cont(lv_obj_create(corpo))
   , save_btn(controls_cont, &sd_img, "Salvar perfil", &BedMeshPanel::_handle_callback, this)
   , clear_btn(controls_cont, &delete_img, "Limpar malha", &BedMeshPanel::_handle_callback, this)
   , calibrate_btn(controls_cont, &bedmesh_img, "Calibrar", &BedMeshPanel::_handle_callback, this)
   , toggle_view_btn(controls_cont, &chart_img, "Vista 3D", &BedMeshPanel::_handle_toggle_view, this)
-  , back_btn(controls_cont, &back, "Voltar", &BedMeshPanel::_handle_callback, this)
   , msgbox(lv_obj_create(prompt))
   , input(lv_textarea_create(msgbox))
   , kb(lv_keyboard_create(prompt))
@@ -88,12 +90,21 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
   , mouse_over_canvas(false)
   , scroll_check_timer(nullptr)
 {
-  lv_obj_move_background(cont);
+  // Subtela da Proposta B: 424 x 272 ao lado da coluna, cabeçalho com voltar
+  // e o conteúdo num "corpo" logo abaixo (y = 44). Navegacao::subtela já manda
+  // para trás; a malha abre por foreground() ou pela ação "malha_da_mesa".
+  Navegacao::subtela(cont);
+  Marca::Cabecalho cab = Marca::criar_cabecalho(cont, "Malha da mesa", &BedMeshPanel::_voltar_cb, this);
+  cab_direita = cab.direita;
 
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+  lv_obj_set_pos(corpo, 0, Marca::TOQUE);
+  lv_obj_set_size(corpo, Marca::CONT_L, Marca::TELA_A - Marca::TOQUE);
+  lv_obj_set_style_pad_all(corpo, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(corpo, Marca::VAO, 0);
+  lv_obj_set_style_pad_column(corpo, Marca::VAO, 0);
+  lv_obj_clear_flag(corpo, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_flex_flow(corpo, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(corpo, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
   lv_obj_set_width(top_cont, LV_PCT(100));
   lv_obj_clear_flag(top_cont, LV_OBJ_FLAG_SCROLLABLE);
@@ -101,20 +112,19 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
   lv_obj_set_flex_align(top_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
   lv_obj_set_flex_grow(top_cont, 1);
   lv_obj_set_style_pad_all(top_cont, 0, 0);
+  lv_obj_set_style_pad_column(top_cont, Marca::VAO, 0);
 
+  // tabela da malha um pouco mais larga que a lista de perfis (3 : 2)
   lv_obj_set_height(display_cont, LV_PCT(100));
   lv_obj_clear_flag(display_cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_flex_flow(display_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(display_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_flex_grow(display_cont, 1);
-  lv_obj_set_style_pad_all(display_cont, 1, 0);  // Absolute minimal padding for maximum canvas space
+  lv_obj_set_flex_grow(display_cont, 3);
+  lv_obj_set_style_pad_all(display_cont, 0, 0);
+  lv_obj_set_style_pad_row(display_cont, Marca::VAO, 0);
 
-  auto screen_width = lv_disp_get_physical_hor_res(NULL);
-  if (screen_width < 800) {
-    lv_obj_set_style_text_font(mesh_table, &lv_font_montserrat_8, LV_STATE_DEFAULT);
-  } else {
-    lv_obj_set_style_text_font(mesh_table, &lv_font_montserrat_10, LV_STATE_DEFAULT);
-  }
+  // fonte da tabela: 12 (refresh_views desce para 10/8 só em malha grande)
+  lv_obj_set_style_text_font(mesh_table, Marca::f12(), LV_STATE_DEFAULT);
 
   // mesh table
   lv_obj_set_width(mesh_table, LV_PCT(100));
@@ -131,8 +141,8 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
   lv_obj_set_flex_grow(mesh_canvas, 1);
   lv_obj_set_align(mesh_canvas, LV_ALIGN_CENTER);
 
-  // Fill canvas with dark slate gray background initially
-  lv_canvas_fill_bg(mesh_canvas, lv_color_make(40, 40, 40), LV_OPA_COVER);
+  // fundo do desenho 3D: cor de cartão (PRETO_2)
+  lv_canvas_fill_bg(mesh_canvas, lv_color_hex(Marca::PRETO_2), LV_OPA_COVER);
 
   spdlog::debug("Initial canvas size: {}x{}", canvas_width, canvas_height);
 
@@ -153,6 +163,7 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
 
   // Make the overlay invisible but clickable
   lv_obj_set_style_bg_opa(canvas_overlay, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_bg_opa(canvas_overlay, LV_OPA_TRANSP, LV_STATE_PRESSED);
   lv_obj_set_style_border_opa(canvas_overlay, LV_OPA_TRANSP, 0);
   lv_obj_set_style_shadow_opa(canvas_overlay, LV_OPA_TRANSP, 0);
   lv_obj_set_style_outline_opa(canvas_overlay, LV_OPA_TRANSP, 0);
@@ -194,8 +205,9 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
   lv_obj_set_flex_flow(rotation_cont, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(rotation_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(rotation_cont, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_pad_all(rotation_cont, 15, 0);  // More padding to prevent slider clipping
-  lv_obj_set_style_pad_column(rotation_cont, 10, 0);  // Add spacing between items
+  lv_obj_set_style_pad_all(rotation_cont, 0, 0);
+  lv_obj_set_style_pad_column(rotation_cont, Marca::VAO, 0);
+  lv_obj_set_style_pad_row(rotation_cont, Marca::VAO, 0);
 
   // Move all controls to the single container - Z buttons first, then FOV buttons
   lv_obj_set_parent(z_zoom_out_btn, rotation_cont);  // Z- (minus) first
@@ -206,8 +218,8 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
 
   // +/- buttons (larger for easier touch). Tap = view zoom in/out; long-press = Z-height
   // exaggeration (taller/flatter relief). Orientation is handled by touch-drag.
-  setup_button_with_label(z_zoom_in_btn, LV_SYMBOL_PLUS, 64, 52, nullptr);
-  setup_button_with_label(z_zoom_out_btn, LV_SYMBOL_MINUS, 64, 52, nullptr);
+  setup_button_with_label(z_zoom_in_btn, LV_SYMBOL_PLUS, 52, Marca::TOQUE, nullptr);
+  setup_button_with_label(z_zoom_out_btn, LV_SYMBOL_MINUS, 52, Marca::TOQUE, nullptr);
   lv_obj_add_event_cb(z_zoom_in_btn, &BedMeshPanel::_handle_view_zoom_in, LV_EVENT_SHORT_CLICKED, this);
   lv_obj_add_event_cb(z_zoom_in_btn, &BedMeshPanel::_handle_z_zoom_in, LV_EVENT_LONG_PRESSED, this);
   lv_obj_add_event_cb(z_zoom_in_btn, &BedMeshPanel::_handle_z_zoom_in, LV_EVENT_LONG_PRESSED_REPEAT, this);
@@ -240,8 +252,9 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
   lv_obj_clear_flag(profile_cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_flex_flow(profile_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(profile_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_flex_grow(profile_cont, 1);
+  lv_obj_set_flex_grow(profile_cont, 2);
   lv_obj_set_style_pad_all(profile_cont, 0, 0);
+  lv_obj_set_style_pad_row(profile_cont, Marca::VAO, 0);
 
   // profile table
   lv_obj_add_event_cb(profile_cont, [](lv_event_t *e) {
@@ -254,66 +267,79 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
     }, LV_EVENT_SIZE_CHANGED, profile_table);
   lv_obj_set_flex_grow(profile_table, 1);
   lv_obj_set_style_pad_all(profile_table, 0, 0);
+  // linhas de perfil mais altas (os ícones de carregar/apagar são tocados): ~40 px
+  lv_obj_set_style_text_font(profile_table, Marca::f14(), LV_PART_ITEMS);
+  lv_obj_set_style_pad_top(profile_table, 12, LV_PART_ITEMS | LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(profile_table, 12, LV_PART_ITEMS | LV_STATE_DEFAULT);
 
   // profile info
   lv_obj_add_event_cb(profile_cont, [](lv_event_t *e) {
     lv_obj_t *profile_cont = lv_event_get_target(e);
     lv_obj_t *profile_info = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
     int profile_cont_width = lv_obj_get_width(profile_cont);
-    lv_table_set_col_width(profile_info, 0, profile_cont_width * 0.5);
-    lv_table_set_col_width(profile_info, 1, profile_cont_width * 0.5);
+    lv_table_set_col_width(profile_info, 0, profile_cont_width * 0.55);
+    lv_table_set_col_width(profile_info, 1, profile_cont_width * 0.45);
     }, LV_EVENT_SIZE_CHANGED, profile_info);
   lv_obj_set_flex_grow(profile_info, 1);
   lv_obj_set_style_pad_all(profile_info, 0, 0);
   lv_obj_set_style_pad_top(profile_info, 2, LV_PART_ITEMS | LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(profile_info, 2, LV_PART_ITEMS | LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_left(profile_info, 4, LV_PART_ITEMS | LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_right(profile_info, 4, LV_PART_ITEMS | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(profile_info, Marca::f12(), LV_PART_ITEMS);
 
-  // button controls
+  // Botões embaixo: só texto, 44 de altura; Calibrar é o principal (limão).
+  // Larguras medidas na f14 com o cabe.py ("Limpar malha" mede 99 px).
   lv_obj_set_size(controls_cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_flex_align(controls_cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_flex_align(controls_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_flex_flow(controls_cont, LV_FLEX_FLOW_ROW);
   lv_obj_clear_flag(controls_cont, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_pad_all(controls_cont, 0, 0);
+  lv_obj_set_style_pad_column(controls_cont, Marca::VAO, 0);
+  lv_obj_set_style_pad_row(controls_cont, Marca::VAO, 0);
 
-  lv_obj_set_flex_grow(save_btn.get_container(), 1);
-  lv_obj_set_flex_grow(clear_btn.get_container(), 1);
-  lv_obj_set_flex_grow(calibrate_btn.get_container(), 1);
-  lv_obj_set_flex_grow(toggle_view_btn.get_container(), 1);
-  lv_obj_set_flex_grow(back_btn.get_container(), 1);
+  ButtonContainer *botoes[] = {&save_btn, &clear_btn, &calibrate_btn, &toggle_view_btn};
+  const lv_coord_t larguras[] = {96, 112, 96, 80};   // 384 + 3 vãos de 8 = 408
+  for (int i = 0; i < 4; i++) {
+    botoes[i]->sem_icone();
+    lv_obj_set_size(botoes[i]->get_container(), larguras[i], Marca::TOQUE);
+  }
+  calibrate_btn.set_tipo(Marca::Tipo::DESTAQUE);
 
   lv_obj_add_event_cb(mesh_table, &BedMeshPanel::_mesh_draw_cb, LV_EVENT_DRAW_PART_BEGIN, this);
   lv_obj_add_event_cb(profile_table, &BedMeshPanel::_handle_profile_action, LV_EVENT_VALUE_CHANGED, this);
 
-  // prompt (shared dialog look; keeps its flex layout + top anchor for the kb)
+  // Janela "Salvar perfil": mora em lv_layer_top() (cobre a tela toda, inclusive
+  // a coluna, e o acompanhamento automático não a esconde), fundo PRETO opaco,
+  // escondida até tocar em "Salvar perfil".
+  //   caixa PRETO_2 em (8,8) 464 x 96: frase f14; campo 248 x 44;
+  //   "Cancelar" e "Salvar" 88 x 44; teclado 480 x 160 encostado embaixo.
   KUtils::style_dialog_overlay(prompt);
   lv_obj_add_flag(prompt, LV_OBJ_FLAG_HIDDEN);
 
-  lv_textarea_set_one_line(input, true);
-  lv_obj_set_width(input, LV_PCT(100));
-
   KUtils::style_dialog_box(msgbox);
-  // lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_flex_flow(msgbox, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_set_flex_align(msgbox, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(msgbox, 25, 0);
-  lv_obj_set_size(msgbox, LV_PCT(60), LV_PCT(40));
-  lv_obj_align(msgbox, LV_ALIGN_TOP_MID, 0, 20);
+  lv_obj_set_pos(msgbox, Marca::MARGEM, Marca::MARGEM);
+  lv_obj_set_size(msgbox, Marca::TELA_L - 2 * Marca::MARGEM, 96);
 
-  lv_obj_t *label = NULL;
+  lv_obj_t *label = Marca::criar_rotulo(msgbox, "Salvar o perfil reinicia o Klipper.", Marca::f14());
+  lv_obj_set_pos(label, 0, 0);
+  lv_obj_set_width(label, 440);
 
-  label = lv_label_create(msgbox);
-  lv_obj_set_width(label, LV_PCT(100));
-  lv_label_set_text(label, "Salvar o perfil reinicia o Klipper.");
+  lv_textarea_set_one_line(input, true);
+  lv_obj_set_style_text_font(input, Marca::f14(), 0);
+  lv_obj_set_pos(input, 0, 28);
+  lv_obj_set_size(input, 248, Marca::TOQUE);
 
-  lv_obj_t *prompt_save_btn = lv_btn_create(msgbox);
-  lv_obj_t *prompt_cancel_btn = lv_btn_create(msgbox);
+  lv_obj_t *prompt_cancel_btn = Marca::criar_botao(msgbox, "Cancelar", Marca::Tipo::NORMAL);
+  lv_obj_set_pos(prompt_cancel_btn, 256, 28);
+  lv_obj_set_size(prompt_cancel_btn, 88, Marca::TOQUE);
 
-  label = lv_label_create(prompt_save_btn);
-  lv_label_set_text(label, "Salvar");
+  lv_obj_t *prompt_save_btn = Marca::criar_botao(msgbox, "Salvar", Marca::Tipo::DESTAQUE);
+  lv_obj_set_pos(prompt_save_btn, 352, 28);
+  lv_obj_set_size(prompt_save_btn, 88, Marca::TOQUE);
 
-  label = lv_label_create(prompt_cancel_btn);
-  lv_label_set_text(label, "Cancelar");
-  lv_obj_center(label);
+  lv_obj_set_size(kb, Marca::TELA_L, 160);
+  lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
 
   lv_obj_add_event_cb(prompt_save_btn, &BedMeshPanel::_handle_prompt_save, LV_EVENT_CLICKED, this);
 
@@ -322,7 +348,8 @@ BedMeshPanel::BedMeshPanel(KWebSocketClient &c, std::mutex &l)
   lv_obj_add_event_cb(input, &BedMeshPanel::_handle_kb_input, LV_EVENT_ALL, this);
   lv_keyboard_set_textarea(kb, input);
 
-  lv_obj_move_background(prompt);
+  // Calibração › OUTROS › "Malha da mesa" abre esta subtela (roda com o lv_lock preso)
+  Navegacao::registrar_acao("malha_da_mesa", [this](const std::string &) { foreground(); });
 
   ws.register_notify_update(this);
 }
@@ -375,6 +402,10 @@ void BedMeshPanel::refresh_views(json &bm) {
     }
 
     active_profile = active_profile_j.template get<std::string>();
+    // perfil ativo à direita do cabeçalho (vazio sem malha carregada)
+    if (cab_direita != nullptr) {
+      Marca::texto(cab_direita, active_profile.c_str());
+    }
     if (active_profile.length() > 0) {
       save_btn.enable();
 
@@ -388,8 +419,11 @@ void BedMeshPanel::refresh_views(json &bm) {
       mesh = mesh_json.template get<std::vector<std::vector<double>>>();
       spdlog::debug("Loaded mesh data: {}x{} points", mesh.size(), mesh.empty() ? 0 : mesh[0].size());
 
-      // Draw the 3D mesh
-      draw_3d_mesh();
+      // Desenho 3D só quando a vista 3D está aberta (show_3d_fullscreen desenha ao
+      // abrir): na tabela o canvas fica escondido e redesenhar só gastaria a placa.
+      if (show_3d_view) {
+        draw_3d_mesh();
+      }
 
       // Force complete layout update chain to ensure proper table sizing
       lv_obj_update_layout(cont);  // Update main container first
@@ -417,15 +451,17 @@ void BedMeshPanel::refresh_views(json &bm) {
         // Pick the font first so the row-height math knows the glyph height. Drop to
         // 8pt for large meshes; on the narrow small screen anything past 6 points/axis
         // (e.g. KAMP 9x9) wraps at 10pt, so drop earlier there.
-        auto table_screen_width = lv_disp_get_physical_hor_res(NULL);
+        // Proposta B: 12 até 6 pontos por eixo ("-0.12" mede 27 px; a tabela tem
+        // ~240 px de largura), 10 de 7 a 9 pontos ("-0.1" mede 16 px) e 8 só
+        // acima disso (não cabe outra).
         bool is_large_mesh = (mesh.size() > 6 || mesh[0].size() > 6);
-        bool small_screen_large_mesh = (table_screen_width < 800) && is_large_mesh;
-        bool use_small_font = (mesh.size() > 9 || mesh[0].size() > 9 || small_screen_large_mesh);
-        lv_obj_set_style_text_font(mesh_table,
-          use_small_font ? &lv_font_montserrat_8 : &lv_font_montserrat_10, LV_STATE_DEFAULT);
+        bool use_small_font = (mesh.size() > 9 || mesh[0].size() > 9);
+        const lv_font_t *fonte = use_small_font ? &lv_font_montserrat_8
+          : (is_large_mesh ? &lv_font_montserrat_10 : Marca::f12());
+        lv_obj_set_style_text_font(mesh_table, fonte, LV_STATE_DEFAULT);
         // Approx line height (glyph + leading), slightly over-estimated so rows never
         // exceed their slice.
-        int glyph_h = use_small_font ? 12 : 16;
+        int glyph_h = use_small_font ? 12 : (is_large_mesh ? 14 : 17);
 
         // Divide the table height evenly across rows, but cap the row height so a
         // few-point mesh (KAMP adaptive can be as small as 3x3) doesn't balloon into a
@@ -568,7 +604,16 @@ void BedMeshPanel::foreground() {
   refresh_views(bm);
   show_table_view();
 
-  lv_obj_move_foreground(cont);
+  Navegacao::abrir(cont);
+}
+
+void BedMeshPanel::voltar() {
+  if (show_3d_view) {
+    // From fullscreen 3D, Back returns to the table view rather than exiting.
+    show_table_view();
+  } else {
+    Navegacao::fechar(cont);
+  }
 }
 
 void BedMeshPanel::handle_callback(lv_event_t *event) {
@@ -607,16 +652,8 @@ void BedMeshPanel::handle_callback(lv_event_t *event) {
       }
     }
     ws.gcode_script("G28 X Y Z\nBED_MESH_CALIBRATE");
-
-  } else if (btn == back_btn.get_container()) {
-    spdlog::trace("back button pressed");
-    if (show_3d_view) {
-      // From fullscreen 3D, Back returns to the table view rather than exiting.
-      show_table_view();
-    } else {
-      lv_obj_move_background(cont);
-    }
   }
+  // "Voltar" agora é o do cabeçalho (voltar()).
 }
 
 void BedMeshPanel::handle_profile_action(lv_event_t *e) {
@@ -633,6 +670,12 @@ void BedMeshPanel::handle_profile_action(lv_event_t *e) {
     const char *selected = lv_table_get_cell_value(profile_table, row, col);
     const char *profile_name = lv_table_get_cell_value(profile_table, row, 0);
     spdlog::trace("selected {}, {}, value {}", row, col, profile_name);
+    // Carregar muda a compensação ao vivo e apagar faz SAVE_CONFIG (reinicia o
+    // Klipper): mesma trava de Salvar/Limpar/Calibrar durante a impressão.
+    if ((col == 2 || col == 1) && KUtils::is_printing()) {
+      KUtils::notify_locked();
+      return;
+    }
     if (col == 2) {
       // delete profile
       spdlog::trace("delete mesh {}", profile_name);
@@ -690,6 +733,10 @@ void BedMeshPanel::handle_kb_input(lv_event_t *e)
     lv_textarea_set_text(input, "");
     lv_obj_add_flag(prompt, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_background(prompt);
+  } else if (code == LV_EVENT_CANCEL) {
+    // tecla de fechar do teclado: o mesmo que "Cancelar" (não manda nada)
+    lv_obj_add_flag(prompt, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_background(prompt);
   }
 }
 
@@ -702,7 +749,8 @@ void BedMeshPanel::mesh_draw_cb(lv_event_t *e)
     uint32_t col = dsc->id - row * lv_table_get_col_cnt(obj);
 
     dsc->label_dsc->align = LV_TEXT_ALIGN_CENTER;
-    dsc->label_dsc->color = lv_palette_darken(LV_PALETTE_GREY, 3);
+    // texto escuro sobre a escala de cores clara dos dados (branco/vermelho/azul)
+    dsc->label_dsc->color = lv_color_hex(Marca::PRETO);
 
     // rows of the mesh is reversed
     int32_t reversed_row_idx = mesh.size() - row - 1;
@@ -710,7 +758,7 @@ void BedMeshPanel::mesh_draw_cb(lv_event_t *e)
     lv_color_t color = color_gradient(offset);
 
     dsc->rect_dsc->bg_color = color;
-    dsc->rect_dsc->bg_opa = LV_OPA_90;
+    dsc->rect_dsc->bg_opa = LV_OPA_COVER;
   }
 }
 
@@ -742,7 +790,7 @@ void BedMeshPanel::resize_canvas()
     lv_obj_set_size(mesh_canvas, canvas_width, canvas_height);
 
     // Fill with dark slate gray background
-    lv_canvas_fill_bg(mesh_canvas, lv_color_make(40, 40, 40), LV_OPA_COVER);
+    lv_canvas_fill_bg(mesh_canvas, lv_color_hex(Marca::PRETO_2), LV_OPA_COVER);
 
     spdlog::debug("Resized canvas from {}x{} to {}x{}", current_width, current_height, canvas_width, canvas_height);
 
@@ -795,7 +843,7 @@ void BedMeshPanel::draw_mesh_surface(const std::vector<std::vector<BedMeshPanel:
         lv_draw_rect_dsc_t rect_dsc;
         lv_draw_rect_dsc_init(&rect_dsc);
         rect_dsc.bg_color = surface_color;
-        rect_dsc.bg_opa = LV_OPA_90;
+        rect_dsc.bg_opa = LV_OPA_COVER;
         rect_dsc.border_width = 0;
 
         lv_canvas_draw_rect(mesh_canvas, min_x, min_y, width, height, &rect_dsc);
@@ -851,13 +899,13 @@ void BedMeshPanel::draw_axes_and_labels(const std::vector<std::vector<BedMeshPan
   // Draw coordinate axes and labels with wireframe style
   lv_draw_line_dsc_t axis_dsc;
   lv_draw_line_dsc_init(&axis_dsc);
-  axis_dsc.color = lv_color_make(160, 160, 160); // Slightly darker gray
+  axis_dsc.color = lv_color_hex(Marca::GRAFITE); // linhas de apoio em grafite
   axis_dsc.width = 1; // Thin lines
   axis_dsc.opa = LV_OPA_70; // More visible but still subtle
 
   lv_draw_label_dsc_t label_dsc;
   lv_draw_label_dsc_init(&label_dsc);
-  label_dsc.color = lv_color_white();
+  label_dsc.color = lv_color_hex(Marca::PAPEL);
   label_dsc.font = &lv_font_montserrat_10;
 
 
@@ -949,12 +997,12 @@ void BedMeshPanel::draw_axes_and_labels(const std::vector<std::vector<BedMeshPan
     // Add Z-axis labels along the front left edge (min X, max Y)
     lv_draw_label_dsc_t z_label_dsc;
     lv_draw_label_dsc_init(&z_label_dsc);
-    z_label_dsc.color = lv_color_white();
+    z_label_dsc.color = lv_color_hex(Marca::PAPEL);
     z_label_dsc.font = &lv_font_montserrat_10;
 
     lv_draw_label_dsc_t z_axis_label_dsc;
     lv_draw_label_dsc_init(&z_axis_label_dsc);
-    z_axis_label_dsc.color = lv_color_white();
+    z_axis_label_dsc.color = lv_color_hex(Marca::PAPEL);
     z_axis_label_dsc.font = &lv_font_montserrat_10;
 
     double left_x = (0 - cols / 2.0) * MESH_SCALE;
@@ -985,8 +1033,8 @@ void BedMeshPanel::draw_axes_and_labels(const std::vector<std::vector<BedMeshPan
   // Use smaller font for both labels
   lv_draw_label_dsc_t small_label_dsc;
   lv_draw_label_dsc_init(&small_label_dsc);
-  small_label_dsc.color = lv_color_white();
-  small_label_dsc.font = &lv_font_montserrat_10;
+  small_label_dsc.color = lv_color_hex(Marca::PAPEL);
+  small_label_dsc.font = Marca::f12();
 
   // Left-justified mesh info
   lv_area_t mesh_info_area;
@@ -997,8 +1045,8 @@ void BedMeshPanel::draw_axes_and_labels(const std::vector<std::vector<BedMeshPan
   // Right-justified Z info
   lv_draw_label_dsc_t right_label_dsc;
   lv_draw_label_dsc_init(&right_label_dsc);
-  right_label_dsc.color = lv_color_white();
-  right_label_dsc.font = &lv_font_montserrat_10;
+  right_label_dsc.color = lv_color_hex(Marca::PAPEL);
+  right_label_dsc.font = Marca::f12();
 
 #ifndef CROSS_COMPILE
   // Debug info for simulation mode: show current viewing angles at top
@@ -1009,7 +1057,7 @@ void BedMeshPanel::draw_axes_and_labels(const std::vector<std::vector<BedMeshPan
 
   lv_draw_label_dsc_t debug_label_dsc;
   lv_draw_label_dsc_init(&debug_label_dsc);
-  debug_label_dsc.color = lv_color_make(255, 255, 0); // Yellow for visibility
+  debug_label_dsc.color = lv_color_hex(Marca::GRAFITE); // só no simulador
   debug_label_dsc.font = &lv_font_montserrat_10;
 
   lv_area_t debug_area;
@@ -1134,7 +1182,7 @@ void BedMeshPanel::fill_triangle(int x1, int y1, int x2, int y2, int x3, int y3,
       lv_draw_rect_dsc_t rect_dsc;
       lv_draw_rect_dsc_init(&rect_dsc);
       rect_dsc.bg_color = color;
-      rect_dsc.bg_opa = LV_OPA_90;
+      rect_dsc.bg_opa = LV_OPA_COVER;
       rect_dsc.border_width = 0;
 
       int width = x_right - x_left + 1;
@@ -1243,7 +1291,7 @@ void BedMeshPanel::fill_triangle_gradient(int x1, int y1, lv_color_t c1, int x2,
         lv_draw_rect_dsc_t rect_dsc;
         lv_draw_rect_dsc_init(&rect_dsc);
         rect_dsc.bg_color = avg_color;
-        rect_dsc.bg_opa = LV_OPA_90;
+        rect_dsc.bg_opa = LV_OPA_COVER;
         rect_dsc.border_width = 0;
 
         lv_canvas_draw_rect(mesh_canvas, x_start, y, line_width, 1, &rect_dsc);
@@ -1275,7 +1323,7 @@ void BedMeshPanel::fill_triangle_gradient(int x1, int y1, lv_color_t c1, int x2,
           lv_draw_rect_dsc_t rect_dsc;
           lv_draw_rect_dsc_init(&rect_dsc);
           rect_dsc.bg_color = seg_color;
-          rect_dsc.bg_opa = LV_OPA_90;
+          rect_dsc.bg_opa = LV_OPA_COVER;
           rect_dsc.border_width = 0;
 
           lv_canvas_draw_rect(mesh_canvas, seg_start, y, seg_width, 1, &rect_dsc);
@@ -1569,7 +1617,7 @@ void BedMeshPanel::draw_3d_mesh()
   spdlog::debug("Drawing proper 3D mesh: canvas {}x{}, mesh {}x{}", canvas_width, canvas_height, mesh_rows, mesh_cols);
 
   // Clear canvas with dark slate gray background
-  lv_canvas_fill_bg(mesh_canvas, lv_color_make(40, 40, 40), LV_OPA_COVER);
+  lv_canvas_fill_bg(mesh_canvas, lv_color_hex(Marca::PRETO_2), LV_OPA_COVER);
 
   // Find min/max Z values for color mapping
   double min_z = mesh[0][0], max_z = mesh[0][0];
@@ -1880,7 +1928,7 @@ void BedMeshPanel::draw_horizontal_axes(double mesh_origin_x, double mesh_origin
   // Add X-axis labels along the front edge (max Y)
   lv_draw_label_dsc_t label_dsc;
   lv_draw_label_dsc_init(&label_dsc);
-  label_dsc.color = lv_color_white();
+  label_dsc.color = lv_color_hex(Marca::PAPEL);
   label_dsc.font = &lv_font_montserrat_10;
 
   double front_y = ((rows-1) - rows / 2.0) * MESH_SCALE;
@@ -1891,7 +1939,7 @@ void BedMeshPanel::draw_horizontal_axes(double mesh_origin_x, double mesh_origin
   // Draw X-axis label
   lv_draw_label_dsc_t axis_label_dsc;
   lv_draw_label_dsc_init(&axis_label_dsc);
-  axis_label_dsc.color = lv_color_white();
+  axis_label_dsc.color = lv_color_hex(Marca::PAPEL);
   axis_label_dsc.font = &lv_font_montserrat_10;
 
   double middle_x_coord = ((cols/2) - cols / 2.0) * MESH_SCALE;
@@ -1956,7 +2004,7 @@ void BedMeshPanel::draw_color_gradient_band(int canvas_width, int canvas_height,
   // Add text labels for min and max values
   lv_draw_label_dsc_t label_dsc;
   lv_draw_label_dsc_init(&label_dsc);
-  label_dsc.color = lv_color_white();
+  label_dsc.color = lv_color_hex(Marca::PAPEL);
   label_dsc.opa = LV_OPA_COVER;
   label_dsc.font = &lv_font_montserrat_10;
 
@@ -1993,6 +2041,7 @@ void BedMeshPanel::setup_button_with_label(lv_obj_t* btn, const char* text, int 
   lv_obj_t *label = lv_label_create(btn);
   lv_label_set_text(label, text);
   lv_obj_center(label);
+  lv_obj_set_style_text_font(label, Marca::f20(), 0);  // símbolos + e - legíveis
   // A null callback lets the caller attach its own (e.g. distinct tap vs long-press) events.
   if (callback != nullptr) {
     lv_obj_add_event_cb(btn, callback, LV_EVENT_CLICKED, this);
@@ -2261,7 +2310,7 @@ void BedMeshPanel::show_table_view() {
   show_3d_view = false;
 
   // Vertical layout: top area over a bottom controls row.
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_flow(corpo, LV_FLEX_FLOW_COLUMN);
 
   lv_obj_set_width(top_cont, LV_PCT(100));
   lv_obj_set_height(top_cont, LV_SIZE_CONTENT);
@@ -2272,8 +2321,7 @@ void BedMeshPanel::show_table_view() {
 
   lv_obj_set_size(controls_cont, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(controls_cont, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(controls_cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_flex_grow(back_btn.get_container(), 1);
+  lv_obj_set_flex_align(controls_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
 
   lv_obj_clear_flag(mesh_table, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_flag(mesh_canvas, LV_OBJ_FLAG_HIDDEN);
@@ -2287,21 +2335,20 @@ void BedMeshPanel::show_table_view() {
 }
 
 // Fullscreen 3D: canvas fills the left, a narrow right-side strip holds the
-// zoom +/- and Back buttons. The profile list and other controls are hidden.
+// zoom +/- buttons (Voltar fica no cabeçalho). The profile list and other controls are hidden.
 void BedMeshPanel::show_3d_fullscreen() {
   show_3d_view = true;
 
   // Horizontal layout: [ canvas (grows) ][ control strip ].
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_flow(corpo, LV_FLEX_FLOW_ROW);
 
   lv_obj_set_width(top_cont, LV_SIZE_CONTENT);  // flex_grow fills the width
   lv_obj_set_height(top_cont, LV_PCT(100));
 
-  // Right strip: zoom controls at the top, Back at the bottom.
+  // Right strip: zoom controls (o voltar do cabeçalho leva de volta à tabela).
   lv_obj_set_size(controls_cont, LV_SIZE_CONTENT, LV_PCT(100));
   lv_obj_set_flex_flow(controls_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(controls_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_flex_grow(back_btn.get_container(), 0);
 
   lv_obj_set_parent(rotation_cont, controls_cont);
   lv_obj_set_flex_flow(rotation_cont, LV_FLEX_FLOW_COLUMN);

@@ -2,6 +2,7 @@
 #define __BUTTON_CONTAINER_H__
 
 #include "lvgl/lvgl.h"
+#include "marca.h"
 
 #include <string>
 #include <functional>
@@ -26,6 +27,13 @@ class ButtonContainer {
 
   void set_image(const void *img);
   void set_text(const char *text);
+
+  // Visual da marca (Proposta B). Padrão: NORMAL (PRETO_3, raio 12, pad 4,
+  // ícone em cima do texto f14).
+  void set_tipo(Marca::Tipo t);
+  void set_deitado(bool deitado);   // ícone e texto lado a lado
+  void sem_icone();                 // esconde a imagem (só texto)
+  void set_fonte(const lv_font_t *f);
 
   void handle_callback(lv_event_t *event);
 

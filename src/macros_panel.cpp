@@ -1,14 +1,18 @@
 #include "macros_panel.h"
+#include "marca.h"
 #include "state.h"
 #include "utils.h"
 #include "spdlog/spdlog.h"
 
-// reuse the app's material-design icons (same set the homing panel uses)
-LV_IMG_DECLARE(arrow_up);
-LV_IMG_DECLARE(arrow_down);
-
+// Textos comparados com o vetor de visões (FAVORITES = 0, ALL = 1).
 static const char *VIEW_MAP[] = {"Favoritos", "Todas as macros", ""};
 
+// Subtela Macros (Proposta B). O contêiner recebido já é subtela 424 x 272
+// (pad 0), criada pelo main_panel. Desenho:
+//   y 0..44   cabeçalho: voltar + "Macros" + segmentado Favoritos | Todas as macros
+//   y 44..272 lista de macros (rola na vertical, sem inércia) + coluna
+//             subir / OK / descer à direita; o teclado entra embaixo quando um
+//             parâmetro é editado (a lista encolhe para o campo ficar à vista).
 MacrosPanel::MacrosPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent,
 			 std::function<void()> on_macro_run)
   : ws(c)
@@ -29,32 +33,28 @@ MacrosPanel::MacrosPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent,
   , expanded_item(nullptr)
   , on_macro_run(on_macro_run)
 {
+  lv_obj_set_pos(cont, 0, 0);
   lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
   lv_obj_set_style_pad_all(cont, 0, 0);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(cont, 0, 0);
+  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
-  // header: Favorites / All Macros segmented toggle
-  lv_obj_set_size(top_controls, LV_PCT(100), LV_SIZE_CONTENT);
+  // faixa do cabeçalho (44): o segmentado fica à direita do título
+  lv_obj_set_size(top_controls, LV_PCT(100), Marca::TOQUE);
   lv_obj_set_style_pad_all(top_controls, 0, 0);
   lv_obj_clear_flag(top_controls, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_btnmatrix_set_map(view_toggle, VIEW_MAP);
-  lv_btnmatrix_set_btn_ctrl_all(view_toggle, LV_BTNMATRIX_CTRL_CHECKABLE);
+  lv_btnmatrix_set_btn_ctrl_all(view_toggle, LV_BTNMATRIX_CTRL_CHECKABLE | LV_BTNMATRIX_CTRL_NO_REPEAT);
   lv_btnmatrix_set_one_checked(view_toggle, true);
   lv_btnmatrix_set_btn_ctrl(view_toggle, FAVORITES, LV_BTNMATRIX_CTRL_CHECKED);
-  lv_obj_set_size(view_toggle, LV_PCT(100), 40);
-  lv_obj_set_style_text_font(view_toggle, &lv_font_montserrat_14, LV_STATE_DEFAULT);
-  // let the two buttons fill the bar (no border, minimal gap), so the touch
-  // targets are wide; checked button gets the accent, the rest stays neutral
-  lv_obj_set_style_border_width(view_toggle, 0, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(view_toggle, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_pad_all(view_toggle, 0, LV_PART_MAIN);
-  lv_obj_set_style_pad_gap(view_toggle, 3, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(view_toggle, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_ITEMS);
+  lv_obj_set_pos(view_toggle, 136, 0);
+  lv_obj_set_size(view_toggle, 280, Marca::TOQUE);
+  Marca::estilo_segmentado(view_toggle);
   lv_obj_add_event_cb(view_toggle, &MacrosPanel::_handle_view_changed, LV_EVENT_VALUE_CHANGED, this);
 
-  // body: macro list (grows) + right-side nav column
+  // corpo: lista de macros (cresce) + coluna de navegação à direita
   lv_obj_set_flex_grow(body, 1);
   lv_obj_set_width(body, LV_PCT(100));
   lv_obj_set_style_pad_all(body, 0, 0);
@@ -62,68 +62,70 @@ MacrosPanel::MacrosPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent,
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_ROW);
   lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE);
 
-  // scrollable macro list (drag-scroll kept, scrollbar hidden)
+  // lista que rola (arrastando; sem inércia, sem elástico, barra só ao rolar)
   lv_obj_set_flex_grow(top_cont, 1);
   lv_obj_set_height(top_cont, LV_PCT(100));
   lv_obj_set_style_pad_all(top_cont, 0, 0);
-  // inset rows from the right so the Play buttons don't sit flush against the
-  // up/ok/down column (avoids accidental presses)
+  lv_obj_set_style_pad_left(top_cont, Marca::MARGEM, 0);
+  // afasta as linhas da coluna subir/OK/descer (evita toque sem querer)
   lv_obj_set_style_pad_right(top_cont, 10, 0);
   lv_obj_set_flex_flow(top_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(top_cont, 0, 0);
+  lv_obj_set_scroll_dir(top_cont, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(top_cont, LV_SCROLLBAR_MODE_OFF);
-  // clamp scrolling to the content (no elastic over-scroll past the first/last
-  // macro, which would leave whitespace at the top)
   lv_obj_clear_flag(top_cont, LV_OBJ_FLAG_SCROLL_ELASTIC);
+  lv_obj_clear_flag(top_cont, LV_OBJ_FLAG_SCROLL_MOMENTUM);
 
-  // floated (ignored by the list's flex layout) so it can be centred
+  // fora do layout da lista, para poder ficar no meio
   lv_label_set_text(empty_label,
 		    "Nenhum favorito ainda.\nEm Todas as macros, toque na estrela para adicionar.");
   lv_obj_add_flag(empty_label, LV_OBJ_FLAG_IGNORE_LAYOUT);
   lv_obj_set_width(empty_label, LV_PCT(90));
   lv_obj_set_style_text_align(empty_label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(empty_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(empty_label, Marca::f14(), 0);
+  lv_obj_set_style_text_color(empty_label, lv_color_hex(Marca::GRAFITE), 0);
   lv_obj_center(empty_label);
   lv_obj_add_flag(empty_label, LV_OBJ_FLAG_HIDDEN);
 
-  // right-side nav column: up / ok / down
-  lv_obj_set_size(nav_cont, 48, LV_PCT(100));
-  lv_obj_set_style_pad_all(nav_cont, 2, 0);
-  lv_obj_set_style_pad_row(nav_cont, 4, 0);
-  lv_obj_set_style_border_width(nav_cont, 0, 0);
+  // coluna da direita: subir / OK / descer (botões 48 de largura)
+  lv_obj_set_size(nav_cont, 56, LV_PCT(100));
+  lv_obj_set_style_pad_all(nav_cont, 0, 0);
+  lv_obj_set_style_pad_right(nav_cont, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_bottom(nav_cont, Marca::MARGEM, 0);
+  lv_obj_set_style_pad_row(nav_cont, Marca::VAO, 0);
   lv_obj_set_flex_flow(nav_cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(nav_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(nav_cont, LV_OBJ_FLAG_SCROLLABLE);
 
-  // neutral grey buttons (keep the screen from being all-blue); up/down reuse
-  // the material-design arrow icons, OK keeps the check glyph
-  auto style_nav_btn = [](lv_obj_t *btn) {
+  // botões NORMAL da marca com símbolo de fonte (mais leve que imagem)
+  auto style_nav_btn = [](lv_obj_t *btn, const char *simbolo) {
     lv_obj_set_width(btn, LV_PCT(100));
     lv_obj_set_flex_grow(btn, 1);
-    lv_obj_set_style_bg_color(btn, lv_palette_darken(LV_PALETTE_GREY, 2), LV_PART_MAIN);
+    lv_obj_set_style_pad_all(btn, 0, 0);
+    lv_obj_t *lbl = lv_label_create(btn);
+    lv_label_set_text(lbl, simbolo);
+    lv_obj_set_style_text_font(lbl, Marca::f20(), 0);
+    lv_obj_center(lbl);
+    Marca::estilo_botao(btn, Marca::Tipo::NORMAL);
   };
 
-  style_nav_btn(up_btn);
-  lv_obj_t *up_img = lv_img_create(up_btn);
-  lv_img_set_src(up_img, &arrow_up);
-  lv_obj_center(up_img);
+  style_nav_btn(up_btn, LV_SYMBOL_UP);
   lv_obj_add_event_cb(up_btn, &MacrosPanel::_handle_nav, LV_EVENT_CLICKED, this);
 
-  style_nav_btn(ok_btn);
-  lv_obj_t *ok_lbl = lv_label_create(ok_btn);
-  lv_label_set_text(ok_lbl, LV_SYMBOL_OK);
-  lv_obj_set_style_text_font(ok_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
-  lv_obj_center(ok_lbl);
+  style_nav_btn(ok_btn, LV_SYMBOL_OK);
   lv_obj_add_event_cb(ok_btn, &MacrosPanel::_handle_nav, LV_EVENT_CLICKED, this);
 
-  style_nav_btn(down_btn);
-  lv_obj_t *down_img = lv_img_create(down_btn);
-  lv_img_set_src(down_img, &arrow_down);
-  lv_obj_center(down_img);
+  style_nav_btn(down_btn, LV_SYMBOL_DOWN);
   lv_obj_add_event_cb(down_btn, &MacrosPanel::_handle_nav, LV_EVENT_CLICKED, this);
 
+  // teclado dentro da subtela (entra embaixo, a lista encolhe)
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_style_text_font(kb, &lv_font_montserrat_10, LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(kb, Marca::f14(), LV_STATE_DEFAULT);
+
+  // cabeçalho por cima da faixa de cima (criado depois: fica na frente).
+  // Voltar = fechar a subtela.
+  Marca::Cabecalho cab = Marca::criar_cabecalho(parent, "Macros");
+  lv_obj_set_width(cab.titulo, 80);
 }
 
 MacrosPanel::~MacrosPanel()
@@ -253,7 +255,7 @@ void MacrosPanel::set_highlight(int idx) {
   if (highlight_index >= 0 && highlight_index < (int)visible_items.size()) {
     MacroItem *m = visible_items[highlight_index];
     m->set_highlight(true);
-    lv_obj_scroll_to_view(m->get_cont(), LV_ANIM_ON);
+    lv_obj_scroll_to_view(m->get_cont(), LV_ANIM_OFF);
   }
 }
 
@@ -296,7 +298,7 @@ void MacrosPanel::handle_nav(lv_event_t *e) {
     if (highlight_index >= 0 && highlight_index < (int)visible_items.size()) {
       MacroItem *m = visible_items[highlight_index];
       toggle_expand(m);
-      lv_obj_scroll_to_view(m->get_cont(), LV_ANIM_ON);
+      lv_obj_scroll_to_view(m->get_cont(), LV_ANIM_OFF);
     }
   }
 }
