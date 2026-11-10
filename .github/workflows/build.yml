@@ -30,7 +30,7 @@ name: montar tela em português
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "visual-b" ]
     tags:
       - "v*-ptbr"
       - "v*-ptbr.*"
