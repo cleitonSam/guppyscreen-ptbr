@@ -70,15 +70,15 @@ FineTunePanel::FineTunePanel(KWebSocketClient &websocket_client, std::mutex &l)
   altura     = criar_linha(216, 136, "Altura do bico (Z, mm)", false);
 
   // passos
-  lv_obj_t *l = Marca::criar_rotulo(panel_cont, "Passo (%)", Marca::f12(), Marca::GRAFITE);
-  lv_obj_set_pos(l, 8, 234);
-  lv_obj_set_width(l, 60);
+  lv_obj_t *rot = Marca::criar_rotulo(panel_cont, "Passo (%)", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(rot, 8, 234);
+  lv_obj_set_width(rot, 60);
   passo_pct_sel = criar_segmentado(panel_cont, MAPA_PASSO_PCT, 70, 220, 132, passo_pct_idx,
                                    &FineTunePanel::_handle_callback, this);
 
-  l = Marca::criar_rotulo(panel_cont, "Passo (mm)", Marca::f12(), Marca::GRAFITE);
-  lv_obj_set_pos(l, 208, 234);
-  lv_obj_set_width(l, 74);
+  rot = Marca::criar_rotulo(panel_cont, "Passo (mm)", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(rot, 208, 234);
+  lv_obj_set_width(rot, 74);
   passo_mm_sel = criar_segmentado(panel_cont, MAPA_PASSO_MM, 284, 220, 132, passo_mm_idx,
                                   &FineTunePanel::_handle_callback, this);
 

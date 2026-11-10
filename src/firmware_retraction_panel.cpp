@@ -53,18 +53,18 @@ FirmwareRetractionPanel::FirmwareRetractionPanel(KWebSocketClient &websocket_cli
   build_card(fields[3], 216, 92);
 
   // ---- passos: "Passo (mm)" + segmentado 132 x 44; "Passo (mm/s)" + segmentado ----
-  lv_obj_t *l = Marca::criar_rotulo(body, "Passo (mm)", Marca::f12(), Marca::GRAFITE);
-  lv_obj_set_pos(l, 8, PASSO_Y + 7);
-  lv_obj_set_width(l, 58);
+  lv_obj_t *rot = Marca::criar_rotulo(body, "Passo (mm)", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(rot, 8, PASSO_Y + 7);
+  lv_obj_set_width(rot, 58);
 
   length_step_selector.sem_titulo();
   lv_obj_set_pos(length_step_selector.get_container(), 70, PASSO_Y);
   lv_obj_set_size(length_step_selector.get_container(), 132, Marca::TOQUE);
   lv_obj_set_size(length_step_selector.get_selector(), 132, Marca::TOQUE);
 
-  l = Marca::criar_rotulo(body, "Passo (mm/s)", Marca::f12(), Marca::GRAFITE);
-  lv_obj_set_pos(l, 216, PASSO_Y + 7);
-  lv_obj_set_width(l, 58);
+  rot = Marca::criar_rotulo(body, "Passo (mm/s)", Marca::f12(), Marca::GRAFITE);
+  lv_obj_set_pos(rot, 216, PASSO_Y + 7);
+  lv_obj_set_width(rot, 58);
 
   speed_step_selector.sem_titulo();
   lv_obj_set_pos(speed_step_selector.get_container(), 278, PASSO_Y);
