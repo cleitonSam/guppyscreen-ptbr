@@ -33,8 +33,10 @@ namespace Marca {
   // uso: lv_color_hex(Marca::LIMAO)
 
   // ---- Preaquecer (Temperatura e Início) -------------------------------------
-  constexpr int PETG_BICO = 240, PETG_MESA = 70;
-  constexpr int PLA_BICO  = 210, PLA_MESA  = 60;
+  // Tabela de filamentos da KE (10/11/2026, docs/filamentos-ke.md do repo
+  // impressora-3d): PETG do dono 240-250 / mesa 70; PLA 220 / mesa 55.
+  constexpr int PETG_BICO = 245, PETG_MESA = 70;
+  constexpr int PLA_BICO  = 220, PLA_MESA  = 55;
 
   // ---- 1.3 Medidas ----------------------------------------------------------
   constexpr lv_coord_t TELA_L = 480, TELA_A = 272;

@@ -145,6 +145,14 @@ Aviso traduzir(const std::string &linha) {
     return a;
   }
 
+  // paradas da trava da mesa e da troca de chapa (melhorias.cfg): o dono
+  // precisa ler, entao ficam na tela ate tocar
+  if (comeca(t, "Medicao da mesa errada") || comeca(t, "Sem filamento no sensor") ||
+      comeca(t, "A barra do bico esta torta") || comeca(t, "Troque de chapa")) {
+    a.nivel = GRAVE;
+    return a;
+  }
+
   if (tem(t, "Must home axis first") || tem(t, "Must home")) {
     a.pede_home = true;
     a.texto = "Primeiro leve os eixos ao início (botão Início).";

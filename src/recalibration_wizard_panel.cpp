@@ -424,7 +424,7 @@ void RecalibrationWizardPanel::sensor_refine_failed(const char *reason) {
   sensor_step_active = false;
   if (config_backed_up) {
     restore_printer_cfg_backup();
-    ws.gcode_script("FIRMWARE_RESTART");
+    ws.gcode_script("RESTART");  // 10/11: FIRMWARE_RESTART derruba o Klipper desta KE (placa demora ~17 s)
   }
   show_stage(INTRO);
   KUtils::notify_toast(
@@ -503,7 +503,7 @@ void RecalibrationWizardPanel::apply_sensor_choice(bool use_sensor) {
     encerrar();
     return;
   }
-  ws.gcode_script("FIRMWARE_RESTART");
+  ws.gcode_script("RESTART");  // 10/11: FIRMWARE_RESTART derruba o Klipper desta KE (placa demora ~17 s)
   KUtils::notify_toast(fmt::format("Salvando {:.3f} mm... O Klipper vai reiniciar.", chosen).c_str(), 3000);
   encerrar();
 }
@@ -516,7 +516,7 @@ void RecalibrationWizardPanel::apply_discard_all() {
     encerrar();
     return;
   }
-  ws.gcode_script("FIRMWARE_RESTART");
+  ws.gcode_script("RESTART");  // 10/11: FIRMWARE_RESTART derruba o Klipper desta KE (placa demora ~17 s)
   KUtils::notify_toast("Descartando esta recalibração... O Klipper vai reiniciar com as configurações originais.", 4000);
   encerrar();
 }
