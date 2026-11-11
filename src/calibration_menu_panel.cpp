@@ -266,8 +266,8 @@ void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
     // it never shows up as a live printer object - only configfile.settings.
     if (!AxisTwistPanel::is_enabled()) {
       KUtils::notify_toast(
-        "A compensação da torção do eixo X não está ativada.\n"
-        "Adicione [axis_twist_compensation] ao printer.cfg.",
+        "A correção da torção do eixo X não está\n"
+        "instalada nesta impressora.",
         4000);
       return;
     }
@@ -302,8 +302,8 @@ void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
     // Detect via the config section (no get_status), like Axis Twist.
     if (!SkewCorrectionPanel::is_enabled()) {
       KUtils::notify_toast(
-        "A correção de esquadro não está ativada.\n"
-        "Adicione [skew_correction] ao printer.cfg.",
+        "A correção de esquadro não está\n"
+        "instalada nesta impressora.",
         4000);
       return;
     }
@@ -317,8 +317,8 @@ void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
     if (!tmc_tune_available) {
       // Antes a linha ficava desabilitada e não reagia; agora diz o motivo.
       KUtils::notify_toast(
-        "O autoajuste dos motores não está disponível.\n"
-        "Falta o motor_database.cfg no Klipper.",
+        "O autoajuste dos motores (opcional)\n"
+        "não está instalado nesta impressora.",
         4000);
       return;
     }

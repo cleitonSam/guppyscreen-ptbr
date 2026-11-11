@@ -19,6 +19,7 @@ class LimitsPanel : public NotifyConsumer {
   void consume(json &j);
 
   void handle_callback(lv_event_t *event);
+  void enviar_limite(const std::string &cmd);
   
   static void _handle_callback(lv_event_t *event) {
     LimitsPanel *panel = (LimitsPanel*)event->user_data;

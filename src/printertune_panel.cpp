@@ -148,15 +148,15 @@ void PrinterTunePanel::handle_callback(lv_event_t *event) {
     }
   } else if (btn == limits_btn) {
     spdlog::trace("limits pressed");
-    KUtils::confirm_if_printing("A impressora está imprimindo.\nAjustar os limites mesmo assim?",
-      [this]() { limits_panel.foreground(); });
+    // abre livre: a pergunta (imprimindo) vem ao mudar um valor
+    limits_panel.foreground();
   } else if (btn == tmc_status_btn) {
     spdlog::trace("tmc metrics pressed");
     tmc_status_panel.foreground();
   } else if (btn == power_devices_btn) {
     spdlog::trace("power devices pressed");
-    KUtils::confirm_if_printing("A impressora está imprimindo.\nMudar os dispositivos de energia mesmo assim?",
-      [this]() { power_panel.foreground(); });
+    // abre livre: a pergunta (imprimindo) vem ao ligar/desligar um aparelho
+    power_panel.foreground();
   } else if (btn == retraction_btn) {
     spdlog::trace("retraction pressed");
     abrir_retracao();

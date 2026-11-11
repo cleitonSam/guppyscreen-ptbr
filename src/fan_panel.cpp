@@ -14,7 +14,8 @@ LV_IMG_DECLARE(fan_on);
 namespace {
   constexpr int PASSO = 10;                 // % por toque em - / +
   constexpr lv_coord_t CARTAO_L = 408, CARTAO_A = 76;
-  constexpr lv_coord_t LINHA_A = 20;        // linha só de leitura (f12)
+  constexpr lv_coord_t LINHA_A = 36;        // linha só de leitura, dentro do cartão
+  constexpr lv_coord_t TITULO_A = 26;       // título do cartão das automáticas
   constexpr lv_coord_t TOPO = 7, BASE = 8;  // respiro em cima e embaixo da lista
 
   int para_pct(double v) {
@@ -109,6 +110,7 @@ void FanPanel::create_fans(json &f) {
   lv_obj_clean(fans_cont);
   fans.clear();
   ro_labels.clear();
+  ro_cartao = nullptr;
 
   for (auto &fan : f.items()) {
     std::string key = fan.key();
@@ -202,21 +204,41 @@ void FanPanel::create_readonly_fans() {
     if (editavel || ro_labels.count(key)) {
       continue;  // already shown as an editable card, or already added
     }
-    lv_obj_t *row = lv_obj_create(fans_cont);
+    // design 11/11: as automáticas ficam num cartão (como as listas de
+    // Ajustes), com título, em vez de linhas soltas no fundo
+    if (ro_cartao == nullptr) {
+      ro_cartao = Marca::criar_cartao(fans_cont, 0, 0, CARTAO_L, TITULO_A + 8);
+      lv_obj_set_style_pad_all(ro_cartao, 0, 0);
+      lv_obj_set_style_pad_bottom(ro_cartao, 4, 0);
+      lv_obj_clear_flag(ro_cartao, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_clear_flag(ro_cartao, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_set_flex_flow(ro_cartao, LV_FLEX_FLOW_COLUMN);
+      lv_obj_set_height(ro_cartao, LV_SIZE_CONTENT);
+      lv_obj_t *tit = Marca::criar_rotulo(ro_cartao, "Automáticas (a impressora controla sozinha)",
+        Marca::f12(), Marca::GRAFITE);
+      lv_obj_set_width(tit, CARTAO_L - 24);
+      lv_obj_set_height(tit, TITULO_A);
+      lv_obj_set_style_pad_left(tit, 12, 0);
+      lv_obj_set_style_pad_top(tit, 10, 0);
+    }
+    lv_obj_t *row = lv_obj_create(ro_cartao);
     lv_obj_set_size(row, CARTAO_L, LINHA_A);
     lv_obj_set_style_pad_all(row, 0, 0);
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_border_width(row, 1, 0);
+    lv_obj_set_style_border_side(row, LV_BORDER_SIDE_TOP, 0);
+    lv_obj_set_style_border_color(row, lv_color_hex(Marca::PRETO_3), 0);
+    lv_obj_set_style_radius(row, 0, 0);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *name = Marca::criar_rotulo(row, KUtils::fan_display_name(key).c_str(),
-      Marca::f12(), Marca::GRAFITE);
+      Marca::f14(), Marca::PAPEL);
     lv_obj_set_width(name, 250);
     lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
     lv_obj_align(name, LV_ALIGN_LEFT_MID, 12, 0);
 
-    lv_obj_t *val = Marca::criar_rotulo(row, "-", Marca::f12(), Marca::GRAFITE);
+    lv_obj_t *val = Marca::criar_rotulo(row, "-", Marca::f14(), Marca::GRAFITE);
     lv_obj_set_width(val, 130);
     lv_label_set_long_mode(val, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(val, LV_TEXT_ALIGN_RIGHT, 0);
@@ -229,10 +251,10 @@ void FanPanel::create_readonly_fans() {
 
 void FanPanel::ajustar_rolagem() {
   // Conta fixa (cartões 76, linhas 20, 8 entre eles): rola só se não couber.
-  size_t n = fans.size() + ro_labels.size();
+  size_t n = fans.size() + (ro_labels.empty() ? 0 : 1);
   lv_coord_t altura = TOPO + BASE
     + (lv_coord_t)fans.size() * CARTAO_A
-    + (lv_coord_t)ro_labels.size() * LINHA_A
+    + (ro_labels.empty() ? 0 : (lv_coord_t)(TITULO_A + 4 + ro_labels.size() * LINHA_A))
     + (n > 0 ? (lv_coord_t)(n - 1) * Marca::VAO : 0);
 
   if (altura > Marca::ABA_CONT_A) {

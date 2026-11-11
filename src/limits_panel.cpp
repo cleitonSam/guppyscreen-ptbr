@@ -2,6 +2,7 @@
 #include "marca.h"
 #include "navegacao.h"
 #include "state.h"
+#include "utils.h"
 #include "spdlog/spdlog.h"
 
 LV_IMG_DECLARE(refresh_img);
@@ -160,32 +161,39 @@ void LimitsPanel::handle_callback(lv_event_t *e) {
     int v = lv_slider_get_value(obj);
 
     if (obj == velocity.get_slider()) {
-      ws.gcode_script(fmt::format("SET_VELOCITY_LIMIT VELOCITY={}", v));
+      enviar_limite(fmt::format("SET_VELOCITY_LIMIT VELOCITY={}", v));
 
     } else if (obj == acceleration.get_slider()) {
-      ws.gcode_script(fmt::format("SET_VELOCITY_LIMIT ACCEL={}", v));
+      enviar_limite(fmt::format("SET_VELOCITY_LIMIT ACCEL={}", v));
 
     } else if (obj == accel_to_decel.get_slider()) {
-      ws.gcode_script(fmt::format("SET_VELOCITY_LIMIT ACCEL_TO_DECEL={}", v));
+      enviar_limite(fmt::format("SET_VELOCITY_LIMIT ACCEL_TO_DECEL={}", v));
       
     } else if (obj == square_corner.get_slider()) {
-      ws.gcode_script(fmt::format("SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY={}", v));
+      enviar_limite(fmt::format("SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY={}", v));
 
     }
     
   } else if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     if (btn == velocity.get_off()) {
-      ws.gcode_script(fmt::format("SET_VELOCITY_LIMIT VELOCITY={}", max_velocity_default));
+      enviar_limite(fmt::format("SET_VELOCITY_LIMIT VELOCITY={}", max_velocity_default));
 
     } else if (btn == acceleration.get_off()) {
-      ws.gcode_script(fmt::format("SET_VELOCITY_LIMIT ACCEL={}", max_accel_default));
+      enviar_limite(fmt::format("SET_VELOCITY_LIMIT ACCEL={}", max_accel_default));
 
     } else if (btn == accel_to_decel.get_off()) {
-      ws.gcode_script(fmt::format("SET_VELOCITY_LIMIT ACCEL_TO_DECEL={}", max_accel_to_decel_default));
+      enviar_limite(fmt::format("SET_VELOCITY_LIMIT ACCEL_TO_DECEL={}", max_accel_to_decel_default));
       
     } else if (btn == square_corner.get_off()) {
-      ws.gcode_script(fmt::format("SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY={}", square_corner_default));
+      enviar_limite(fmt::format("SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY={}", square_corner_default));
 
     }
   }
+}
+
+void LimitsPanel::enviar_limite(const std::string &cmd) {
+  // imprimindo: pergunta antes de mudar (antes perguntava so ao abrir a tela)
+  KWebSocketClient *wsp = &ws;
+  KUtils::confirm_if_printing("A impressora está imprimindo.\nMudar este limite mesmo assim?",
+    [wsp, cmd]() { wsp->gcode_script(cmd); });
 }

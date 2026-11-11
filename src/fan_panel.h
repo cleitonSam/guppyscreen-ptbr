@@ -62,6 +62,7 @@ class FanPanel : public NotifyConsumer {
   lv_obj_t *fans_cont;
   std::vector<Ventoinha> fans;
   std::map<std::string, lv_obj_t*> ro_labels;   // read-only fan id -> value label
+  lv_obj_t *ro_cartao = nullptr;                 // cartão das ventoinhas automáticas
 };
 
 #endif // __FAN_PANEL_H__

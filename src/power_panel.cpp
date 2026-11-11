@@ -118,7 +118,7 @@ void PowerPanel::refresh_recovery() {
   bool show_actions = false;
   if (KUtils::is_printing()) {
     lv_label_set_text(recovery_status,
-      "Impressão em andamento. Se faltar energia, abra esta tela de novo para retomar.");
+      "Impressão em andamento. Se faltar energia, ela não é retomada: tire a peça e mande imprimir de novo.");
   } else if (recovery_relpath.empty()) {
     lv_label_set_text(recovery_status, "Nenhuma impressão interrompida para retomar.");
   } else {
@@ -273,15 +273,29 @@ void PowerPanel::handle_callback(lv_event_t *e) {
       if (obj == device.second) {
         bool turnOn = lv_obj_has_state(device.second, LV_STATE_CHECKED);
         std::string status = turnOn ? "on" : "off";
+        std::string nome = device.first;
 
-        spdlog::debug("Turning power device {} {}", device.first, status);
+        spdlog::debug("Turning power device {} {}", nome, status);
 
-        json params;
-        params["device"] = device.first;
-        params["action"] = status;
-        ws.send_jsonrpc("machine.device_power.post_device", params, [this](json& j) {
-          this->handle_device_callback(j);
-        });
+        auto mandar = [this, nome, status]() {
+          json params;
+          params["device"] = nome;
+          params["action"] = status;
+          ws.send_jsonrpc("machine.device_power.post_device", params, [this](json& j) {
+            this->handle_device_callback(j);
+          });
+        };
+        if (KUtils::is_printing()) {
+          // a chave volta ao que era; se confirmar, o aparelho muda e a
+          // resposta do Moonraker acerta a chave
+          lv_obj_t *chave = device.second;
+          if (turnOn) lv_obj_clear_state(chave, LV_STATE_CHECKED);
+          else lv_obj_add_state(chave, LV_STATE_CHECKED);
+          KUtils::confirmar(fmt::format("A impressora está imprimindo.\n{} \"{}\" mesmo assim?",
+                                        turnOn ? "Ligar" : "Desligar", nome), mandar);
+        } else {
+          mandar();
+        }
 	      break;
       }
     }

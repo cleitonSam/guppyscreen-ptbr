@@ -193,6 +193,8 @@ namespace KUtils {
     style_lock_mbox(mbox, 50);
   }
 
+  static void centralizar_texto(lv_obj_t *mbox);   // mais abaixo
+
   void avisar(const std::string &msg) {
     static const char *btns[] = {"OK", ""};
     lv_obj_t *mbox = lv_msgbox_create(NULL, NULL, msg.c_str(), btns, false);
@@ -202,6 +204,7 @@ namespace KUtils {
     style_lock_mbox(mbox, 50);
     lv_obj_set_size(mbox, 400, 180);
     liberar_coluna(mbox);
+    centralizar_texto(mbox);
   }
 
   void notify_toast(const std::string &msg, uint32_t timeout_ms) {
@@ -236,6 +239,24 @@ namespace KUtils {
       }
     }, timeout_ms, mbox);
     lv_timer_set_repeat_count(t, 1);
+  }
+
+  // design 11/11: o texto fica no meio do espaço livre acima dos botões (antes
+  // ficava colado em cima, com um vão vazio até os botões). Só se couber.
+  static void centralizar_texto(lv_obj_t *mbox) {
+    lv_obj_update_layout(mbox);
+    lv_obj_t *conteudo = lv_msgbox_get_content(mbox);
+    lv_obj_t *txt = lv_msgbox_get_text(mbox);
+    if (conteudo == NULL || txt == NULL) {
+      return;
+    }
+    lv_coord_t livre = lv_obj_get_content_height(mbox) - Marca::TOQUE - 6;
+    if (livre <= 0 || lv_obj_get_height(txt) > livre) {
+      return;
+    }
+    lv_obj_set_height(conteudo, livre);
+    lv_obj_set_flex_flow(conteudo, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(conteudo, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   }
 
   // A pergunta aberta (Confirmar / Cancelar). Só uma por vez; trocar de
@@ -277,6 +298,7 @@ namespace KUtils {
       delete (std::function<void()> *)lv_event_get_user_data(e);
     }, LV_EVENT_DELETE, heap_cb);
     style_lock_mbox(mbox, 90);
+    centralizar_texto(mbox);
     pergunta_aberta = mbox;
   }
 

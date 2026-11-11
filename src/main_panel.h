@@ -90,6 +90,8 @@ class MainPanel : public NotifyConsumer {
 
   // ---- Início ----
   lv_obj_t *inicio_chip;
+  lv_obj_t *petg_btn = nullptr;   // preaquecer (apagados durante a impressão)
+  lv_obj_t *pla_btn = nullptr;
   lv_obj_t *bico_alvo;
   lv_obj_t *bico_valor;
   lv_obj_t *mesa_alvo;

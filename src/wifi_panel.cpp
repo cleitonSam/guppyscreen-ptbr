@@ -158,7 +158,7 @@ void WifiPanel::foreground() {
   }
   std::string resp = wpa_event.send_command("SCAN");
   if (resp.empty() || resp.find("FAIL") != std::string::npos) {
-    lv_label_set_text(wifi_label, "Falha ao procurar redes.\nO wpa_supplicant\nestá rodando?");
+    lv_label_set_text(wifi_label, "Não consegui procurar as redes.\nEspere um pouco e abra\nesta tela de novo.");
     lv_obj_clear_flag(prompt_cont, LV_OBJ_FLAG_HIDDEN);
   }
 }

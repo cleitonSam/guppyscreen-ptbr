@@ -168,9 +168,8 @@ AxisTwistPanel::AxisTwistPanel(KWebSocketClient &websocket_client, std::mutex &l
   // ---------- EMPTY (not configured) ----------
   montar_etapa(empty_cont);
   texto_etapa(empty_cont,
-    "A compensação da torção do eixo X não está ativada.\n\n"
-    "Adicione a seção [axis_twist_compensation]\n"
-    "ao printer.cfg e reinicie o Klipper.",
+    "A correção da torção do eixo X não está\n"
+    "instalada nesta impressora.",
     Marca::f14(), true);
 
   show_stage(INTRO);

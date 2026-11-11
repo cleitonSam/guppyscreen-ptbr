@@ -174,7 +174,7 @@ PrinterSelectPanel::PrinterSelectPanel()
   }, LV_EVENT_ALL, this);
 
   estilo_campo(moonraker_ip, 192, 52, 224);
-  lv_textarea_set_placeholder_text(moonraker_ip, "Endereço IP do Moonraker");
+  lv_textarea_set_placeholder_text(moonraker_ip, "Endereço IP da impressora");
   lv_textarea_set_max_length(moonraker_ip, 45); // ipv6??
   lv_textarea_set_accepted_chars(moonraker_ip, "0123456789abcdef.:");
   lv_obj_add_event_cb(moonraker_ip, [](lv_event_t *e) {
@@ -184,7 +184,7 @@ PrinterSelectPanel::PrinterSelectPanel()
 
   estilo_campo(moonraker_port, 8, 100, 176);
   lv_textarea_set_text(moonraker_port, "7125");
-  lv_textarea_set_placeholder_text(moonraker_port, "Porta do Moonraker");
+  lv_textarea_set_placeholder_text(moonraker_port, "Porta (normalmente 7125)");
   lv_textarea_set_max_length(moonraker_port, 5);
   lv_textarea_set_accepted_chars(moonraker_port, "0123456789");
   lv_obj_add_event_cb(moonraker_port, [](lv_event_t *e) {

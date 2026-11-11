@@ -229,6 +229,12 @@ void MainPanel::atualizar_de(const json *st, bool transicoes) {
     bool ativo = novo == "printing" || novo == "paused";
     estado_impressao = novo;
     atualizar_chip();
+    // preaquecer não vale durante a impressão: os botões ficam apagados
+    for (lv_obj_t *b : {petg_btn, pla_btn}) {
+      if (b == nullptr) continue;
+      if (ativo) lv_obj_add_state(b, LV_STATE_DISABLED);
+      else lv_obj_clear_state(b, LV_STATE_DISABLED);
+    }
     if (transicoes && era_ativo && !ativo) {
       // terminou (concluída, cancelada, erro): a última impressão mudou
       agendar_ultima_impressao();
@@ -478,6 +484,7 @@ void MainPanel::criar_temperatura() {
 
   // PETG (destaque: é o filamento do dono)
   lv_obj_t *petg = lv_btn_create(aba);
+  petg_btn = petg;
   lv_obj_set_style_pad_all(petg, 0, 0);
   lv_obj_set_pos(petg, 8, 175);
   lv_obj_set_size(petg, 130, 44);
@@ -501,6 +508,16 @@ void MainPanel::criar_temperatura() {
 
   // PLA
   lv_obj_t *pla = lv_btn_create(aba);
+  pla_btn = pla;
+  // ao abrir a aba confere de novo (o estado vem por outro caminho às vezes)
+  Navegacao::ao_mostrar(Aba::TEMPERATURA, [this]() {
+    bool imprimindo = KUtils::is_printing();
+    for (lv_obj_t *b : {petg_btn, pla_btn}) {
+      if (b == nullptr) continue;
+      if (imprimindo) lv_obj_add_state(b, LV_STATE_DISABLED);
+      else lv_obj_clear_state(b, LV_STATE_DISABLED);
+    }
+  });
   lv_obj_set_style_pad_all(pla, 0, 0);
   lv_obj_set_pos(pla, 147, 175);
   lv_obj_set_size(pla, 131, 44);
