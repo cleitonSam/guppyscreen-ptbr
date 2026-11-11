@@ -285,10 +285,12 @@ int SensorContainer::alvo_maximo() {
   if (v.is_number()) {
     int m = (int)v.template get<double>();
     if (m > 0) {
-      return m;
+      // folga abaixo do max_temp: a subida passa um pouco do alvo e, se
+      // passar do max_temp, o Klipper para tudo (bico 300 -> 280, mesa 110 -> 100)
+      return m - (id.rfind("extruder", 0) == 0 ? 20 : 10);
     }
   }
-  return id.rfind("extruder", 0) == 0 ? 300 : 110;
+  return id.rfind("extruder", 0) == 0 ? 280 : 100;
 }
 
 void SensorContainer::ajustar(int delta) {

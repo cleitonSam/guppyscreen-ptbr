@@ -92,10 +92,30 @@ jobs:
         submodules: recursive
 
     - name: instalar as ferramentas do sistema (as mesmas do docker/Dockerfile)
+      # A máquina do GitHub (ubuntu-24.04) já vem com essas ferramentas. Só
+      # baixa do servidor do Ubuntu o que faltar, com novas tentativas: em
+      # 11/11/2026 o servidor travou e duas montagens falharam aqui.
       run: |
-        sudo apt-get update || { sleep 15; sudo apt-get update; }
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-          build-essential cmake git wget xz-utils bzip2 ca-certificates file jq
+        falta=""
+        for t in gcc g++ make cmake git wget xz bzip2 file jq; do
+          command -v "$t" >/dev/null 2>&1 || falta="$falta $t"
+        done
+        if [ -z "$falta" ]; then
+          echo "ferramentas já instaladas na máquina do GitHub"
+          exit 0
+        fi
+        echo "faltando:$falta"
+        for tentativa in 1 2 3; do
+          if sudo timeout 300 apt-get update -o Acquire::Retries=3 && \
+             sudo DEBIAN_FRONTEND=noninteractive timeout 600 apt-get install -y --no-install-recommends \
+               -o Acquire::Retries=3 \
+               build-essential cmake git wget xz-utils bzip2 ca-certificates file jq; then
+            exit 0
+          fi
+          echo "tentativa $tentativa falhou, esperando 30 s"
+          sleep 30
+        done
+        exit 1
 
     - name: recuperar a ferramenta MIPS já baixada antes (cache)
       uses: actions/cache@v6

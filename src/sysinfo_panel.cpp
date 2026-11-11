@@ -410,7 +410,7 @@ SysInfoPanel::SysInfoPanel(lv_obj_t *sistema, lv_coord_t y)
   // Temp. padrão (bico)
   ListaCfg::rotulo(ajustes_cartao, 1, "Temp. padrão");
   def_temp_dd = lv_dropdown_create(ajustes_cartao);
-  lv_dropdown_set_options(def_temp_dd, "180\n200\n220\n230\n240\n245\n250\n260\n280\n300");
+  lv_dropdown_set_options(def_temp_dd, "180\n200\n220\n230\n240\n245\n250\n260\n280");
   {
     auto def_ext_temp = conf->get_json("/default_extruder_temp");
     if (!def_ext_temp.is_null()) {

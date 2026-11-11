@@ -40,7 +40,8 @@ static const int LOAD_TOTAL_MM  = LOAD_FAST_MM + LOAD_SLOW_MM;  // 130
 // bico"; o padrão continua vindo de /default_extruder_temp).
 // 230-250 de 5 em 5: o PETG do dono é 240-250 (carregar/descarregar a 250,
 // igual às macros)
-static const int TEMPS[] = {180, 200, 220, 230, 240, 245, 250, 260, 280, 300};
+// sem 300: e o limite do bico (max_temp) e a subida passa um pouco do alvo
+static const int TEMPS[] = {180, 200, 220, 230, 240, 245, 250, 260, 280};
 static const int N_TEMPS = sizeof(TEMPS) / sizeof(TEMPS[0]);
 static const int TEMP_IDX_PADRAO = 6;  // 250
 
