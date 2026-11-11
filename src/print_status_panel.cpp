@@ -120,10 +120,10 @@ PrintStatusPanel::PrintStatusPanel(KWebSocketClient &websocket_client,
   preparo_detalhe = rotulo_fixo(preparo_cont, "", Marca::f12(), Marca::GRAFITE,
                                 0, 46, 268, LV_TEXT_ALIGN_LEFT);
   for (int i = 0; i < ETAPAS; i++) {
-    // 6 traços de 40 x 6 com 5 px entre eles (6*40 + 5*5 = 265)
+    // 7 traços de 34 x 6 com 5 px entre eles (7*34 + 6*5 = 268)
     lv_obj_t *p = lv_obj_create(preparo_cont);
-    lv_obj_set_pos(p, i * 45, 68);
-    lv_obj_set_size(p, 40, 6);
+    lv_obj_set_pos(p, i * 39, 68);
+    lv_obj_set_size(p, 34, 6);
     lv_obj_set_style_radius(p, 3, 0);
     lv_obj_set_style_border_width(p, 0, 0);
     lv_obj_set_style_pad_all(p, 0, 0);
@@ -416,14 +416,17 @@ void PrintStatusPanel::atualizar_preparo() {
   if (fase_atual == "assentar") {
     etapa = 3; nome = "Mesa assentando";
     detalhe = "Uns 2 minutos, para a medição sair certa";
+  } else if (fase_atual == "altura") {
+    etapa = 4; nome = "Medindo a altura do bico";
+    detalhe = "O bico encosta de leve na mesa";
   } else if (fase_atual == "mede") {
-    etapa = 4; nome = "Medindo a mesa";
+    etapa = 5; nome = "Medindo a mesa";
     detalhe = "Cada ponto é medido duas vezes";
   } else if (fase_atual == "confere") {
-    etapa = 5; nome = "Conferindo a medição";
+    etapa = 6; nome = "Conferindo a medição";
     detalhe = "Medindo o centro da mesa de novo";
   } else if (fase_atual == "ok" || fase_atual == "corrigiu") {
-    etapa = 6;
+    etapa = 7;
     if (bico_esquentando) {
       nome = "Aquecendo o bico";
       detalhe = fmt::format("{} / {} °C · medição conferida", (int)et, (int)et_alvo);
@@ -436,7 +439,7 @@ void PrintStatusPanel::atualizar_preparo() {
     etapa = 1; nome = "Aquecendo a mesa";
     detalhe = fmt::format("{} / {} °C", (int)bt, (int)bt_alvo);
   } else if (bico_esquentando) {
-    etapa = 6; nome = "Aquecendo o bico";
+    etapa = 7; nome = "Aquecendo o bico";
     detalhe = fmt::format("{} / {} °C", (int)et, (int)et_alvo);
   } else {
     etapa = 2; nome = "Zerando os eixos";
@@ -977,7 +980,7 @@ void PrintStatusPanel::sim_setup_mock_data() {
       {"current_object", "benchy_1"}
     }}
   }}}};
-  // GS_PREPARO=mede|confere|assentar|ok|mesa|bico|zerando: impressão ainda
+  // GS_PREPARO=altura|mede|confere|assentar|ok|mesa|bico|zerando: impressão ainda
   // no preparo (antes do primeiro filamento), para ver a faixa de etapas
   const char *preparo = std::getenv("GS_PREPARO");
   if (preparo != nullptr) {

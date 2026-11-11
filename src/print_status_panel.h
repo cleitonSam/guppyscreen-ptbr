@@ -102,7 +102,7 @@ class PrintStatusPanel : public NotifyConsumer {
   lv_obj_t *preparo_titulo;
   lv_obj_t *preparo_etapa;
   lv_obj_t *preparo_detalhe;
-  static constexpr int ETAPAS = 6;
+  static constexpr int ETAPAS = 7;
   lv_obj_t *preparo_pontos[ETAPAS];
   bool preparo_visivel = false;
   std::string fase_atual;   // "FASE:xxx" do M117 da trava (sem o prefixo)
