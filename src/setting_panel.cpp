@@ -55,8 +55,8 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent,
   // ------------------------------------------------------------ aba Sistema
   ListaCfg::preparar_conteudo(cont, Aba::SISTEMA, true);
 
-  restart_klipper_btn = criar_botao_sistema(cont, LV_SYMBOL_REFRESH " Reiniciar Klipper", 8, BOTOES_Y, this);
-  restart_firmware_btn = criar_botao_sistema(cont, LV_SYMBOL_REFRESH " Reiniciar firmware", 216, BOTOES_Y, this);
+  restart_klipper_btn = criar_botao_sistema(cont, LV_SYMBOL_REFRESH " Recarregar ajustes", 8, BOTOES_Y, this);
+  restart_firmware_btn = criar_botao_sistema(cont, LV_SYMBOL_REFRESH " Reiniciar placa", 216, BOTOES_Y, this);
   guppy_restart_btn = criar_botao_sistema(cont, LV_SYMBOL_REFRESH " Reiniciar tela", 8, BOTOES_Y + 52, this);
   guppy_update_btn = criar_botao_sistema(cont, LV_SYMBOL_DOWNLOAD " Atualizar tela", 216, BOTOES_Y + 52, this);
 
@@ -200,11 +200,18 @@ void SettingPanel::handle_callback(lv_event_t *event) {
 #endif
   } else if (btn == restart_klipper_btn) {
     spdlog::trace("setting restart klipper pressed");
-    KUtils::confirm_if_printing("A impressora está imprimindo.\nReiniciar o Klipper mesmo assim?",
+    // sempre pergunta: para qualquer coisa que estiver rodando
+    KUtils::confirmar(KUtils::is_printing()
+        ? "A impressora está imprimindo.\nRecarregar os ajustes PARA a impressão. Recarregar?"
+        : "Recarregar os ajustes da impressora?\nLeva uns 20 segundos.",
       [this]() { ws.send_jsonrpc("printer.restart"); });
   } else if (btn == restart_firmware_btn) {
     spdlog::trace("setting restart firmware pressed");
-    KUtils::confirm_if_printing("A impressora está imprimindo.\nReiniciar o firmware mesmo assim?",
+    // Nesta impressora (Klipper da Creality) reiniciar a placa pela rede
+    // às vezes trava tudo: avisa que a saída é desligar e ligar na chave.
+    KUtils::confirmar(KUtils::is_printing()
+        ? "A impressora está imprimindo.\nReiniciar a placa PARA a impressão. Reiniciar?"
+        : "Reiniciar a placa da impressora?\nSe a tela não voltar em 2 minutos,\ndesligue e ligue na chave.",
       [this]() { ws.send_jsonrpc("printer.firmware_restart"); });
   } else if (btn == spoolman_row) {
     spdlog::trace("setting spoolman pressed");

@@ -155,14 +155,14 @@ Aviso traduzir(const std::string &linha) {
 
   if (tem(t, "Must home axis first") || tem(t, "Must home")) {
     a.pede_home = true;
-    a.texto = "Primeiro leve os eixos ao início (botão Início).";
+    a.texto = "Primeiro leve os eixos à origem (Eixos > Origem XYZ).";
     return a;
   }
 
   // ---- graves: param a impressora ----
   if (tem(t, "Shutdown due to webhooks request") || tem(t, "Emergency stop") ||
       tem(t, "M112")) {
-    a.texto = "Parada de emergência. Para voltar, toque em Reiniciar firmware.";
+    a.texto = "Parada de emergência. Para voltar, desligue e ligue a impressora na chave.";
     a.nivel = GRAVE;
     return a;
   }

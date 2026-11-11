@@ -35,6 +35,11 @@ namespace KUtils {
   // Runs cb immediately when idle; while printing, shows a Confirm/Cancel modal
   // and only runs cb if the user confirms the override.
   void confirm_if_printing(const std::string &msg, const std::function<void()> &cb);
+  // Sempre pergunta (Confirmar / Cancelar) e so roda cb se confirmar. Para
+  // botoes que mexem o bico ou aquecem (toque por engano nao pode agir).
+  void confirmar(const std::string &msg, const std::function<void()> &cb);
+  // fecha a pergunta aberta (se houver) sem fazer a ação
+  void fechar_pergunta();
   bool is_running_local();
   std::string get_root_path(const std::string root_name);
 

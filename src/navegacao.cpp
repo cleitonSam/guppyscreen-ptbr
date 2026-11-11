@@ -188,6 +188,7 @@ namespace {
       return;
     }
     fechar_numpad();
+    KUtils::fechar_pergunta();
     int i = (int)(intptr_t)lv_event_get_user_data(e);
     Navegacao::ir_para((Pagina)i);
   }
@@ -473,6 +474,7 @@ void Navegacao::abrir_acompanhamento() {
   }
   fechar_numpad();
   fechar_listas();
+  KUtils::fechar_pergunta();
   for (auto &cb : ganchos_acompanhamento) {
     if (cb) {
       cb();
@@ -526,20 +528,20 @@ void Navegacao::confirmar_parada() {
   lv_obj_set_style_text_align(titulo, LV_TEXT_ALIGN_CENTER, 0);
 
   lv_obj_t *corpo = Marca::criar_rotulo(janela_parada,
-    "Desliga na hora o aquecimento e os motores.\nA impressão é perdida e o firmware\nprecisa ser reiniciado.",
+    "Desliga na hora o aquecimento e os motores.\nA impressão é perdida. Para voltar,\ndesligue e ligue a impressora na chave.",
     Marca::f14(), Marca::GRAFITE);
   lv_obj_set_pos(corpo, 48, 126);
   lv_obj_set_width(corpo, 384);
   lv_obj_set_style_text_align(corpo, LV_TEXT_ALIGN_CENTER, 0);
 
   lv_obj_t *cancelar = Marca::criar_botao(janela_parada, "Cancelar", Marca::Tipo::NORMAL, Marca::f16());
-  lv_obj_set_pos(cancelar, 40, 196);
+  lv_obj_set_pos(cancelar, 248, 196);   // regra: Cancelar à direita
   lv_obj_set_size(cancelar, 192, 56);
   lv_obj_add_event_cb(cancelar, esconder_parada_cb, LV_EVENT_CLICKED, NULL);
 
   lv_obj_t *parar = lv_btn_create(janela_parada);
   lv_obj_set_style_pad_all(parar, 0, 0);
-  lv_obj_set_pos(parar, 248, 196);
+  lv_obj_set_pos(parar, 40, 196);
   lv_obj_set_size(parar, 192, 56);
   lv_obj_set_flex_flow(parar, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(parar, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);

@@ -508,7 +508,7 @@ void PrintStatusPanel::atualizar_progresso(int pct) {
 
 void PrintStatusPanel::atualizar_resumo() {
   std::string r = fmt::format("{}%", pct_atual < 0 ? 0 : pct_atual);
-  if (camadas_total > 0) {
+  if (camadas_total > 0 && camada_atual > 0) {
     r += fmt::format(" · camada {}/{}", camada_atual, camadas_total);
   }
   finetune_panel.set_resumo(r);
@@ -735,8 +735,12 @@ void PrintStatusPanel::handle_callback(lv_event_t *event) {
     }
 
   } else if (btn == pause_btn) {
-    ws.send_jsonrpc("printer.print.pause");
-    lv_obj_add_state(pause_btn, LV_STATE_DISABLED);
+    // um toque sem querer não pausa (a pausa deixa marca na peça)
+    KUtils::confirmar("Pausar a impressão?\nO bico sai de cima da peça e espera.",
+      [this]() {
+        ws.send_jsonrpc("printer.print.pause");
+        lv_obj_add_state(pause_btn, LV_STATE_DISABLED);
+      });
 
   } else if (btn == resume_btn) {
     ws.send_jsonrpc("printer.print.resume");
@@ -871,7 +875,8 @@ void PrintStatusPanel::update_layers(json &info) {
   }
   camada_atual = atual;
   camadas_total = total;
-  if (total > 0) {
+  // camada 0 = ainda preparando (aquecendo/medindo): não mostra "Camada 0/120"
+  if (total > 0 && atual > 0) {
     Marca::texto(camada_label, fmt::format("Camada #f5f4f0 {}/{}#", atual, total).c_str());
   } else {
     Marca::texto(camada_label, "");
@@ -986,6 +991,7 @@ void PrintStatusPanel::sim_setup_mock_data() {
   if (preparo != nullptr) {
     std::string f = preparo;
     mock["params"][0]["print_stats"]["filament_used"] = 0.0;
+    mock["params"][0]["print_stats"]["info"]["current_layer"] = 0;
     mock["params"][0]["print_stats"]["print_duration"] = 0.0;
     mock["params"][0]["virtual_sdcard"]["progress"] = 0.0;
     mock["params"][0]["heater_bed"] = {{"temperature", f == "mesa" ? 48 : 70}, {"target", 70}};

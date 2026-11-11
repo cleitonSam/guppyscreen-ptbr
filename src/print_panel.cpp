@@ -22,7 +22,7 @@
 namespace {
   // Barra de abas da página Arquivos: só filtra a lista (não é Navegacao::Aba).
   // MAPA ESTÁTICO: o LVGL guarda o ponteiro.
-  const char *mapa_abas[] = {"Local", "USB", "Histórico", ""};
+  const char *mapa_abas[] = {"Na impressora", "USB", "Histórico", ""};
 
   constexpr int POR_PAGINA = 3;
   constexpr lv_coord_t CARTAO_Y[POR_PAGINA] = {50, 122, 194};
@@ -208,7 +208,7 @@ PrintPanel::PrintPanel(KWebSocketClient &websocket, std::mutex &lock, PrintStatu
   // a página já é PRETO opaco: o conteúdo não desenha fundo
   lv_obj_set_style_bg_opa(files_cont, LV_OPA_TRANSP, 0);
 
-  // abas Local / USB / Histórico: (8,0) 336 x 44 + linha de 1 px em y = 44
+  // abas Na impressora / USB / Histórico: (8,0) 336 x 44 + linha de 1 px em y = 44
   tabs = Marca::criar_barra_abas(files_cont, mapa_abas, 8, 336);
   lv_obj_add_event_cb(tabs, &PrintPanel::_handle_tabs, LV_EVENT_VALUE_CHANGED, this);
 

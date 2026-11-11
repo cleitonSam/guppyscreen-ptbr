@@ -227,25 +227,58 @@ namespace KUtils {
     lv_timer_set_repeat_count(t, 1);
   }
 
-  void confirm_if_printing(const std::string &msg, const std::function<void()> &cb) {
-    if (!is_printing()) {
-      cb();
-      return;
-    }
+  // A pergunta aberta (Confirmar / Cancelar). Só uma por vez; trocar de
+  // página pela coluna fecha (como Cancelar), para ela não ficar por cima
+  // de outra página.
+  static lv_obj_t *pergunta_aberta = NULL;
 
+  void fechar_pergunta() {
+    if (pergunta_aberta != NULL) {
+      lv_obj_t *m = pergunta_aberta;
+      pergunta_aberta = NULL;
+      lv_msgbox_close(m);   // o LV_EVENT_DELETE apaga a função guardada
+    }
+  }
+
+  static void criar_pergunta(const std::string &msg, const std::function<void()> &cb) {
+    fechar_pergunta();
     auto *heap_cb = new std::function<void()>(cb);
     static const char *btns[] = {"Confirmar", "Cancelar", ""};
     lv_obj_t *mbox = lv_msgbox_create(NULL, NULL, msg.c_str(), btns, false);
     lv_obj_add_event_cb(mbox, [](lv_event_t *e) {
       lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(e));
       auto *fn = (std::function<void()> *)lv_event_get_user_data(e);
-      if (lv_msgbox_get_active_btn(obj) == 0 && fn != NULL) {
-        (*fn)();
+      bool sim = lv_msgbox_get_active_btn(obj) == 0;
+      // copia antes de fechar: fechar apaga a caixa e a função guardada
+      std::function<void()> acao = (sim && fn != NULL) ? *fn : std::function<void()>();
+      if (pergunta_aberta == obj) {
+        pergunta_aberta = NULL;
       }
-      delete fn;
       lv_msgbox_close(obj);
+      if (acao) {
+        acao();
+      }
     }, LV_EVENT_VALUE_CHANGED, heap_cb);
+    lv_obj_add_event_cb(mbox, [](lv_event_t *e) {
+      if (pergunta_aberta == lv_event_get_target(e)) {
+        pergunta_aberta = NULL;
+      }
+      delete (std::function<void()> *)lv_event_get_user_data(e);
+    }, LV_EVENT_DELETE, heap_cb);
     style_lock_mbox(mbox, 90);
+    pergunta_aberta = mbox;
+  }
+
+  void confirm_if_printing(const std::string &msg, const std::function<void()> &cb) {
+    if (!is_printing()) {
+      cb();
+      return;
+    }
+    criar_pergunta(msg, cb);
+  }
+
+  void confirmar(const std::string &msg, const std::function<void()> &cb) {
+    criar_pergunta(msg, cb);
   }
 
   bool is_running_local() {

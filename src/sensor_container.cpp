@@ -374,18 +374,24 @@ void SensorContainer::handle_edit(lv_event_t *e) {
       if (timer_envio != NULL) {
         lv_timer_pause(timer_envio);
       }
-      std::string cmd;
-      switch (type) {
-      case SensorType::Heater:
-        cmd = fmt::format("SET_HEATER_TEMPERATURE HEATER={} TARGET={}", id, v);
-        break;
-      case SensorType::TempFan:
-        cmd = fmt::format("SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN={} TARGET={}", id, v);
-        break;
-      default:
+      // mesmo limite do − / + (o máximo da impressora: bico 300, mesa 110)
+      int alvo = static_cast<int>(v);
+      int maximo = alvo_maximo();
+      if (alvo > maximo) {
+        alvo = maximo;
+        KUtils::notify_toast(fmt::format("O máximo é {}°C", maximo));
+      }
+      if (alvo < 0) {
+        alvo = 0;
+      }
+      std::string cmd = comando_alvo(alvo);
+      if (cmd.empty()) {
         return;
       }
-      ws.gcode_script(cmd);
+      // imprimindo: pergunta antes, igual ao − / +
+      KWebSocketClient *wsp = &ws;
+      KUtils::confirm_if_printing("A impressora está imprimindo.\nMudar a temperatura mesmo assim?",
+        [wsp, cmd]() { wsp->gcode_script(cmd); });
       });
     /* Pre-fill the numpad with the current target so the user can adjust
      * from the existing value instead of retyping from scratch. */

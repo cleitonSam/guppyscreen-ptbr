@@ -26,6 +26,8 @@ class ExtruderPanel : public NotifyConsumer {
   void enable_spoolman();
   void consume(json &j);
   void handle_callback(lv_event_t *e);
+  // Trocar/Extrudar/Retrair/Descarregar/Carregar (depois da pergunta)
+  void executar_acao(lv_obj_t *btn);
 
   // Highest of the selected temp and the current target, so a manually-set
   // hotter temperature is never lowered by an extrude/load/unload action.

@@ -39,6 +39,8 @@ Numpad::Numpad(lv_obj_t *parent)
   lv_textarea_set_one_line(input, true);
   lv_obj_set_style_text_font(input, Marca::f20(), 0);
   lv_obj_set_style_text_align(input, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(input, Marca::f20(), LV_PART_TEXTAREA_PLACEHOLDER);
+  lv_obj_set_style_text_align(input, LV_TEXT_ALIGN_CENTER, LV_PART_TEXTAREA_PLACEHOLDER);
 
   lv_obj_set_width(kb, LV_PCT(100));
   lv_obj_set_flex_grow(kb, 1);
@@ -130,14 +132,11 @@ void Numpad::handle_input(lv_event_t *e) {
 
 void Numpad::foreground_reset(int initial) {
   spdlog::trace("resetting foreground with initial {}", initial);
-  if (initial > 0) {
-    lv_textarea_set_text(input, fmt::format("{}", initial).c_str());
-    /* Place the cursor at the end so the next digit appends; selecting all
-     * would let a fresh number replace the value but feels surprising. */
-    lv_textarea_set_cursor_pos(input, LV_TEXTAREA_CURSOR_LAST);
-  } else {
-    lv_textarea_set_text(input, "");
-  }
+  // O valor atual aparece apagado (dica) e o campo começa vazio: o que for
+  // digitado substitui o número (antes "245" + "250" virava "245250").
+  // OK com o campo vazio fecha sem mudar nada.
+  lv_textarea_set_text(input, "");
+  lv_textarea_set_placeholder_text(input, fmt::format("{}", initial < 0 ? 0 : initial).c_str());
   field_changed_this_press = false;  // lv_textarea_set_text fires VALUE_CHANGED; clear it so it doesn't bleed into the first key press
   lv_obj_clear_flag(edit_cont, LV_OBJ_FLAG_HIDDEN);
   lv_obj_move_foreground(edit_cont);

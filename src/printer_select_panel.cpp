@@ -321,6 +321,16 @@ void PrinterSelectPanel::handle_input(lv_event_t *e) {
 }
 
 void PrinterSelectPanel::remove_printer(const std::string &n) {
+  // não deixa a tela sem impressora nem apaga a que está em uso
+  Config *cfg = Config::get_instance();
+  if (printers.size() <= 1) {
+    KUtils::notify_toast("É a única impressora: não dá para excluir.");
+    return;
+  }
+  if (cfg->get<std::string>("/default_printer") == n) {
+    KUtils::notify_toast("Esta é a impressora em uso. Troque para outra antes.");
+    return;
+  }
   const auto &el = printers.find(n);
   if (el != printers.end()) {
     printers.erase(el);

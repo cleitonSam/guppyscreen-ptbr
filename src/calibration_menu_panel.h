@@ -13,8 +13,12 @@
 
 #include <mutex>
 
-// Página Calibração (Proposta B, quadro 11): a 5ª página da coluna da
-// esquerda. Mostra as 6 calibrações numeradas, NESTA ORDEM, todas à vista
+// Página Calibração: duas abas.
+//  "Dia a dia" (11/11/2026): o que se usa de verdade - altura do bico
+//  automática (sensor de pressão, CALIBRAR_ALTURA_BICO), medir a barra
+//  (MEDIR_BARRA), chapa lisa/texturizada (CHAPA_*), malha da mesa e altura com
+//  papel. Os que mexem o bico pedem confirmação.
+//  "Completa": as 6 calibrações numeradas, NESTA ORDEM, todas à vista
 // (sem rolar), na mesma ordem de wiki/Calibration-Explained.md: Torção do
 // eixo X vem antes da malha de propósito (o Klipper aplica a correção da
 // torção em toda medição dali para a frente, então uma malha medida antes
@@ -55,10 +59,29 @@ class CalibrationMenuPanel {
   Cartao criar_cartao(int idx, const char *numero, const char *nome);
   void marcar_disponivel(Cartao &c, bool disponivel);
   void activate_row(lv_obj_t *row);
+  // aba Dia a dia
+  struct Atalho {
+    lv_obj_t *cartao;
+    lv_obj_t *titulo;
+    lv_obj_t *detalhe;
+  };
+  Atalho criar_atalho(int idx, const char *titulo, const char *detalhe);
+  void mostrar_aba(uint16_t aba);
+  void atualizar_dia_a_dia();   // altura atual e chapa em uso (do State)
+  static void _aba_cb(lv_event_t *e);
 
   KWebSocketClient &ws;
 
   lv_obj_t *panel_cont;
+  lv_obj_t *abas;
+  lv_obj_t *dia_cont;        // aba Dia a dia
+  lv_obj_t *completa_cont;   // aba Completa (as 6 numeradas)
+  Atalho altura_auto;
+  Atalho medir_barra;
+  Atalho chapa_lisa;
+  Atalho chapa_textura;
+  Atalho malha_atalho;
+  Atalho papel_atalho;
 
   // numeradas, na ordem recomendada
   Cartao axis_twist_row;

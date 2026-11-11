@@ -170,7 +170,7 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   lv_obj_set_style_text_font(input, Marca::f16(), LV_PART_MAIN);
   lv_obj_set_style_pad_ver(input, 12, LV_PART_MAIN);   // (44 - 2 de borda - 18 da linha) / 2
   lv_obj_set_height(input, BAR_H);
-  lv_textarea_set_placeholder_text(input, "digite o G-code...");
+  lv_textarea_set_placeholder_text(input, "digite um comando (ex.: G28)...");
   lv_obj_add_event_cb(input, &ConsolePanel::_handle_input_kb, LV_EVENT_ALL, this);
 
   lv_obj_t *clear_btn = lv_btn_create(input_bar);

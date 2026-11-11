@@ -56,8 +56,8 @@ FineTunePanel::FineTunePanel(KWebSocketClient &websocket_client, std::mutex &l)
   titulo = cab.titulo;
   resumo = cab.direita;
 
-  // "Objetos": no lugar do resumo quando a impressão tem objetos etiquetados
-  objetos_btn = Marca::criar_botao(panel_cont, "Objetos", Marca::Tipo::FANTASMA);
+  // "Pular peça" (abre a lista de Objetos): no lugar do resumo quando a impressão tem objetos etiquetados
+  objetos_btn = Marca::criar_botao(panel_cont, "Pular peça", Marca::Tipo::FANTASMA);
   lv_obj_set_pos(objetos_btn, 320, 0);
   lv_obj_set_size(objetos_btn, 96, Marca::TOQUE);
   lv_obj_add_event_cb(objetos_btn, &FineTunePanel::_handle_callback, LV_EVENT_CLICKED, this);

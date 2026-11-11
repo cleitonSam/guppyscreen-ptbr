@@ -107,6 +107,7 @@ SliderContainer::SliderContainer(lv_obj_t *parent,
   lv_obj_set_width(slider, LV_PCT(100));
   // trilho PRETO_3, indicador LIMAO e bolinha PAPEL vêm do tema da marca
   lv_obj_set_style_text_font(slider_value, Marca::f12(), 0);
+  lv_label_set_text(slider_value, "");   // o texto padrão do LVGL ("Text") aparecia cortado como "xt"
   lv_obj_set_style_text_color(slider_value, lv_color_hex(Marca::GRAFITE), 0);
   lv_obj_align_to(slider_value, slider, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
 

@@ -107,13 +107,13 @@ ExtruderPanel::ExtruderPanel(KWebSocketClient &websocket_client,
   // precisa desenhar fundo nenhum
   lv_obj_set_style_bg_opa(panel_cont, LV_OPA_TRANSP, 0);
 
-  // ---- cartão "Temp. padrão" 408 x 76 em (8,7) -----------------------------
+  // ---- cartão "Temperatura" 408 x 76 em (8,7) -----------------------------
   temp_cartao = Marca::criar_cartao(panel_cont, 8, 7, 408, 76);
 
   lv_obj_t *ico = Marca::criar_icone(temp_cartao, &extruder, 24, Marca::GRAFITE);
   lv_obj_set_pos(ico, 12, 12);
 
-  lv_obj_t *nome = Marca::criar_rotulo(temp_cartao, "Temp. padrão", Marca::f14(), Marca::PAPEL);
+  lv_obj_t *nome = Marca::criar_rotulo(temp_cartao, "Temperatura", Marca::f14(), Marca::PAPEL);
   lv_obj_set_pos(nome, 42, 15);
   lv_obj_set_width(nome, 140);
   lv_label_set_long_mode(nome, LV_LABEL_LONG_DOT);
@@ -180,12 +180,12 @@ ExtruderPanel::ExtruderPanel(KWebSocketClient &websocket_client,
   }
 
   // ---- Extrudar / Retrair 100 x 44 e comprimento 192 x 44 em y = 175 -------
-  extrude_obj = Marca::criar_botao(panel_cont, LV_SYMBOL_DOWN " Extrudar", Marca::Tipo::NORMAL);
+  extrude_obj = Marca::criar_botao(panel_cont, LV_SYMBOL_DOWN " Empurrar", Marca::Tipo::NORMAL);
   lv_obj_set_pos(extrude_obj, 8, 175);
   lv_obj_set_size(extrude_obj, 100, 44);
   lv_obj_add_event_cb(extrude_obj, &ExtruderPanel::_handle_callback, LV_EVENT_CLICKED, this);
 
-  retract_obj = Marca::criar_botao(panel_cont, LV_SYMBOL_UP " Retrair", Marca::Tipo::NORMAL);
+  retract_obj = Marca::criar_botao(panel_cont, LV_SYMBOL_UP " Puxar", Marca::Tipo::NORMAL);
   lv_obj_set_pos(retract_obj, 116, 175);
   lv_obj_set_size(retract_obj, 100, 44);
   lv_obj_add_event_cb(retract_obj, &ExtruderPanel::_handle_callback, LV_EVENT_CLICKED, this);
@@ -199,8 +199,8 @@ ExtruderPanel::ExtruderPanel(KWebSocketClient &websocket_client,
   acao_carregar    = { load_btn.get_container(),   load_btn.get_label(),   "Carregar",    &load_btn };
   acao_descarregar = { unload_btn.get_container(), unload_btn.get_label(), "Descarregar", &unload_btn };
   acao_trocar      = { troca_btn.get_container(),  troca_btn.get_label(),  "Trocar",      &troca_btn };
-  acao_extrudar    = { extrude_obj, lv_obj_get_child(extrude_obj, 0), LV_SYMBOL_DOWN " Extrudar", NULL };
-  acao_retrair     = { retract_obj, lv_obj_get_child(retract_obj, 0), LV_SYMBOL_UP " Retrair",    NULL };
+  acao_extrudar    = { extrude_obj, lv_obj_get_child(extrude_obj, 0), LV_SYMBOL_DOWN " Empurrar", NULL };
+  acao_retrair     = { retract_obj, lv_obj_get_child(retract_obj, 0), LV_SYMBOL_UP " Puxar",       NULL };
 
   ler_padrao();
   mostrar_temp();
@@ -1021,6 +1021,29 @@ void ExtruderPanel::handle_callback(lv_event_t *e) {
     return;
   }
 
+  // Bico frio: avisa antes de aquecer (um toque sem querer não liga o bico).
+  // Com o bico já quente a ação roda direto.
+  bool aquece = btn == acao_trocar.obj || btn == acao_extrudar.obj || btn == acao_retrair.obj ||
+                btn == acao_descarregar.obj || btn == acao_carregar.obj;
+  if (aquece && troca_etapa < 0 && current_temp + HEAT_TOLERANCE < effective_temp()) {
+    KUtils::confirmar(fmt::format("Vai aquecer o bico a {}°C.\nContinuar?", effective_temp()),
+      [this, btn]() {
+        // a situação pode ter mudado enquanto a janela estava aberta
+        if (ocupado() || troca_etapa >= 0) {
+          return;
+        }
+        if (travado_imprimindo()) {
+          KUtils::notify_locked();
+          return;
+        }
+        executar_acao(btn);
+      });
+    return;
+  }
+  executar_acao(btn);
+}
+
+void ExtruderPanel::executar_acao(lv_obj_t *btn) {
   if (btn == acao_trocar.obj) {
     troca_iniciar();
     return;
@@ -1037,7 +1060,7 @@ void ExtruderPanel::handle_callback(lv_event_t *e) {
     int feed = EXTRUDE_SPEED_MM_S * 60;
     botao_ativo = retract ? &acao_retrair : &acao_extrudar;
     run_when_hot(retract ? PA_RETRACT : PA_EXTRUDE,
-      retract ? "Retraindo..." : "Extrudando...",
+      retract ? "Puxando..." : "Empurrando...",
       fmt::format("M83\nG1 E{}{} F{}", retract ? "-" : "", len, feed));
     return;
   }
@@ -1206,7 +1229,7 @@ void ExtruderPanel::sim_show_busy() {
   // disabled, caption visible. We don't send_action() (no websocket; the safety
   // timer would also fire ACTION_TIMEOUT_MS later) - just stage the pending
   // state so the heat-up caption can be visually verified.
-  action_name = "Extrudando...";
+  action_name = "Empurrando...";
   botao_ativo = &acao_extrudar;
   pending_kind = PA_EXTRUDE;
   pending_want = 220;

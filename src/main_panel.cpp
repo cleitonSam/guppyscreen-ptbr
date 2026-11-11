@@ -8,6 +8,7 @@
 #include "spdlog/spdlog.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -539,7 +540,10 @@ void MainPanel::criar_temperatura() {
 
 void MainPanel::preaquecer(int bico, int mesa) {
   // roda dentro de evento do LVGL (lv_lock já preso): não prende de novo
-  KUtils::confirm_if_printing("A impressora está imprimindo.\nMudar as temperaturas mesmo assim?",
+  const char *aviso = (bico == 0 && mesa == 0)
+    ? "A impressora está imprimindo.\nEsfriar agora desliga o bico e a mesa\ne a impressão é perdida. Esfriar?"
+    : "A impressora está imprimindo.\nMudar as temperaturas mesmo assim?";
+  KUtils::confirm_if_printing(aviso,
     [this, bico, mesa]() {
       ws.gcode_script(fmt::format("SET_HEATER_TEMPERATURE HEATER=extruder TARGET={}", bico));
       ws.gcode_script(fmt::format("SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET={}", mesa));
@@ -988,8 +992,12 @@ void MainPanel::sim_setup_mock_data() {
     console_panel.handle_macro_response(resp);
   }
 
-  /* Drive the print status panel so its widgets render with sensible values. */
-  print_status_panel.sim_setup_mock_data();
+  /* Drive the print status panel so its widgets render with sensible values.
+   * GS_PARADA=1: impressora parada (sem impressão falsa), para ver as telas
+   * que só funcionam sem impressão. */
+  if (std::getenv("GS_PARADA") == nullptr) {
+    print_status_panel.sim_setup_mock_data();
+  }
 
   /* Mock temperatures: 300 ms timer (simulator only) moving the card values. */
   lv_timer_t *t = lv_timer_create([](lv_timer_t *timer) {

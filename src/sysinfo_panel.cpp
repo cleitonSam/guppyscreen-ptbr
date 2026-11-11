@@ -668,7 +668,7 @@ void SysInfoPanel::show_reset_options() {
 
 void SysInfoPanel::show_reset_confirm(const char *title, const char *detail,
                                        const std::function<void()> &cb) {
-  static const char *btns[] = {"Cancelar", "Confirmar", ""};
+  static const char *btns[] = {"Confirmar", "Cancelar", ""};
 
   lv_obj_t *mbox = lv_msgbox_create(NULL, NULL,
     fmt::format("{}\n\n{}", title, detail).c_str(), btns, false);
@@ -680,7 +680,7 @@ void SysInfoPanel::show_reset_confirm(const char *title, const char *detail,
   lv_obj_set_width(msg, LV_PCT(100));
   lv_obj_center(msg);
 
-  // sem LV_BTNMATRIX_CTRL_CHECKED (seria limão); "Confirmar" em vermelho
+  // sem LV_BTNMATRIX_CTRL_CHECKED (seria limão); "Confirmar" (esquerda) em vermelho
   lv_obj_t *btnm = lv_msgbox_get_btns(mbox);
   lv_obj_add_flag(btnm, LV_OBJ_FLAG_FLOATING);
   lv_obj_align(btnm, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -689,7 +689,7 @@ void SysInfoPanel::show_reset_confirm(const char *title, const char *detail,
 
   lv_obj_add_event_cb(btnm, [](lv_event_t *e) {
     lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
-    if (dsc->part == LV_PART_ITEMS && dsc->id == 1) {
+    if (dsc->part == LV_PART_ITEMS && dsc->id == 0) {
       dsc->rect_dsc->bg_color = lv_color_hex(Marca::ERRO);
       dsc->rect_dsc->bg_opa   = LV_OPA_COVER;
       dsc->label_dsc->color   = lv_color_hex(Marca::PAPEL);
@@ -700,7 +700,7 @@ void SysInfoPanel::show_reset_confirm(const char *title, const char *detail,
   lv_obj_add_event_cb(mbox, [](lv_event_t *e) {
     lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(e));
     auto *pcb = (std::function<void()> *)e->user_data;
-    if (lv_msgbox_get_active_btn(obj) == 1) {
+    if (lv_msgbox_get_active_btn(obj) == 0) {
       (*pcb)();
     }
     delete pcb;

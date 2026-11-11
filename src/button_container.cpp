@@ -125,17 +125,18 @@ void ButtonContainer::handle_prompt() {
     return;
   }
 
-  // Safe action on the left, destructive on the right (red).
-  static const char *btns[] = {"Cancelar", "Confirmar", ""};
+  // Regra de todas as janelas: a ação à esquerda (aqui em vermelho),
+  // Cancelar à direita.
+  static const char *btns[] = {"Confirmar", "Cancelar", ""};
 
   lv_obj_t *mbox1 = lv_msgbox_create(NULL, NULL, prompt_text.c_str(), btns, false);
   KUtils::style_lock_mbox(mbox1, 90);
   lv_obj_t *btnm = lv_msgbox_get_btns(mbox1);
 
-  // Draw the right (Confirm) button in red.
+  // Confirmar (esquerda) em vermelho.
   lv_obj_add_event_cb(btnm, [](lv_event_t *e) {
     lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
-    if (dsc->part == LV_PART_ITEMS && dsc->id == 1 && dsc->rect_dsc != NULL && dsc->label_dsc != NULL) {
+    if (dsc->part == LV_PART_ITEMS && dsc->id == 0 && dsc->rect_dsc != NULL && dsc->label_dsc != NULL) {
       dsc->rect_dsc->bg_color = lv_color_hex(Marca::ERRO);
       dsc->rect_dsc->bg_opa   = LV_OPA_COVER;
       dsc->label_dsc->color   = lv_color_hex(Marca::PAPEL);
@@ -145,7 +146,7 @@ void ButtonContainer::handle_prompt() {
   lv_obj_add_event_cb(mbox1, [](lv_event_t *e) {
     lv_obj_t *obj = lv_obj_get_parent(lv_event_get_target(e));
     uint32_t clicked_btn = lv_msgbox_get_active_btn(obj);
-    if (clicked_btn == 1) {
+    if (clicked_btn == 0) {
       ((ButtonContainer *)e->user_data)->run_callback();
     }
     lv_msgbox_close(obj);

@@ -142,7 +142,7 @@ void NotificationManager::process(json &st) {
         AvisosPt::Aviso a = AvisosPt::traduzir(msg);
         // parado é sempre grave, mesmo se o motivo for desconhecido
         push(a.nivel == AvisosPt::IGNORAR || a.texto.empty()
-               ? std::string("A impressora parou. Toque em Reiniciar firmware.") : a.texto,
+               ? std::string("A impressora parou. Desligue e ligue a impressora na chave.") : a.texto,
              ERROR);
       }
       last_webhooks_state = ns;
