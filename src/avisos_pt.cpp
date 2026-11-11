@@ -148,7 +148,8 @@ Aviso traduzir(const std::string &linha) {
   // paradas da trava da mesa e da troca de chapa (melhorias.cfg): o dono
   // precisa ler, entao ficam na tela ate tocar
   if (comeca(t, "Medicao da mesa errada") || comeca(t, "Sem filamento no sensor") ||
-      comeca(t, "A barra do bico esta torta") || comeca(t, "Troque de chapa")) {
+      comeca(t, "A barra do bico esta torta") || comeca(t, "Troque de chapa") ||
+      comeca(t, "Placa da impressora quente") || comeca(t, "A medicao da altura do bico parou")) {
     a.nivel = GRAVE;
     return a;
   }

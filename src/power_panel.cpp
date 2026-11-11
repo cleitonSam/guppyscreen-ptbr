@@ -122,9 +122,14 @@ void PowerPanel::refresh_recovery() {
   } else if (recovery_relpath.empty()) {
     lv_label_set_text(recovery_status, "Nenhuma impressão interrompida para retomar.");
   } else {
+    // 11/11/2026: o Retomar da Creality nunca foi testado nesta impressora
+    // (root + OpenKE + macros próprias). Sem ponto de retomada válido ele
+    // começa o arquivo do zero: o início zera o Z e mede a mesa com a peça
+    // em cima (o bico bate na peça). Desligado até um teste de verdade.
     lv_label_set_text(recovery_status,
-      ("Última impressão: " + display + "\nRetomar de onde parou quando faltou energia?").c_str());
-    show_actions = true;
+      ("Última impressão: " + display + "\nRetomar depois de faltar energia está desligado: "
+       "pode recomeçar do zero em cima da peça. Tire a peça e mande imprimir de novo.").c_str());
+    show_actions = false;
   }
 
   if (show_actions) {
@@ -246,7 +251,7 @@ void PowerPanel::handle_callback(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     lv_obj_t *btn = lv_event_get_current_target(e);
     if (btn == recovery_resume_btn) {
-      if (!recovery_relpath.empty()) {
+      if (false && !recovery_relpath.empty()) {   // desligado (ver refresh_recovery)
         // Creality's virtual_sdcard restores the saved breakpoint (reheat + position)
         // when ISCONTINUEPRINT=1; if no valid breakpoint exists it safely starts the
         // file normally rather than crashing.
