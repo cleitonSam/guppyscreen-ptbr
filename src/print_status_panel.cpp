@@ -283,8 +283,9 @@ void PrintStatusPanel::reset() {
   heater_bed_target = -1;
   fase_atual.clear();
 
-  // impressão nova: os botões voltam a responder
-  lv_obj_clear_state(pause_btn, LV_STATE_DISABLED);
+  // impressão nova: os botões voltam a responder (Pausar só depois do preparo)
+  if (preparo_visivel) lv_obj_add_state(pause_btn, LV_STATE_DISABLED);
+  else lv_obj_clear_state(pause_btn, LV_STATE_DISABLED);
   lv_obj_clear_state(resume_btn, LV_STATE_DISABLED);
 
   // solta a imagem anterior e mostra o ícone até a nova chegar
@@ -390,6 +391,10 @@ void PrintStatusPanel::atualizar_preparo() {
                            decorrido_label, total_label};
   if (preparando != preparo_visivel) {
     preparo_visivel = preparando;
+    // no preparo (aquecer, medir a mesa, purgar) só Cancelar: a pausa ali não
+    // tem como voltar direito (a macro PAUSE também recusa sem origem)
+    if (preparando) lv_obj_add_state(pause_btn, LV_STATE_DISABLED);
+    else lv_obj_clear_state(pause_btn, LV_STATE_DISABLED);
     for (lv_obj_t *o : progresso) {
       if (preparando) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
       else lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
@@ -698,7 +703,8 @@ void PrintStatusPanel::consume(json &j) {
       lv_obj_add_state(pause_btn, LV_STATE_DISABLED);
       lv_obj_add_flag(pause_btn, LV_OBJ_FLAG_HIDDEN);
     } else {
-      lv_obj_clear_state(pause_btn, LV_STATE_DISABLED);
+      if (preparo_visivel) lv_obj_add_state(pause_btn, LV_STATE_DISABLED);
+      else lv_obj_clear_state(pause_btn, LV_STATE_DISABLED);
       lv_obj_clear_flag(pause_btn, LV_OBJ_FLAG_HIDDEN);
       lv_obj_add_state(resume_btn, LV_STATE_DISABLED);
       lv_obj_add_flag(resume_btn, LV_OBJ_FLAG_HIDDEN);

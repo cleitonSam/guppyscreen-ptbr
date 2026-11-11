@@ -35,6 +35,7 @@ namespace Marca {
   // ---- Preaquecer (Temperatura e Início) -------------------------------------
   // Tabela de filamentos da KE (10/11/2026, docs/filamentos-ke.md do repo
   // impressora-3d): PETG do dono 240-250 / mesa 70; PLA 220 / mesa 55.
+  // (o preaquecer da tela usa as macros PREAQUECER_*: mesa no ponto, bico a 150)
   constexpr int PETG_BICO = 245, PETG_MESA = 70;
   constexpr int PLA_BICO  = 220, PLA_MESA  = 55;
 

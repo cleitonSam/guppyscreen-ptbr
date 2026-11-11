@@ -69,6 +69,7 @@ class MainPanel : public NotifyConsumer {
   void mostrar_ultima_impressao(const json *job);   // com lv_lock preso
   void carregar_miniatura(const std::string &arquivo);
   void preaquecer(int bico, int mesa);
+  void preaquecer_filamento(const char *macro);
 
   KWebSocketClient &ws;
   HomingPanel homing_panel;

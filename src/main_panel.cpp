@@ -451,7 +451,7 @@ void MainPanel::criar_inicio() {
   lv_obj_t *pre_t = Marca::criar_rotulo(pre, "Preaquecer", Marca::f14(), Marca::PAPEL);
   lv_obj_set_pos(pre_t, 12, 12);
   lv_obj_t *pre_s = Marca::criar_rotulo(pre,
-    fmt::format("PETG · {}/{}°C", Marca::PETG_BICO, Marca::PETG_MESA).c_str(), Marca::f12(), Marca::GRAFITE);
+    "PETG ou PLA", Marca::f12(), Marca::GRAFITE);
   lv_obj_set_pos(pre_s, 12, 34);
   lv_obj_set_width(pre_s, 104);
   lv_label_set_long_mode(pre_s, LV_LABEL_LONG_DOT);
@@ -488,12 +488,14 @@ void MainPanel::criar_temperatura() {
   lv_label_set_text(petg_t, "PETG");
   lv_obj_set_style_text_font(petg_t, Marca::f14(), 0);
   lv_obj_t *petg_s = lv_label_create(petg);
-  lv_label_set_text(petg_s, fmt::format("{}°C · {}°C", Marca::PETG_BICO, Marca::PETG_MESA).c_str());
+  // mesa no ponto e bico morno (150): o PETG não escorre esperando; o bico
+  // sobe para a temperatura da impressão sozinho no início
+  lv_label_set_text(petg_s, fmt::format("Mesa {} · bico 150", Marca::PETG_MESA).c_str());
   lv_obj_set_style_text_font(petg_s, Marca::f12(), 0);
   Marca::estilo_botao(petg, Marca::Tipo::DESTAQUE);   // os dois textos herdam o PRETO
   lv_obj_add_event_cb(petg, [](lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-      ((MainPanel *)lv_event_get_user_data(e))->preaquecer(Marca::PETG_BICO, Marca::PETG_MESA);
+      ((MainPanel *)lv_event_get_user_data(e))->preaquecer_filamento("PREAQUECER_PETG");
     }
   }, LV_EVENT_CLICKED, this);
 
@@ -509,12 +511,12 @@ void MainPanel::criar_temperatura() {
   lv_label_set_text(pla_t, "PLA");
   lv_obj_set_style_text_font(pla_t, Marca::f14(), 0);
   lv_obj_t *pla_s = Marca::criar_rotulo(pla,
-    fmt::format("{}°C · {}°C", Marca::PLA_BICO, Marca::PLA_MESA).c_str(), Marca::f12(), Marca::GRAFITE);
+    fmt::format("Mesa {} · bico 150", Marca::PLA_MESA).c_str(), Marca::f12(), Marca::GRAFITE);
   LV_UNUSED(pla_s);
   Marca::estilo_botao(pla, Marca::Tipo::NORMAL);
   lv_obj_add_event_cb(pla, [](lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-      ((MainPanel *)lv_event_get_user_data(e))->preaquecer(Marca::PLA_BICO, Marca::PLA_MESA);
+      ((MainPanel *)lv_event_get_user_data(e))->preaquecer_filamento("PREAQUECER_PLA");
     }
   }, LV_EVENT_CLICKED, this);
 
@@ -536,6 +538,16 @@ void MainPanel::criar_temperatura() {
       ((MainPanel *)lv_event_get_user_data(e))->preaquecer(0, 0);
     }
   }, LV_EVENT_CLICKED, this);
+}
+
+void MainPanel::preaquecer_filamento(const char *macro) {
+  // PREAQUECER_PETG / PREAQUECER_PLA (painel_pt.cfg): mesa no ponto e bico a
+  // 150. Durante a impressão não faz sentido (e a macro recusa).
+  if (KUtils::is_printing()) {
+    KUtils::notify_locked();
+    return;
+  }
+  ws.gcode_script(macro);
 }
 
 void MainPanel::preaquecer(int bico, int mesa) {
