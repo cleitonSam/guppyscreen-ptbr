@@ -104,8 +104,8 @@ void PrinterTunePanel::abrir_retracao() {
     "/printer_state/firmware_retraction"_json_pointer);
   if (fr.is_null()) {
     KUtils::notify_toast(
-      "A retração pelo firmware não está ativada.\n"
-      "Adicione [firmware_retraction] ao printer.cfg.",
+      "A retração pelo firmware está desligada nesta impressora.\n"
+      "A retração vem do fatiador (Orca).",
       4000);
     return;
   }

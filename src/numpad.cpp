@@ -37,6 +37,7 @@ Numpad::Numpad(lv_obj_t *parent)
 
   lv_obj_set_size(input, LV_PCT(100), LV_SIZE_CONTENT);
   lv_textarea_set_one_line(input, true);
+  lv_textarea_set_max_length(input, 4);   // 0-9999: nada de número gigante
   lv_obj_set_style_text_font(input, Marca::f20(), 0);
   lv_obj_set_style_text_align(input, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(input, Marca::f20(), LV_PART_TEXTAREA_PLACEHOLDER);

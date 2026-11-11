@@ -94,6 +94,8 @@ CalibrationMenuPanel::CalibrationMenuPanel(KWebSocketClient &websocket_client, s
 {
   // Vira o conteúdo da página Calibração (424 x 272).
   Navegacao::colocar(panel_cont, Pagina::CALIBRACAO);
+  // ao abrir a página: chapa em uso e altura do bico atualizadas
+  Navegacao::ao_mostrar(Pagina::CALIBRACAO, [this]() { atualizar_dia_a_dia(); });
   // a página já é PRETO opaco: o contêiner fica transparente (não pinta duas vezes)
   lv_obj_set_style_bg_opa(panel_cont, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(panel_cont, LV_OBJ_FLAG_CLICKABLE);
@@ -114,7 +116,7 @@ CalibrationMenuPanel::CalibrationMenuPanel(KWebSocketClient &websocket_client, s
   chapa_lisa    = criar_atalho(2, "Chapa lisa", "Toque ao colocar esta chapa");
   chapa_textura = criar_atalho(3, "Chapa texturizada", "Toque ao colocar esta chapa");
   malha_atalho  = criar_atalho(4, "Malha da mesa", "Ver e medir a mesa");
-  papel_atalho  = criar_atalho(5, "Altura com papel", "Ajuste manual, passo a passo");
+  papel_atalho  = criar_atalho(5, "Altura com papel", "Ajuste à mão, passo a passo");
 
   // ---- Completa ----
   lv_obj_t *ordem = Marca::criar_rotulo(completa_cont, "Faça nesta ordem: uma vez e depois de mexer na mecânica",
@@ -155,9 +157,9 @@ void CalibrationMenuPanel::mostrar_aba(uint16_t aba) {
 
 void CalibrationMenuPanel::atualizar_dia_a_dia() {
   State *s = State::get_instance();
-  auto z = s->get_data("/printer_state/probe/z_offset"_json_pointer);
+  auto z = s->get_data("/printer_state/configfile/settings/bltouch/z_offset"_json_pointer);
   if (z.is_number()) {
-    Marca::texto(altura_auto.detalhe, fmt::format("Automática · agora {:.3f} mm", z.template get<double>()).c_str());
+    Marca::texto(altura_auto.detalhe, fmt::format("Sensor · agora {:.3f} mm", z.template get<double>()).c_str());
   }
   auto ch = s->get_data("/printer_state/save_variables/variables/chapa_atual"_json_pointer);
   int chapa = ch.is_number() ? ch.template get<int>() : -1;
@@ -229,8 +231,8 @@ void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
   if (row == altura_auto.cartao) {
     if (KUtils::is_printing()) { KUtils::notify_locked(); return; }
     KUtils::confirmar(
-      "Medir a altura do bico 3 vezes com o sensor de pressão?\n"
-      "O bico esquenta e encosta de leve na mesa. Deixe a mesa vazia.",
+      "Medir a altura do bico (3 vezes)?\n"
+      "O bico esquenta e encosta de leve\nna mesa. Deixe a mesa vazia.",
       [this]() {
         ws.gcode_script("CALIBRAR_ALTURA_BICO");
         KUtils::notify_toast("Medindo a altura do bico (uns 4 min). No fim o Klipper reinicia.", 5000);
@@ -240,8 +242,8 @@ void CalibrationMenuPanel::activate_row(lv_obj_t *row) {
   if (row == medir_barra.cartao) {
     if (KUtils::is_printing()) { KUtils::notify_locked(); return; }
     KUtils::confirmar(
-      "Medir a barra do bico (esquerda x direita) com o sensor?\n"
-      "Os eixos se movem. Deixe a mesa vazia e as mãos longe.",
+      "Medir a barra do bico?\n"
+      "Os eixos se movem. Deixe a mesa\nvazia e as mãos longe.",
       [this]() {
         ws.gcode_script("MEDIR_BARRA");
         KUtils::notify_toast("Medindo a barra... o resultado aparece aqui.", 4000);

@@ -327,7 +327,8 @@ void PrinterSelectPanel::remove_printer(const std::string &n) {
     KUtils::notify_toast("É a única impressora: não dá para excluir.");
     return;
   }
-  if (cfg->get<std::string>("/default_printer") == n) {
+  auto padrao = cfg->get_json("/default_printer");
+  if (padrao.is_string() && padrao.template get<std::string>() == n) {
     KUtils::notify_toast("Esta é a impressora em uso. Troque para outra antes.");
     return;
   }

@@ -73,7 +73,7 @@ void Config::init(std::string config_path, const std::string thumbdir) {
         {"thumbnail_path", thumbdir},
         {"wpa_supplicant", "/var/run/wpa_supplicant"},
         {"display_sleep_sec", 600},
-        {"default_extruder_temp", 240}
+        {"default_extruder_temp", 250}
 #ifndef OS_ANDROID
         , {"default_printer", "k1"},
         {"printers", {{"k1", {
@@ -183,7 +183,17 @@ void Config::init(std::string config_path, const std::string thumbdir) {
 
   auto &default_ext_temp = data["/default_extruder_temp"_json_pointer];
   if (default_ext_temp.is_null()) {
-    data["/default_extruder_temp"_json_pointer] = 240;
+    data["/default_extruder_temp"_json_pointer] = 250;
+  }
+  // uma vez: o padrão antigo (240) passa a 250, igual às macros de
+  // carregar/descarregar (PETG 240-250). Quem escolheu outro valor fica com ele.
+  auto &temp250 = data["/default_extruder_temp_250_applied"_json_pointer];
+  if (temp250.is_null()) {
+    auto &t = data["/default_extruder_temp"_json_pointer];
+    if (t.is_number() && t.template get<int>() == 240) {
+      t = 250;
+    }
+    data["/default_extruder_temp_250_applied"_json_pointer] = true;
   }
 
   auto &invert_y_applied = data["/invert_y_ke_default_applied"_json_pointer];

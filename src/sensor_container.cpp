@@ -375,20 +375,27 @@ void SensorContainer::handle_edit(lv_event_t *e) {
         lv_timer_pause(timer_envio);
       }
       // mesmo limite do − / + (o máximo da impressora: bico 300, mesa 110)
-      int alvo = static_cast<int>(v);
       int maximo = alvo_maximo();
-      if (alvo > maximo) {
-        alvo = maximo;
+      if (v > maximo) {
+        v = maximo;
         KUtils::notify_toast(fmt::format("O máximo é {}°C", maximo));
       }
-      if (alvo < 0) {
-        alvo = 0;
+      if (v < 0) {
+        v = 0;
       }
+      int alvo = static_cast<int>(v);
       std::string cmd = comando_alvo(alvo);
       if (cmd.empty()) {
         return;
       }
-      // imprimindo: pergunta antes, igual ao − / +
+      if (!KUtils::is_printing()) {
+        ws.gcode_script(cmd);
+        // o Moonraker só avisa quando o alvo muda: mostra já o número certo
+        update_target(alvo);
+        return;
+      }
+      // imprimindo: volta ao alvo atual e pergunta antes, igual ao − / +
+      mostrar_alvo(target >= 0 ? target : 0);
       KWebSocketClient *wsp = &ws;
       KUtils::confirm_if_printing("A impressora está imprimindo.\nMudar a temperatura mesmo assim?",
         [wsp, cmd]() { wsp->gcode_script(cmd); });

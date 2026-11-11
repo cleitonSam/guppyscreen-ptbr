@@ -257,12 +257,16 @@ void MacroItem::handle_send_macro(lv_event_t *e) {
     std::string pergunta = KUtils::is_printing()
       ? fmt::format("A impressora está imprimindo.\nExecutar {} mesmo assim?", mname)
       : fmt::format("Executar {}?", mname);
+    // a pergunta guarda só o ws e uma cópia do on_play: a lista de macros é
+    // refeita quando o Klipper reinicia e este item pode já não existir
+    KWebSocketClient *wsp = &ws;
+    auto ir_console = on_play;
     KUtils::confirmar(pergunta,
-      [this, command]() {
-        ws.gcode_script(command);
+      [wsp, command, ir_console]() {
+        wsp->gcode_script(command);
         // jump to the console so the macro's output/execution is visible
-        if (on_play) {
-          on_play();
+        if (ir_console) {
+          ir_console();
         }
       });
   }

@@ -33,6 +33,7 @@ class FilamentRunoutPanel : public NotifyConsumer {
 
   void consume(json &j);
   void handle_mbox(lv_event_t *e);
+  void cancelar_impressao();
   static void _mbox_cb(lv_event_t *e) { ((FilamentRunoutPanel*)e->user_data)->handle_mbox(e); }
   // Pinta os botões da caixa na marca (Continuar limão, Cancelar vermelho).
   static void _draw_btn_cb(lv_event_t *e);

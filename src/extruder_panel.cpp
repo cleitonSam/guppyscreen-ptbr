@@ -38,9 +38,11 @@ static const int LOAD_TOTAL_MM  = LOAD_FAST_MM + LOAD_SLOW_MM;  // 130
 
 // Temperaturas do − / + (os mesmos valores do antigo seletor "Temperatura do
 // bico"; o padrão continua vindo de /default_extruder_temp).
-static const int TEMPS[] = {180, 200, 220, 240, 260, 280, 300};
+// 230-250 de 5 em 5: o PETG do dono é 240-250 (carregar/descarregar a 250,
+// igual às macros)
+static const int TEMPS[] = {180, 200, 220, 230, 240, 245, 250, 260, 280, 300};
 static const int N_TEMPS = sizeof(TEMPS) / sizeof(TEMPS[0]);
-static const int TEMP_IDX_PADRAO = 3;  // 240
+static const int TEMP_IDX_PADRAO = 6;  // 250
 
 // Extrudar / Retrair: velocidade padrão de antes (5 mm/s, o índice 2 do antigo
 // seletor), agora sem seletor na tela.

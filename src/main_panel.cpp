@@ -980,7 +980,7 @@ void MainPanel::sim_setup_mock_data() {
       "QUERY_ENDSTOPS","QUERY_ADC","QUERY_FILAMENT_SENSOR",
       "CAM_BRIGHTNESS","CAM_CONTRAST","CAM_HUE","CAM_SATURATION",
       "SAVE_CONFIG","SAVE_GCODE_STATE","SAVE_VARIABLE",
-      "RESPOND","STATUS","EXCLUDE_OBJECT","RESTART","FIRMWARE_RESTART",
+      "RESPOND","STATUS","EXCLUDE_OBJECT","RESTART",
       "_HOME_Z","_CG28", NULL};
     json help;
     for (int i = 0; CMDS[i] != NULL; i++) {

@@ -38,6 +38,8 @@ namespace KUtils {
   // Sempre pergunta (Confirmar / Cancelar) e so roda cb se confirmar. Para
   // botoes que mexem o bico ou aquecem (toque por engano nao pode agir).
   void confirmar(const std::string &msg, const std::function<void()> &cb);
+  // janela só com OK (informação)
+  void avisar(const std::string &msg);
   // fecha a pergunta aberta (se houver) sem fazer a ação
   void fechar_pergunta();
   bool is_running_local();

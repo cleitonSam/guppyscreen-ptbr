@@ -137,6 +137,7 @@ MacrosPanel::~MacrosPanel()
 }
 
 void MacrosPanel::populate() {
+  KUtils::fechar_pergunta();   // a lista vai ser refeita
   macro_items.clear();
   visible_items.clear();
   highlight_index = -1;

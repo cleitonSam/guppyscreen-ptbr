@@ -323,7 +323,17 @@ void FilamentRunoutPanel::handle_mbox(lv_event_t *e) {
     } else {
       KUtils::notify_toast("O sensor ainda não detectou o filamento.");
     }
-  } else if (id == 2) {     // Cancel print
+  } else if (id == 2) {     // Cancel print: pergunta antes (um toque não perde a peça)
+    KUtils::confirmar("Cancelar a impressão?\nA peça fica pela metade.", [this]() {
+      if (mbox != NULL && !cancelling) {
+        cancelar_impressao();
+      }
+    });
+  }
+}
+
+void FilamentRunoutPanel::cancelar_impressao() {
+  {
     load_stop = true;       // CANCEL_PRINT halts motion; stop our feed loop too
     cancelling = true;
     ws.gcode_script("CANCEL_PRINT");

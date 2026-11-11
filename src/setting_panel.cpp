@@ -208,11 +208,9 @@ void SettingPanel::handle_callback(lv_event_t *event) {
   } else if (btn == restart_firmware_btn) {
     spdlog::trace("setting restart firmware pressed");
     // Nesta impressora (Klipper da Creality) reiniciar a placa pela rede
-    // às vezes trava tudo: avisa que a saída é desligar e ligar na chave.
-    KUtils::confirmar(KUtils::is_printing()
-        ? "A impressora está imprimindo.\nReiniciar a placa PARA a impressão. Reiniciar?"
-        : "Reiniciar a placa da impressora?\nSe a tela não voltar em 2 minutos,\ndesligue e ligue na chave.",
-      [this]() { ws.send_jsonrpc("printer.firmware_restart"); });
+    // (FIRMWARE_RESTART) trava tudo. O botão não manda nada: explica o jeito
+    // seguro, que é desligar e ligar na chave.
+    KUtils::avisar("Para reiniciar a placa, desligue a impressora\nna chave, espere 10 segundos e ligue de novo.\n\n(Reiniciar pela rede trava esta impressora.)");
   } else if (btn == spoolman_row) {
     spdlog::trace("setting spoolman pressed");
     if (spoolman_ativo) {

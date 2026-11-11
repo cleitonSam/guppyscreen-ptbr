@@ -193,6 +193,17 @@ namespace KUtils {
     style_lock_mbox(mbox, 50);
   }
 
+  void avisar(const std::string &msg) {
+    static const char *btns[] = {"OK", ""};
+    lv_obj_t *mbox = lv_msgbox_create(NULL, NULL, msg.c_str(), btns, false);
+    lv_obj_add_event_cb(mbox, [](lv_event_t *e) {
+      lv_msgbox_close(lv_obj_get_parent(lv_event_get_target(e)));
+    }, LV_EVENT_VALUE_CHANGED, NULL);
+    style_lock_mbox(mbox, 50);
+    lv_obj_set_size(mbox, 400, 180);
+    liberar_coluna(mbox);
+  }
+
   void notify_toast(const std::string &msg, uint32_t timeout_ms) {
     // Aviso rápido SEM fundo e sem pegar toque: a caixa mora direto em
     // lv_layer_top() (sem o fundo de tela inteira do lv_msgbox) e nenhum
