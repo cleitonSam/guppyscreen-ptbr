@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <string>
 
 // Acompanhamento (Proposta B, quadros 04 e 05). Coordenadas da subtela
 // (424 x 272): x = x_da_maquete - 56, y igual.
@@ -281,7 +283,9 @@ void PrintStatusPanel::reset() {
   arquivo_atual.clear();
   extruder_target = -1;
   heater_bed_target = -1;
-  fase_atual.clear();
+  fase_etapa = 0;
+  fase_corrigiu = false;
+  fase_faltam = -1;
 
   // impressão nova: os botões voltam a responder (Pausar só depois do preparo)
   if (preparo_visivel) lv_obj_add_state(pause_btn, LV_STATE_DISABLED);
@@ -371,10 +375,40 @@ void PrintStatusPanel::populate() {
 
   // tela ligada no meio do preparo: pega a etapa atual
   auto msg = s->get_data("/printer_state/display_status/message"_json_pointer);
-  if (msg.is_string() && msg.template get<std::string>().rfind("FASE:", 0) == 0) {
-    fase_atual = msg.template get<std::string>().substr(5);
+  if (msg.is_string()) {
+    ler_fase(msg.template get<std::string>());
   }
   atualizar_preparo();
+}
+
+// A etapa do preparo vem das macros pelo M117, num texto que o Mainsail mostra
+// como está: "Preparo 3/7 [===....] Zerando a altura no centro da mesa".
+//   1 aquecendo a mesa · 2 mesa assentando · 3 zerando a altura · 4 altura do bico
+//   5 medindo a mesa · 6 conferindo a medição · 7 aquecendo o bico / começando
+// O formato antigo ("FASE:assentar") continua valendo, para a tela nova funcionar
+// com macros antigas. Qualquer outro texto ("Imprimindo", aviso do fatiador) não
+// muda a etapa.
+void PrintStatusPanel::ler_fase(const std::string &msg) {
+  int etapa = 0;
+  if (msg.rfind("Preparo ", 0) == 0) {
+    etapa = std::atoi(msg.c_str() + 8);
+  } else if (msg.rfind("FASE:", 0) == 0) {
+    const std::string f = msg.substr(5);
+    etapa = f == "assentar" ? 2 : f == "altura" ? 4 : f == "mede" ? 5 : f == "confere" ? 6
+          : (f == "ok" || f == "corrigiu") ? 7 : 0;
+  } else {
+    return;
+  }
+  if (etapa < 1 || etapa > ETAPAS) {
+    return;
+  }
+  fase_etapa = etapa;
+  fase_corrigiu = msg.find("corrigi") != std::string::npos;
+  fase_faltam = -1;
+  size_t p = msg.find("faltam ");
+  if (p != std::string::npos) {
+    fase_faltam = std::atoi(msg.c_str() + p + 7);
+  }
 }
 
 void PrintStatusPanel::atualizar_preparo() {
@@ -416,29 +450,34 @@ void PrintStatusPanel::atualizar_preparo() {
   bool mesa_esquentando = bt_alvo > 0 && bt < bt_alvo - 1.5;
   bool bico_esquentando = et_alvo >= 170 && et < et_alvo - 2;
 
-  int etapa;
+  // etapas 2 a 7: as macros disseram. 0 e 1 (ou arquivo com o início de
+  // fábrica, que não diz o começo): as temperaturas decidem o nome.
+  int etapa = fase_etapa;
   std::string nome, detalhe;
-  if (fase_atual == "assentar") {
-    etapa = 3; nome = "Mesa assentando";
-    detalhe = "Uns 2 minutos, para a medição sair certa";
-  } else if (fase_atual == "altura") {
-    etapa = 4; nome = "Medindo a altura do bico";
+  if (etapa == 2) {
+    nome = "Mesa assentando";
+    detalhe = fase_faltam > 0 ? fmt::format("Faltam {} min, para a medição sair certa", fase_faltam)
+                              : "Uns 2 minutos, para a medição sair certa";
+  } else if (etapa == 3) {
+    nome = "Zerando a altura";
+    detalhe = "No centro da mesa, antes de medir";
+  } else if (etapa == 4) {
+    nome = "Medindo a altura do bico";
     detalhe = "O bico encosta de leve na mesa";
-  } else if (fase_atual == "mede") {
-    etapa = 5; nome = "Medindo a mesa";
+  } else if (etapa == 5) {
+    nome = "Medindo a mesa";
     detalhe = "Cada ponto é medido duas vezes";
-  } else if (fase_atual == "confere") {
-    etapa = 6; nome = "Conferindo a medição";
+  } else if (etapa == 6) {
+    nome = "Conferindo a medição";
     detalhe = "Medindo o centro da mesa de novo";
-  } else if (fase_atual == "ok" || fase_atual == "corrigiu") {
-    etapa = 7;
+  } else if (etapa == 7) {
     if (bico_esquentando) {
       nome = "Aquecendo o bico";
       detalhe = fmt::format("{} / {} °C · medição conferida", (int)et, (int)et_alvo);
     } else {
       nome = "Começando a imprimir";
-      detalhe = fase_atual == "corrigiu" ? "Medição conferida, altura do bico corrigida"
-                                         : "Medição conferida";
+      detalhe = fase_corrigiu ? "Medição conferida, altura do bico corrigida"
+                              : "Medição conferida";
     }
   } else if (mesa_esquentando) {
     etapa = 1; nome = "Aquecendo a mesa";
@@ -447,7 +486,7 @@ void PrintStatusPanel::atualizar_preparo() {
     etapa = 7; nome = "Aquecendo o bico";
     detalhe = fmt::format("{} / {} °C", (int)et, (int)et_alvo);
   } else {
-    etapa = 2; nome = "Zerando os eixos";
+    etapa = 1; nome = "Zerando os eixos";
     detalhe = "Preparando para medir a mesa";
   }
 
@@ -715,10 +754,10 @@ void PrintStatusPanel::consume(json &j) {
   v = j["/params/0/print_stats/info"_json_pointer];
   update_layers(v);
 
-  // etapa do preparo (M117 FASE:xxx da trava da mesa)
+  // etapa do preparo (M117 "Preparo N/7 ..." das macros de início e da trava da mesa)
   v = j["/params/0/display_status/message"_json_pointer];
-  if (v.is_string() && v.template get<std::string>().rfind("FASE:", 0) == 0) {
-    fase_atual = v.template get<std::string>().substr(5);
+  if (v.is_string()) {
+    ler_fase(v.template get<std::string>());
   }
   atualizar_preparo();
 }
@@ -991,18 +1030,32 @@ void PrintStatusPanel::sim_setup_mock_data() {
       {"current_object", "benchy_1"}
     }}
   }}}};
-  // GS_PREPARO=altura|mede|confere|assentar|ok|mesa|bico|zerando: impressão ainda
-  // no preparo (antes do primeiro filamento), para ver a faixa de etapas
+  // GS_PREPARO=mesa|zerando|assentar|zera|altura|mede|confere|ok|corrigiu|bico|antigo:
+  // impressão ainda no preparo (antes do primeiro filamento), para ver a faixa de
+  // etapas. "antigo" manda o formato velho (FASE:mede).
   const char *preparo = std::getenv("GS_PREPARO");
   if (preparo != nullptr) {
     std::string f = preparo;
+    static const std::map<std::string, std::string> TEXTOS = {
+      {"assentar", "Preparo 2/7 [==.....] Mesa assentando, faltam 3 min"},
+      {"zera", "Preparo 3/7 [===....] Zerando a altura no centro da mesa"},
+      {"altura", "Preparo 4/7 [====...] Medindo a altura do bico"},
+      {"mede", "Preparo 5/7 [=====..] Medindo a mesa"},
+      {"confere", "Preparo 6/7 [======.] Conferindo a medicao"},
+      {"ok", "Preparo 7/7 [=======] Medicao conferida"},
+      {"corrigiu", "Preparo 7/7 [=======] Medicao conferida, altura do bico corrigida"},
+      {"bico", "Preparo 7/7 [=======] Aquecendo o bico"},
+      {"mesa", "Preparo 1/7 [=......] Aquecendo a mesa"},
+      {"antigo", "FASE:mede"},
+    };
     mock["params"][0]["print_stats"]["filament_used"] = 0.0;
     mock["params"][0]["print_stats"]["info"]["current_layer"] = 0;
     mock["params"][0]["print_stats"]["print_duration"] = 0.0;
     mock["params"][0]["virtual_sdcard"]["progress"] = 0.0;
     mock["params"][0]["heater_bed"] = {{"temperature", f == "mesa" ? 48 : 70}, {"target", 70}};
     mock["params"][0]["extruder"] = {{"temperature", f == "bico" ? 186 : 150}, {"target", f == "bico" ? 240 : 150}};
-    std::string msg = (f == "mesa" || f == "zerando" || f == "bico") ? "" : "FASE:" + f;
+    auto achado = TEXTOS.find(f);
+    std::string msg = achado != TEXTOS.end() ? achado->second : "";   // "zerando": sem texto
     mock["params"][0]["display_status"] = {{"message", msg}};
   }
   State::get_instance()->consume(mock);

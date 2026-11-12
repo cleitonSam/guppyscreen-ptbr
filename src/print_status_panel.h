@@ -105,7 +105,12 @@ class PrintStatusPanel : public NotifyConsumer {
   static constexpr int ETAPAS = 7;
   lv_obj_t *preparo_pontos[ETAPAS];
   bool preparo_visivel = false;
-  std::string fase_atual;   // "FASE:xxx" do M117 da trava (sem o prefixo)
+  // Etapa do preparo anunciada pelas macros no M117. O mesmo texto serve para o
+  // Mainsail: "Preparo 3/7 [===....] Zerando a altura" (aceita o antigo "FASE:xxx").
+  int fase_etapa = 0;           // 0 = as macros não disseram: decide pelas temperaturas
+  bool fase_corrigiu = false;   // etapa 7 com a altura do bico corrigida pela trava
+  int fase_faltam = -1;         // minutos que faltam em "Mesa assentando" (-1 = não disse)
+  void ler_fase(const std::string &msg);
 
   // cartões
   Cartao bico;

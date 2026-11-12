@@ -160,9 +160,9 @@ void NotificationManager::process(json &st) {
     auto &m = st["display_status"]["message"];
     std::string msg = m.is_string() ? m.template get<std::string>() : "";
     if (msg != last_display_msg) {
-      // "FASE:..." é a etapa do preparo (trava da mesa): quem mostra é a
-      // tela de impressão, não um aviso
-      if (!msg.empty() && !is_printing() && msg.rfind("FASE:", 0) != 0) {
+      // "Preparo N/7 ..." (ou o antigo "FASE:...") é a etapa do preparo: quem
+      // mostra é a tela de impressão, não um aviso
+      if (!msg.empty() && !is_printing() && msg.rfind("FASE:", 0) != 0 && msg.rfind("Preparo ", 0) != 0) {
         push(msg, INFO);
       }
       last_display_msg = msg;
