@@ -13,6 +13,7 @@
 #include <vector>
 
 LV_IMG_DECLARE(light_img);
+LV_IMG_DECLARE(layers_img);
 LV_IMG_DECLARE(extruder);
 LV_IMG_DECLARE(bed);
 LV_IMG_DECLARE(heater);
@@ -349,6 +350,9 @@ void MainPanel::criar_inicio() {
 
     lv_obj_t *nome = Marca::criar_rotulo(c, cartoes[i].nome, Marca::f12(), Marca::GRAFITE);
     lv_obj_set_pos(nome, 40, 14);
+    if (i == 2) {
+      luz_nome = nome;
+    }
 
     alvos[i] = Marca::criar_rotulo(c, "", Marca::f12(), Marca::GRAFITE);
     lv_obj_set_pos(alvos[i], 70, 14);
@@ -369,8 +373,9 @@ void MainPanel::criar_inicio() {
   luz_icone = icones[2];
   luz_valor = valores[2];
   lv_obj_add_flag(alvos[2], LV_OBJ_FLAG_HIDDEN);
-  // sem luz configurada o cartão não reage (create_leds liga quando houver)
-  lv_obj_clear_flag(cartao_luz, LV_OBJ_FLAG_CLICKABLE);
+  // sem luz configurada (a KE não tem) o cartão vira "Trocar chapa";
+  // create_leds devolve a luz quando houver
+  mostrar_trocar_chapa();
 
   auto ir_temperatura = [](lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
@@ -385,6 +390,7 @@ void MainPanel::criar_inicio() {
     }
     MainPanel *mp = (MainPanel *)lv_event_get_user_data(e);
     if (mp->luz_id.empty()) {
+      mp->trocar_chapa();
       return;
     }
     if (!Navegacao::executar("luz")) {
@@ -827,17 +833,39 @@ void MainPanel::create_leds(json &leds) {
     return;
   }
   if (luz_id.empty()) {
-    lv_obj_clear_flag(cartao_luz, LV_OBJ_FLAG_CLICKABLE);
-    Marca::texto(luz_valor, "--");
-    Marca::cor_icone(luz_icone, Marca::GRAFITE);
+    mostrar_trocar_chapa();
     return;
   }
-  lv_obj_add_flag(cartao_luz, LV_OBJ_FLAG_CLICKABLE);
+  lv_label_set_text(luz_nome, "Luz");
+  lv_img_set_src(luz_icone, &light_img);
   auto o = State::get_instance()->get_data(json::json_pointer("/printer_state/" + luz_id));
   if (luz_de(o) < 0) {
     Marca::texto(luz_valor, "Desligada");
   }
   atualizar_luz(o);
+}
+
+// Impressora sem luz: o terceiro cartão do Início é o atalho "Trocar chapa".
+void MainPanel::mostrar_trocar_chapa() {
+  lv_obj_add_flag(cartao_luz, LV_OBJ_FLAG_CLICKABLE);
+  lv_label_set_text(luz_nome, "Chapa");
+  lv_img_set_src(luz_icone, &layers_img);
+  Marca::cor_icone(luz_icone, Marca::GRAFITE);
+  Marca::texto(luz_valor, "Trocar");
+}
+
+// Macro TROCAR_CHAPA (melhorias.cfg): sobe o bico e traz a mesa para a frente,
+// para sobrar espaço de tirar e pôr a chapa. Mexe os eixos: pergunta antes.
+void MainPanel::trocar_chapa() {
+  if (KUtils::is_printing()) {
+    KUtils::notify_locked();
+    return;
+  }
+  KUtils::confirmar("Trocar a chapa?\nO bico sobe e a mesa vem para a frente.",
+    [this]() {
+      ws.gcode_script("TROCAR_CHAPA");
+      KUtils::notify_toast("Subindo o bico... Espere parar para trocar a chapa.", 4000);
+    });
 }
 
 void MainPanel::enable_spoolman() {

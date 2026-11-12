@@ -70,6 +70,8 @@ class MainPanel : public NotifyConsumer {
   void carregar_miniatura(const std::string &arquivo);
   void preaquecer(int bico, int mesa);
   void preaquecer_filamento(const char *macro);
+  void mostrar_trocar_chapa();
+  void trocar_chapa();
 
   KWebSocketClient &ws;
   HomingPanel homing_panel;
@@ -97,6 +99,7 @@ class MainPanel : public NotifyConsumer {
   lv_obj_t *mesa_alvo;
   lv_obj_t *mesa_valor;
   lv_obj_t *cartao_luz;
+  lv_obj_t *luz_nome = nullptr;   // rótulo do cartão: "Luz" ou "Chapa"
   lv_obj_t *luz_icone;
   lv_obj_t *luz_valor;
   lv_obj_t *ultima_thumb;
