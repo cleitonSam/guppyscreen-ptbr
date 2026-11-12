@@ -1009,6 +1009,14 @@ void MainPanel::sim_setup_mock_data() {
     o["homing_origin"] = json::array({0.0, 0.0, -0.040});
     o["speed_factor"] = 1.0;
     o["extrude_factor"] = 1.0;
+    // GS_PAPEL=<altura>: eixos na origem e bico nessa altura, para ver a tela
+    // "Altura do bico" no teste do papel (parada) com números de verdade.
+    if (const char *papel = std::getenv("GS_PAPEL")) {
+      o["homing_origin"] = json::array({0.0, 0.0, 0.129});
+      o["gcode_position"] = json::array({110.0, 110.0, std::atof(papel), 0.0});
+      gm["params"][0]["toolhead"]["homed_axes"] = "xyz";
+      gm["params"][0]["toolhead"]["axis_maximum"] = json::array({221.0, 223.0, 246.0, 0.0});
+    }
     State::get_instance()->set_data("printer_state", gm, "/params/0");
   }
 
