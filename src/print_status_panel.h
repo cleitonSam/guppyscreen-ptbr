@@ -11,6 +11,7 @@
 #include "lvgl/lvgl.h"
 
 #include <mutex>
+#include <cstdint>
 #include <ctime>
 #include <map>
 #include <string>
@@ -42,7 +43,6 @@ class PrintStatusPanel : public NotifyConsumer {
 
   void consume(json &j);
   void show_completion(const std::string &state);  // fim da impressão: tela de concluída
-  void update_time_progress(uint32_t time_passed);
   void update_layers(json &info);
   int max_layer(json &info);
   int current_layer(json &info);
@@ -68,6 +68,10 @@ class PrintStatusPanel : public NotifyConsumer {
   void atualizar_progresso(int pct);
   void atualizar_resumo();                      // texto do cabeçalho do Ajuste fino
   void atualizar_ventoinha();
+  // Porcentagem, Falta, Total e Decorrido (conta em tempo_restante.h). O falta
+  // vem da macro M73 do melhorias.cfg (gcode_macro _TEMPO), o mesmo número do
+  // Estimado do Mainsail; sem ela, do tempo do fatiador.
+  void atualizar_tempo();
   void ler_cartoes_do_estado();                 // valores iniciais dos 4 cartões
   // Preparo (antes da primeira camada): no lugar do progresso, mostra a etapa
   // (aquecendo a mesa, zerando, esperando assentar, medindo, conferindo,
@@ -134,14 +138,10 @@ class PrintStatusPanel : public NotifyConsumer {
   lv_obj_t *complete_again_btn;
   std::string complete_arquivo;   // caminho do gcode para "Imprimir de novo"
 
-  uint32_t estimated_time_s;
-
-  // Latest virtual_sdcard/progress value (0.0 .. 1.0) and print_stats/filament_used
-  // (mm). update_time_progress averages the file-, filament- and slicer-based
-  // remaining-time estimates the same way Mainsail does, instead of relying on the
-  // slicer's static estimate alone (#126).
-  double current_progress = 0.0;
+  // Filamento gasto (mm): 0 = ainda no preparo (aquecer, medir a mesa, purgar).
   double current_filament_used = 0.0;
+  // Tempo de peça que falta (s), para o título do preparo; -1 = não sabe.
+  int64_t tempo_peca = -1;
   // Estado anterior de print_stats.state: o acompanhamento abre na passagem
   // para "printing" e fecha/mostra a concluída na saída de printing/paused.
   std::string last_print_state;

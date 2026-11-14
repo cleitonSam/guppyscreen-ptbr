@@ -13,11 +13,11 @@ namespace sp = subprocess;
 
 // Sistema (coordenadas do conteúdo da aba, que rola na vertical):
 //   y =   7 e  59  botões 200 x 44: reiniciar Klipper / firmware / tela, atualizar tela
-//   y = 111        cartão: Impressoras, Spoolman
-//   y = 207        cartão de ajustes do SysInfoPanel (5 linhas, até 427)
+//   y = 111        cartão: Estado da impressora, Impressoras, Spoolman (3 linhas, até 243)
+//   y = 251        cartão de ajustes do SysInfoPanel (5 linhas, até 471)
 static constexpr lv_coord_t BOTOES_Y = 7;
 static constexpr lv_coord_t CONEXOES_Y = 111;
-static constexpr lv_coord_t AJUSTES_Y = 207;
+static constexpr lv_coord_t AJUSTES_Y = 251;
 
 static lv_obj_t *criar_botao_sistema(lv_obj_t *pai, const char *texto,
                                      lv_coord_t x, lv_coord_t y, void *ud) {
@@ -42,6 +42,7 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent,
   , restart_firmware_btn(NULL)
   , guppy_restart_btn(NULL)
   , guppy_update_btn(NULL)
+  , estado_row(NULL)
   , printer_select_row(NULL)
   , spoolman_row(NULL)
   , spoolman_ativo(false)
@@ -60,10 +61,14 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent,
   guppy_restart_btn = criar_botao_sistema(cont, LV_SYMBOL_REFRESH " Reiniciar tela", 8, BOTOES_Y + 52, this);
   guppy_update_btn = criar_botao_sistema(cont, LV_SYMBOL_DOWNLOAD " Atualizar tela", 216, BOTOES_Y + 52, this);
 
-  lv_obj_t *conexoes = ListaCfg::criar_cartao(cont, CONEXOES_Y, 2);
-  printer_select_row = ListaCfg::linha_seta(conexoes, 0, "Impressoras");
+  lv_obj_t *conexoes = ListaCfg::criar_cartao(cont, CONEXOES_Y, 3);
+  // Estado da impressora: roda a macro ESTADO (GuppyScreen/zz_estado.cfg), que
+  // abre a janela com o que está instalado e ligado. Só lê: vale até imprimindo.
+  estado_row = ListaCfg::linha_seta(conexoes, 0, "Estado da impressora");
+  lv_obj_add_event_cb(estado_row, &SettingPanel::_handle_callback, LV_EVENT_CLICKED, this);
+  printer_select_row = ListaCfg::linha_seta(conexoes, 1, "Impressoras");
   lv_obj_add_event_cb(printer_select_row, &SettingPanel::_handle_callback, LV_EVENT_CLICKED, this);
-  spoolman_row = ListaCfg::linha_seta(conexoes, 1, "Spoolman");
+  spoolman_row = ListaCfg::linha_seta(conexoes, 2, "Spoolman");
   lv_obj_add_event_cb(spoolman_row, &SettingPanel::_handle_callback, LV_EVENT_CLICKED, this);
   ListaCfg::habilitar_linha(spoolman_row, false);   // liga em enable_spoolman()
 
@@ -227,6 +232,11 @@ void SettingPanel::handle_callback(lv_event_t *event) {
   } else if (btn == printer_select_row) {
     spdlog::trace("setting printers pressed");
     printer_select_panel.foreground();
+  } else if (btn == estado_row) {
+    spdlog::trace("setting estado pressed");
+    // A resposta chega como janela do Klipper (PromptPanel). Se a macro não
+    // existir (pacote não instalado), o aviso de comando desconhecido aparece.
+    ws.gcode_script("ESTADO");
   }
 }
 

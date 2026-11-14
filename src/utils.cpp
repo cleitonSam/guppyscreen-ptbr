@@ -875,7 +875,12 @@ namespace KUtils {
         auto &gcode = el.value()["/gcode"_json_pointer];
         if (!gcode.is_null()) {
           auto macro_split = split(el.key(), ' ');
-          if (macro_split.size() > 1 && macro_split[1].rfind("_", 0) != 0) {
+          // Comando G-code de fábrica trocado por macro (rename_existing: M73 do
+          // tempo que falta, M204) é interno: não vira botão, como no Mainsail.
+          static const std::regex comando_gcode(R"(^[GgMm][0-9]+$)");
+          bool renomeado = macro_split.size() > 1 && el.value().contains("rename_existing")
+                           && std::regex_match(macro_split[1], comando_gcode);
+          if (macro_split.size() > 1 && macro_split[1].rfind("_", 0) != 0 && !renomeado) {
             std::string macro_name = macro_split[1];
 
             const auto &gcode_str = gcode.template get<std::string>();

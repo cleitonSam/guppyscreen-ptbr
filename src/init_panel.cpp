@@ -112,7 +112,7 @@ void InitPanel::connected(KWebSocketClient &ws) {
 	auto display_leds = state->get_display_leds();
 	this->main_panel.create_leds(display_leds);
 
-	// subscribe to all objects except gcode_macro
+	// subscribe to all objects except gcode_macro (menos a _TEMPO, abaixo)
 	auto objs = d["/result/objects"_json_pointer];
 	if (!objs.is_null()) {
 	  json sub_objs;
@@ -120,6 +120,11 @@ void InitPanel::connected(KWebSocketClient &ws) {
 	  for (auto &obj : objs) {
 	    std::string obj_name = obj.template get<std::string>();
 	    if (obj_name.rfind("gcode_macro ", 0 ) != 0) {
+	      sub_objs[obj_name] = nullptr;
+	    } else if (obj_name == "gcode_macro _TEMPO") {
+	      // Tempo que falta (macro M73 do melhorias.cfg, 14/11/2026): o
+	      // acompanhamento da impressão lê daqui o mesmo número que o Mainsail
+	      // mostra. Só esta macro entra; as outras continuam de fora.
 	      sub_objs[obj_name] = nullptr;
 	    } else if (obj_name == "gcode_macro M600") {
 	      // gcode_macro objects are deliberately excluded from the live

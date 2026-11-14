@@ -20,8 +20,8 @@
 // parent. Este painel monta:
 //  - Rede: Wi-Fi, Endereço IP, IP fixo e Baixa latência (lista);
 //  - Sistema: reiniciar Klipper / firmware / tela, atualizar tela,
-//    Impressoras, Spoolman e o cartão de ajustes do SysInfoPanel (rola na
-//    vertical, sem inércia);
+//    Estado da impressora (macro ESTADO), Impressoras, Spoolman e o cartão
+//    de ajustes do SysInfoPanel (rola na vertical, sem inércia);
 //  - Tela: montada pelo SysInfoPanel.
 // O Avançado é do PrinterTunePanel.
 class SettingPanel {
@@ -63,6 +63,7 @@ class SettingPanel {
   lv_obj_t *restart_firmware_btn;
   lv_obj_t *guppy_restart_btn;
   lv_obj_t *guppy_update_btn;
+  lv_obj_t *estado_row;
   lv_obj_t *printer_select_row;
   lv_obj_t *spoolman_row;
   bool spoolman_ativo;

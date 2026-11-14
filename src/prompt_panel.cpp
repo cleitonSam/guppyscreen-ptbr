@@ -219,10 +219,28 @@ void PromptPanel::consume(json &j) {
   std::lock_guard<std::mutex> guard(lv_lock);
 
   if (cmd.rfind("prompt_begin", 0) == 0) {
-    lv_label_set_text(header, (std::string(LV_SYMBOL_WARNING) + " " + cmd.substr(13)).c_str());
+    // Janela nova começa do zero, como no Mainsail. Antes um prompt_begin sem
+    // prompt_end no meio (ex.: ESTADO e depois CONFERIR_SISTEMA) juntava os
+    // botões da janela anterior.
+    lv_label_set_text(body, "");
+    lv_obj_clean(button_cont);
+    lv_obj_clean(footer_cont);
+    lv_obj_scroll_to_y(body_cont, 0, LV_ANIM_OFF);
+    std::string titulo = cmd.size() > 13 ? cmd.substr(13) : "";
+    // Janela de informação (ESTADO, CONFERIR_SISTEMA: título "Estado ...")
+    // leva o ícone de lista; as perguntas de verdade continuam com o de aviso.
+    const char *icone = titulo.rfind("Estado", 0) == 0 ? LV_SYMBOL_LIST : LV_SYMBOL_WARNING;
+    lv_label_set_text(header, (std::string(icone) + " " + titulo).c_str());
 
   } else if (cmd.rfind("prompt_text", 0) == 0) {
-    lv_label_set_text(body, cmd.substr(12).c_str());
+    // Vários prompt_text viram vários parágrafos (como no Mainsail); antes o
+    // último apagava os anteriores e o ESTADO mostrava só uma linha.
+    std::string texto = cmd.size() > 12 ? cmd.substr(12) : "";
+    const char *atual = lv_label_get_text(body);
+    if (atual != NULL && atual[0] != '\0') {
+      texto = std::string(atual) + "\n" + texto;
+    }
+    lv_label_set_text(body, texto.c_str());
 
   } else if (cmd.rfind("prompt_button", 0) == 0 || cmd.rfind("prompt_footer_button", 0) == 0) {
     if (cmd.rfind("prompt_button_group", 0) == 0) return;

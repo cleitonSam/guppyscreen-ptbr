@@ -5,6 +5,7 @@
 #include "marca.h"
 #include "navegacao.h"
 #include "state.h"
+#include "tempo_restante.h"
 #include "utils.h"
 #include "spdlog/spdlog.h"
 
@@ -52,7 +53,6 @@ PrintStatusPanel::PrintStatusPanel(KWebSocketClient &websocket_client,
   , exclude_object_panel(websocket_client, lock)
   , status_cont(lv_obj_create(lv_scr_act()))
   , complete_cont(lv_obj_create(lv_scr_act()))
-  , estimated_time_s(0)
   , extruder_target(-1)
   , heater_bed_target(-1)
 {
@@ -273,9 +273,8 @@ void PrintStatusPanel::reset() {
   Marca::texto(total_label, "");
   Marca::texto(camada_label, "");
   Marca::texto(filename_label, "");
-  estimated_time_s = 0;
-  current_progress = 0.0;
   current_filament_used = 0.0;
+  tempo_peca = -1;
   pct_atual = -1;
   camada_atual = 0;
   camadas_total = 0;
@@ -351,13 +350,6 @@ void PrintStatusPanel::populate() {
   auto pstate = s->get_data("/printer_state/print_stats/state"_json_pointer);
   mostrar_estado(pstate.is_string() ? pstate.template get<std::string>() : "");
 
-  // progress percentage
-  auto v = s->get_data("/printer_state/virtual_sdcard/progress"_json_pointer);
-  if (v.is_number()) {
-    current_progress = v.template get<double>();
-    atualizar_progresso(static_cast<int>(current_progress * 100));
-  }
-
   auto fil_used = s->get_data("/printer_state/print_stats/filament_used"_json_pointer);
   if (fil_used.is_number()) {
     current_filament_used = fil_used.template get<double>();
@@ -365,10 +357,8 @@ void PrintStatusPanel::populate() {
 
   ler_cartoes_do_estado();
 
-  auto pd = s->get_data("/printer_state/print_stats/print_duration"_json_pointer);
-  if (pd.is_number()) {
-    update_time_progress(static_cast<uint32_t>(pd.template get<double>()));
-  }
+  // porcentagem, falta, total e decorrido
+  atualizar_tempo();
 
   json info = s->get_data("/printer_state/print_stats/info"_json_pointer);
   update_layers(info);
@@ -490,7 +480,11 @@ void PrintStatusPanel::atualizar_preparo() {
     detalhe = "Preparando para medir a mesa";
   }
 
-  Marca::texto(preparo_titulo, fmt::format("Preparando a impressão · etapa {} de {}", etapa, ETAPAS).c_str());
+  // com o tempo da peça (macro M73 ou fatiador): "Etapa 3 de 7 · peça de 8h 44min"
+  std::string titulo = tempo_peca >= 0
+    ? fmt::format("Etapa {} de {} · peça de {}", etapa, ETAPAS, KUtils::tempo_curto(tempo_peca))
+    : fmt::format("Preparando a impressão · etapa {} de {}", etapa, ETAPAS);
+  Marca::texto(preparo_titulo, titulo.c_str());
   Marca::texto(preparo_etapa, nome.c_str());
   Marca::texto(preparo_detalhe, detalhe.c_str());
   for (int i = 0; i < ETAPAS; i++) {
@@ -582,18 +576,8 @@ void PrintStatusPanel::handle_metadata(const std::string &gcode_file, json &j) {
   }
 
   current_file = j["/result"_json_pointer];
-
-  auto eta = j["/result/estimated_time"_json_pointer];
-  if (eta.is_number()) {
-    estimated_time_s = static_cast<uint32_t>(eta.template get<float>());
-    spdlog::trace("updated eta {}", estimated_time_s);
-
-    json v = State::get_instance()->get_data("/printer_state/print_stats/print_duration"_json_pointer);
-    if (v.is_number()) {
-      uint32_t passed = static_cast<uint32_t>(v.template get<float>());
-      update_time_progress(passed);
-    }
-  }
+  // chegaram o tempo do fatiador e onde começa e acaba o G-code: refaz a conta
+  atualizar_tempo();
 
   json info = State::get_instance()->get_data("/printer_state/print_stats/info"_json_pointer);
   update_layers(info);
@@ -663,13 +647,6 @@ void PrintStatusPanel::consume(json &j) {
     last_print_state = st;
   }
 
-  // Track virtual_sdcard progress and filament usage so update_time_progress
-  // can average the file-, filament- and slicer-based ETAs like Mainsail (#126).
-  auto progress = j["/params/0/virtual_sdcard/progress"_json_pointer];
-  if (progress.is_number()) {
-    current_progress = progress.template get<double>();
-  }
-
   auto fil_used = j["/params/0/print_stats/filament_used"_json_pointer];
   if (fil_used.is_number()) {
     current_filament_used = fil_used.template get<double>();
@@ -721,16 +698,11 @@ void PrintStatusPanel::consume(json &j) {
     atualizar_ventoinha();
   }
 
-  // tempo
-  v = j["/params/0/print_stats/print_duration"_json_pointer];
-  if (v.is_number()) {
-    uint32_t passed = static_cast<uint32_t>(v.template get<float>());
-    update_time_progress(passed);
-  }
-
-  // porcentagem
-  if (progress.is_number()) {
-    atualizar_progresso(static_cast<int>(progress.template get<double>() * 100));
+  // tempo e porcentagem, só imprimindo ou pausada (no resto do tempo o painel
+  // fica escondido). O State já recebeu esta mesma atualização (ele é o
+  // primeiro da lista, guppyscreen.cpp), então a conta lê os valores novos.
+  if (last_print_state == "printing" || last_print_state == "paused") {
+    atualizar_tempo();
   }
 
   v = j["/params/0/pause_resume/is_paused"_json_pointer];
@@ -788,8 +760,19 @@ void PrintStatusPanel::handle_callback(lv_event_t *event) {
       });
 
   } else if (btn == resume_btn) {
-    ws.send_jsonrpc("printer.print.resume");
     lv_obj_add_state(resume_btn, LV_STATE_DISABLED);
+    // O RESUME pode terminar com a impressão ainda pausada, de propósito: sem
+    // filamento no sensor, ou na troca de filamento, quando pede o Carregar ou
+    // enche o bico que esfriou e mostra a janela. Sem nova mudança de "pausada", o
+    // botão ficava apagado até o fim da impressão. Quando a resposta chega e
+    // a impressão continua pausada, o botão volta a responder (o motivo já
+    // aparece pelo aviso do Klipper).
+    ws.send_jsonrpc("printer.print.resume", [this](json &) {
+      std::lock_guard<std::mutex> lock(lv_lock);
+      if (KUtils::is_paused()) {
+        lv_obj_clear_state(resume_btn, LV_STATE_DISABLED);
+      }
+    });
 
   } else if (btn == cancel_btn) {
     confirmar_cancelar();
@@ -865,51 +848,62 @@ void PrintStatusPanel::confirmar_cancelar() {
   }, LV_EVENT_DRAW_PART_BEGIN, NULL);
 }
 
-void PrintStatusPanel::update_time_progress(uint32_t time_passed) {
-    // Average the available remaining-time estimates the way Mainsail does: each
-    // method (file, filament, slicer) contributes only when it yields a positive
-    // value, and the displayed ETA is their unweighted mean (#126). This tracks
-    // Mainsail's ETA, which stays accurate when a print over/under-runs the
-    // slicer's static guess.
-    double total = 0.0;
-    int count = 0;
-
-    // file: extrapolate elapsed time over the virtual_sdcard progress fraction.
-    if (current_progress > 0.0 && time_passed > 0) {
-      double file_remaining = time_passed / current_progress - time_passed;
-      if (file_remaining > 0.0) { total += file_remaining; ++count; }
+void PrintStatusPanel::atualizar_tempo() {
+  State *s = State::get_instance();
+  auto num = [s](const char *p, double padrao) {
+    auto v = s->get_data(json::json_pointer(p));
+    return v.is_number() ? v.template get<double>() : padrao;
+  };
+  // metadado do arquivo (find: não cria chave nova no current_file)
+  auto meta = [this](const char *k, double padrao) {
+    if (!current_file.is_object()) {
+      return padrao;
     }
+    auto it = current_file.find(k);
+    return (it != current_file.end() && it->is_number()) ? it->template get<double>() : padrao;
+  };
 
-    // filament: extrapolate elapsed time over the consumed/total filament ratio.
-    double filament_total = 0.0;
-    if (current_file.is_object()) {
-      auto ft = current_file["/filament_total"_json_pointer];
-      if (ft.is_number()) filament_total = ft.template get<double>();
-    }
-    if (current_filament_used > 0.0 && filament_total > current_filament_used
-        && time_passed > 0) {
-      double filament_remaining =
-        time_passed / (current_filament_used / filament_total) - time_passed;
-      if (filament_remaining > 0.0) { total += filament_remaining; ++count; }
-    }
+  TempoEntrada e;
+  e.impresso = num("/printer_state/print_stats/print_duration", 0.0);
 
-    // slicer: the static estimate from the gcode metadata.
-    if (estimated_time_s > 0) {
-      double slicer_remaining = static_cast<double>(estimated_time_s) - time_passed;
-      if (slicer_remaining > 0.0) { total += slicer_remaining; ++count; }
-    }
+  // macro M73 do melhorias.cfg: só vale se for desta impressão (mesmo tamanho
+  // de arquivo) e se já tiver recebido uma linha "M73 P R" do Orca
+  double tamanho = num("/printer_state/virtual_sdcard/file_size", -1.0);
+  json t = s->get_data("/printer_state/gcode_macro _TEMPO"_json_pointer);
+  if (t.is_object()) {
+    auto campo = [&t](const char *k, double padrao) {
+      auto it = t.find(k);
+      return (it != t.end() && it->is_number()) ? it->template get<double>() : padrao;
+    };
+    e.macro_falta = campo("falta", -1.0);
+    e.macro_pd_falta = campo("pd_falta", 0.0);
+    e.macro_p_orca = static_cast<int>(campo("p_orca", -1.0));
+    e.macro_valida = tamanho > 0.0 && campo("tamanho", -1.0) == tamanho
+                     && campo("base", -1.0) >= 0.0 && e.macro_falta >= 0.0;
+  }
 
-    if (count > 0) {
-      int64_t eta_secs = static_cast<int64_t>(total / count);
-      Marca::texto(falta_label, KUtils::tempo_curto(eta_secs).c_str());
-      Marca::texto(total_label,
-        ("Total: " + KUtils::tempo_curto((int64_t)time_passed + eta_secs)).c_str());
-    } else {
-      Marca::texto(falta_label, "--");
-      Marca::texto(total_label, "");
-    }
+  // reservas: tempo do fatiador; posição no G-code (sem o cabeçalho e a
+  // miniatura, como o Mainsail); porcentagem do Klipper (M73 ou posição)
+  e.estimado_fatiador = std::max(0.0, meta("estimated_time", 0.0));
+  double posicao = num("/printer_state/virtual_sdcard/file_position", -1.0);
+  double ini = meta("gcode_start_byte", -1.0);
+  double fim = meta("gcode_end_byte", -1.0);
+  if (posicao >= 0.0 && ini >= 0.0 && fim > ini) {
+    e.progresso_arquivo = std::max(0.0, std::min(1.0, (posicao - ini) / (fim - ini)));
+  } else {
+    e.progresso_arquivo = num("/printer_state/virtual_sdcard/progress", -1.0);
+  }
+  e.progresso_m73 = num("/printer_state/display_status/progress", -1.0);
 
-    Marca::texto(decorrido_label, ("Decorrido #f5f4f0 " + KUtils::tempo_curto(time_passed) + "#").c_str());
+  TempoSaida r = calcular_tempo(e);
+  tempo_peca = r.falta;
+  if (r.pct >= 0) {
+    atualizar_progresso(r.pct);
+  }
+  Marca::texto(falta_label, r.falta >= 0 ? KUtils::tempo_curto(r.falta).c_str() : "--");
+  Marca::texto(total_label, r.total >= 0 ? ("Total: " + KUtils::tempo_curto(r.total)).c_str() : "");
+  Marca::texto(decorrido_label,
+               ("Decorrido #f5f4f0 " + KUtils::tempo_curto(static_cast<int64_t>(e.impresso)) + "#").c_str());
 }
 
 void PrintStatusPanel::update_layers(json &info) {
@@ -1012,7 +1006,11 @@ void PrintStatusPanel::sim_setup_mock_data() {
       {"filament_used", 1234.5},
       {"info", {{"current_layer", 12}, {"total_layer", 60}}}
     }},
-    {"virtual_sdcard", {{"progress", 0.20}}},
+    {"virtual_sdcard", {{"progress", 0.20}, {"file_size", 123456}, {"file_position", 24691}}},
+    {"display_status", {{"progress", 0.20}}},
+    // macro M73 do melhorias.cfg: faltam 40 min (a conta foi feita aos 600 s)
+    {"gcode_macro _TEMPO", {{"tamanho", 123456}, {"base", 2430.0}, {"falta", 2400.0},
+                            {"pd_falta", 600.0}, {"p_orca", 20}, {"fator", 1.0}}},
     {"extruder", {{"temperature", 210}, {"target", 220}}},
     {"heater_bed", {{"temperature", 62}, {"target", 65}}},
     {"gcode_move", {{"speed_factor", 1.0}, {"extrude_factor", 1.0}}},
@@ -1052,6 +1050,9 @@ void PrintStatusPanel::sim_setup_mock_data() {
     mock["params"][0]["print_stats"]["info"]["current_layer"] = 0;
     mock["params"][0]["print_stats"]["print_duration"] = 0.0;
     mock["params"][0]["virtual_sdcard"]["progress"] = 0.0;
+    // no preparo a macro já tem a peça inteira (linha M73 P0 R do topo do arquivo)
+    mock["params"][0]["gcode_macro _TEMPO"] = {{"tamanho", 123456}, {"base", 3030.0}, {"falta", 3030.0},
+                                               {"pd_falta", 0.0}, {"p_orca", 0}, {"fator", 1.0}};
     mock["params"][0]["heater_bed"] = {{"temperature", f == "mesa" ? 48 : 70}, {"target", 70}};
     mock["params"][0]["extruder"] = {{"temperature", f == "bico" ? 186 : 150}, {"target", f == "bico" ? 240 : 150}};
     auto achado = TEXTOS.find(f);
@@ -1066,16 +1067,7 @@ void PrintStatusPanel::sim_setup_mock_data() {
     return;
   }
 
-  // reset() (inside consume) cleared the slicer estimate and metadata, so only
-  // the file method had data above. Inject a slicer estimate + filament total
-  // the way handle_metadata would, then recompute so the displayed ETA shows
-  // the full Mainsail-style average of all three methods (#126).
-  estimated_time_s = 3000;
-  current_file = {{"filament_total", 5000.0}};
-  {
-    std::lock_guard<std::mutex> lock(lv_lock);
-    update_time_progress(600);
-  }
+  // o falta (40 min), o total (50 min) e os 20% vieram da macro _TEMPO do mock
 
   // preview the completion summary (no real print finishes in the sim)
   lv_timer_t *t = lv_timer_create([](lv_timer_t *tm) {

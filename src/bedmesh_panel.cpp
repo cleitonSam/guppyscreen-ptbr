@@ -643,15 +643,11 @@ void BedMeshPanel::handle_callback(lv_event_t *event) {
 
   } else if (btn == calibrate_btn.get_container()) {
     spdlog::trace("mesh calibrate pressed");
-    auto v = State::get_instance()
-      ->get_data("/printer_state/toolhead/homed_axes"_json_pointer);
-    if (!v.is_null()) {
-      if (v.template get<std::string>() == "xy") {
-        ws.gcode_script("BED_MESH_CALIBRATE");
-        return;
-      }
-    }
-    ws.gcode_script("G28 X Y Z\nBED_MESH_CALIBRATE");
+    // 14/11/2026: antes media a mesa fria e sem perguntar (malha errada, e o
+    // cabecote se mexia sem aviso). NIVELAR_MESA_COMPLETA (zz_painel_pt.cfg)
+    // pergunta se a mesa esta vazia, aquece a 80 C, espera 10 min na
+    // temperatura, mede com a trava da mesa e grava sem reiniciar.
+    ws.gcode_script("NIVELAR_MESA_COMPLETA");
   }
   // "Voltar" agora é o do cabeçalho (voltar()).
 }
